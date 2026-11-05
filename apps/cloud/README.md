@@ -1,0 +1,207 @@
+# trend-coach-cloud
+
+`dsh-plugin-trend-coach` 的云端服务仓库：提供课程知识检索、片段元数据、签名 HLS 播放会话、设备码授权、后台账号与内容管理、指标事件接收、语音转写（M4.2，MiniMax ASR）、视频→课程管线（M1），公开门户与自助账号、AI 用量与任务级模型路由（M7），语料级生产底座（M9：关键帧轨道、source units、概念图谱、课件 spec 复检、溯源账本），以及教材呈现层（M10：富文本 DSL、节级图示、SVG 模板、资产时间窗播放会话）。
+
+## 边界
+
+| 提供 | 不提供 |
+|---|---|
+| 知识库检索（Top-K 片段） | 大模型推理 / API Key 托管 |
+| 片段元数据与权威起止秒 | 全库正文下发 |
+| 签名 HLS 播放会话 | 直链 / 可下载源站地址 |
+| 设备码授权与令牌轮换 | 邮件/短信验证、找回密码 |
+| 公开门户：体系、功能、安装向导、版本下载、FAQ（预渲染） | 内容 CMS、客服/工单 |
+| 学员自助注册、登录、个人中心与设备解绑 | 学员侧生成式推理 |
+| 后台账号管理（operator/admin 会话） | 第三方分析 SDK |
+| 内容管理 API 与 React 控制台（概览、课程内容、片段、视频建课、模型与账号） | 召回评估看板、插件版本与灰度 |
+| 视频→课程管线：流式上传、单码率 HLS、长音频转写、章节/知识点/片段切分、文章草稿、人工审核发布 | 多码率 ABR、对象存储、断点续传 |
+| AI 用量、运行链路、任务级主备绑定与自动切换 | 学员接口推理、成本对账平台 |
+| 语料级生产底座（M9）：关键帧轨道、source units 存储/检索、概念图谱、节与课件 spec 复检、生产溯源账本 | 生产 Agent 循环内嵌云端、LLM 生成课件代码、自动发布 |
+| 教材呈现层（M10）：富文本 DSL 校验、节级图示写入与 SVG 模板渲染、资产时间窗播放会话、发布门禁扩展 | 学员端呈现层运行时渲染（随 `contractVersion=3`）、案例股行情源与备用源 |
+| 鉴权指标事件接收 | 明文令牌落盘 |
+| 语音转写（仅语音→文字，密钥在云端） | 多供应商自动切换 |
+
+不耦合 `ai-invest`：独立实现，只借鉴 PostgreSQL halfvec + pg_trgm + RRF 的技术选型。
+
+## 接口
+
+| 方法与路径 | 用途 |
+|---|---|
+| `GET /health` | 健康检查（含数据库连通性） |
+| `POST /v1/auth/device/code` | 发起设备码授权 |
+| `POST /v1/auth/device/token` | 轮询授权结果 |
+| `POST /v1/auth/device/approve` | 批准设备码（账号密码、邀请码或运营会话） |
+| `POST /v1/auth/refresh` | 轮换 access/refresh |
+| `POST /v1/auth/revoke` | 注销当前设备并吊销其令牌 |
+| `POST /v1/auth/invite/redeem` | 邀请码首次设置密码 |
+| `POST /v1/auth/session` | 后台会话登录 |
+| `GET/DELETE /v1/auth/session` | 查询会话 / 注销会话 |
+| `POST /v1/auth/session/password` | 修改自己的密码 |
+| `GET/POST /v1/admin/users` | 账号列表 / 创建账号（只读需 operator，创建需 admin） |
+| `PATCH /v1/admin/users/{userId}` | 修改显示名、角色或状态（admin） |
+| `POST /v1/admin/users/{userId}/reset` | 重置密码或签发一次性邀请码（admin） |
+| `GET/POST /v1/admin/content/courses` | 课程列表 / 创建课程（operator/admin） |
+| `GET/PATCH /v1/admin/content/courses/{courseId}` | 课程树 / 修改课程 |
+| `POST /v1/admin/content/courses/{courseId}/chapters` | 新增章节 |
+| `PATCH /v1/admin/content/courses/{courseId}/chapters/{chapterId}` | 修改章节 |
+| `POST /v1/admin/content/courses/{courseId}/chapters/{chapterId}/knowledge-points` | 新增知识点 |
+| `PATCH /v1/admin/content/knowledge-points/{knowledgePointId}` | 修改知识点 |
+| `GET/PUT /v1/admin/content/knowledge-points/{knowledgePointId}/article` | 读取 / 保存文章（安全 Markdown） |
+| `GET/POST /v1/admin/content/segments` | 片段列表 / 创建片段 |
+| `PATCH /v1/admin/content/segments/{segmentId}` | 修改片段（正文变更会清空向量） |
+| `POST /v1/admin/content/reindex` | 按课程重建片段向量 |
+| `GET/POST /v1/admin/content/media-assets` | 媒体素材列表 / 创建 |
+| `PATCH /v1/admin/content/media-assets/{assetId}` | 修改标题或归档素材 |
+| `PUT /v1/admin/content/media-assets/{assetId}/source` | 流式上传源视频（`application/octet-stream`） |
+| `POST /v1/admin/content/media-assets/{assetId}/ingest` | 入队转码与转写 |
+| `GET /v1/admin/content/media-assets/{assetId}/transcript` | 查看带时间戳转写（仅管理端） |
+| `POST /v1/admin/content/media-assets/{assetId}/generations` | 入队章节/知识点/文章草稿生成 |
+| `GET /v1/admin/content/pipeline/jobs` | 管线任务列表 |
+| `GET /v1/admin/content/pipeline/jobs/{jobId}` | 任务详情 |
+| `POST /v1/admin/content/pipeline/jobs/{jobId}/retry` | 重试失败/取消任务 |
+| `POST /v1/admin/content/pipeline/jobs/{jobId}/cancel` | 取消排队/运行任务 |
+| `GET /v1/admin/content/generations/{generationId}` | 生成预览 |
+| `POST /v1/admin/content/generations/{generationId}/apply` | 应用为草稿课程 |
+| `POST /v1/admin/content/generations/{generationId}/discard` | 丢弃草稿 |
+| `POST /v1/admin/content/courses/{courseId}/publish` | 发布课程并按需重建索引 |
+| `POST /v1/kb/search` | Top-K 片段检索 |
+| `GET /v1/kb/segments/{segmentId}` | 片段详情 |
+| `GET /v1/catalog/courses` | 已发布课程列表 |
+| `GET /v1/catalog/courses/{courseId}` | 课程树与当前用户进度 |
+| `GET /v1/catalog/knowledge-points/{knowledgePointId}` | 知识点详情与已发布文章 |
+| `PUT /v1/progress/knowledge-points/{knowledgePointId}` | 上报学习进度 |
+| `POST /v1/playback/sessions` | 换取签名播放地址 |
+| `GET /v1/events/consent` | 读取指标上报同意状态 |
+| `PUT /v1/events/consent` | 修改指标上报同意状态（可撤回） |
+| `POST /v1/events` | 接收白名单指标事件（需同意） |
+| `POST /v1/asr/transcribe` | 语音转写（WAV ≤60s，转发 MiniMax；音频不落盘） |
+| `POST /v1/portal/auth/register` | 学员自助注册并自动登录 |
+| `POST /v1/portal/auth/login` | 门户登录 |
+| `GET/DELETE /v1/portal/auth/session` | 查询 / 注销门户会话 |
+| `GET/PATCH /v1/portal/me` | 个人资料与显示名 |
+| `POST /v1/portal/me/password` | 修改门户密码（吊销其他会话） |
+| `GET /v1/portal/me/devices` | 本人设备列表 |
+| `DELETE /v1/portal/me/devices/{deviceId}` | 解绑本人设备 |
+| `GET /v1/portal/releases` | 插件发布清单（公开） |
+| `GET /v1/portal/stats` | 已发布内容计数（公开） |
+| `GET /v1/admin/ai/usage/summary` | AI 用量汇总、趋势、按任务/模型与成本 |
+| `GET /v1/admin/ai/usage/events` | AI 调用明细（游标分页） |
+| `GET /v1/admin/ai/runs` | AI 运行列表 |
+| `GET /v1/admin/ai/runs/{runId}` | AI 运行详情与步骤链 |
+| `GET /v1/admin/ai/bindings` | 任务模型绑定与可选模型 |
+| `PUT /v1/admin/ai/bindings/{taskKey}` | 设置任务主/备模型（admin） |
+| `GET /v1/admin/ai/health` | 模型健康与冷却状态 |
+| `POST /v1/admin/content/courses/{courseId}/illustrate` | 章级图示生成入队（M8 教材阅读层） |
+| `GET /v1/admin/content/figures` | 章级图示清单 |
+| `POST /v1/admin/content/figures/{figureId}/select` | 选定图示候选 |
+| `POST /v1/admin/content/figures/{figureId}/regenerate` | 重新生成图示候选 |
+| `DELETE /v1/admin/content/figures/{figureId}` | 删除图示（被正文引用时拒绝） |
+| `GET /v1/admin/content/figure-candidates/{candidateId}` | 图示候选字节（短时效签名） |
+| `GET /v1/admin/content/media-assets/{assetId}/frames` | 关键帧轨道（签名帧 URL） |
+| `POST /v1/admin/content/media-assets/{assetId}/playback-sessions` | 资产时间窗播放会话（管理台预览通道） |
+| `POST/GET /v1/admin/content/source-units` | 理解产物批量写入（幂等）/ 混合检索 |
+| `POST /v1/admin/content/source-units/reindex` | 重建 source unit 向量 |
+| `GET/PUT /v1/admin/content/concepts` | 概念查询 / 术语归一写入 |
+| `POST /v1/admin/content/concept-edges` | 概念依赖边 |
+| `GET/PUT /v1/admin/content/sections` | 节查询 / 节草稿写入 |
+| `PUT /v1/admin/content/sections/{sectionId}/article` | 保存节教材（Markdown + 富文本 DSL） |
+| `GET/POST /v1/admin/content/sections/{sectionId}/widgets` | 课件 spec 查询 / 提交（断言证明复检） |
+| `DELETE /v1/admin/content/sections/{sectionId}/widgets/{widgetId}` | 删除课件 spec |
+| `GET /v1/admin/content/sections/{sectionId}/preview` | 节预览（教材正文、课件 spec 与断言、图示） |
+| `GET/POST /v1/admin/content/sections/{sectionId}/figures` | 节级图示清单 / 写入（keyframe 选帧或 SVG 模板 diagram） |
+| `POST /v1/admin/content/provenance` | 生产溯源上报 |
+
+本地还提供 `GET /device` 授权页与 `GET /media/*` 媒体代理，仅开发使用，不进入对外契约。`GET /metrics` 为 Prometheus 指标，需 `Authorization: Bearer $METRICS_TOKEN`，同样不进入对外契约。
+
+契约、边界、验收用例与待冻结事项见 [对接清单](docs/architecture/cloud-service-integration-checklist.md)。接口字段与错误码冲突时以本仓需求、架构与对接清单为准（云端是契约真相源）。
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [需求文档](docs/requirements/product-requirements.md) | 范围、功能 C1–C14、NFR、验收、里程碑 |
+| [架构设计](docs/architecture/architecture-design.md) | 组件、数据模型、检索、鉴权、媒体、安全、ADR |
+| [对接清单](docs/architecture/cloud-service-integration-checklist.md) | 逐接口字段、边界与验收用例 |
+| [项目规范](docs/conventions/project-conventions.md) | API、安全、测试、文档与提交约定 |
+| [文档总览](docs/ai-context/docs-overview.md) | 阅读顺序与文档索引 |
+| [项目结构](docs/ai-context/project-structure.md) | 现状与目标目录、放置规则 |
+| [部署 Runbook](docs/operations/deployment-runbook.md) | Compose、TLS、迁移、备份恢复、媒体 CDN |
+| [监控与告警](docs/operations/monitoring.md) | 指标接口、外部 Prometheus 接入、压测、排障 |
+| [合规与公测检查清单](docs/operations/compliance.md) | 数据清单、保留与删除、访问控制、已知缺口 |
+
+协作与 Agent 约束见 [AGENTS.md](AGENTS.md)。
+
+## 对接方
+
+- 学员插件仓库：`../dsh-plugin-trend-coach`
+- 生产插件仓库（M9/M10 生产端）：`../dsh-plugin-trend-producer`
+- 插件侧 mock：`../dsh-plugin-trend-coach/spike/mock-kb-server.mjs`（可作为契约夹具参考）
+
+## 本地运行
+
+需要 Node.js ≥22 与 Docker。
+
+```bash
+cp .env.example .env
+npm install
+npm run db:up          # PostgreSQL 17 + pgvector
+npm run migrate        # 建表与索引
+npm run seed           # 种子课程与片段
+npm run dev            # http://127.0.0.1:3939
+npm run dev:admin      # 管理端开发服务器 http://127.0.0.1:5173/admin/（/v1 代理到 3939）
+npm run dev:portal     # 门户开发服务器 http://127.0.0.1:5174/（/v1 代理到 3939）
+```
+
+管理端（React 18 + Vite + Ant Design）在 `web/admin/`：`npm run build` 会同时编译服务端与前端，服务端产物在 `dist/server`，前端落在 `dist/admin`，由服务端在 `/admin/` 静态托管；未构建前端时 `/admin/` 返回 404，API 不受影响。控制台默认深色并可切换浅色，支持 `/admin/courses` 等深链刷新；开发服务器可用 `ADMIN_DEV_API` 改变代理目标。登录会话令牌只存 `sessionStorage`，不使用 Cookie。
+
+门户（React 18 + Vite + Ant Design）在 `web/portal/`，内容为 `web/portal/content/*.md`。`npm run build` 会先构建客户端，再程序化 SSR 逐路由预渲染到 `dist/portal`，同时生成 `routes.json`、`sitemap.xml` 与 `robots.txt`；`npm run build:portal` 可单独重建门户。`PUBLIC_BASE_URL` 决定 canonical 与 sitemap 的绝对地址。发布清单 `content/releases.json` 由 `/v1/portal/releases` 读取，下载文件放在 `dist/downloads/`，服务端以 `attachment` 提供。门户静态页与后台深链均由服务端托管，未知前端路径回落门户壳；`/v1/*` 未命中仍返回 JSON `404`。
+
+授权与联调：
+
+```bash
+# 首个管理员由 BOOTSTRAP_ADMIN_USERNAME / BOOTSTRAP_ADMIN_PASSWORD 在启动时创建。
+curl -s -X POST http://127.0.0.1:3939/v1/auth/session \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin01","password":"<初始密码>"}'
+# 学员首次登录：打开 https://<域名>/device?code=<USER-CODE> 填写账号密码，
+# 或使用邀请码设置密码；也可直接调用 /v1/auth/device/approve。
+npm test                       # 单元 + 契约测试（自动重置测试库）
+```
+
+本地媒体需在 `.env` 设置 `MEDIA_LOCAL_DIR` 指向含 `hls/index.m3u8` 的目录；生产媒体走 CDN，不设该项。配置项与默认值见 `.env.example`。
+
+运行期持久化数据（数据库、管线、证书、媒体、备份）统一放在仓库根 `workspace/`，该目录已 gitignore，可整体迁移或备份。
+
+视频建课管线默认 `PIPELINE_ENABLED=false`。启用需本机安装 `ffmpeg`/`ffprobe`，并设置 `PIPELINE_STORAGE_DIR` 与 `PIPELINE_HLS_DIR`（默认 `workspace/pipeline/{storage,hls}`；两目录同卷，设置 `MEDIA_LOCAL_DIR` 时必须与其相同）。ASR、内容 LLM 与 embedding 的连接信息和密钥在管理端「模型配置」页维护：密钥以 AES-256-GCM 加密落库（`CREDENTIAL_ENCRYPTION_KEY` 为加密盐）、只回显掩码、保存后立即生效；未配置时对应阶段返回 `503`，不影响服务启动。管理端「视频建课」页按“上传 → 处理 → 转写 → 生成 → 应用 → 发布”操作，生成内容始终先落 `draft`。
+
+## 部署
+
+生产使用 Docker Compose + Caddy（自动 TLS），数据库为 pgvector；镜像内置 ffmpeg，数据库、管线源文件与 HLS、Caddy 证书统一 bind mount 到 `workspace/`。迁移在应用启动时执行。
+
+```bash
+cp .env.prod.example .env.prod   # 填域名、数据库与两个密钥
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+scripts/backup.sh                # 备份（可配 cron）
+```
+
+完整步骤、TLS、迁移、备份恢复、媒体 CDN 的 CORS/Range 要求与本地 staging 验证见 [部署 Runbook](docs/operations/deployment-runbook.md)。`/metrics` 保留供外部监控接入，默认不内置 Prometheus/Grafana 服务；接入方式见 [监控与告警](docs/operations/monitoring.md)。
+
+## 目录
+
+```
+src/            # Fastify 服务：accounts/auth/content/kb/playback/events/media/asr/pipeline/model-config/ai/portal/http/production
+web/admin/      # React + Vite 管理端源码（构建产物 dist/admin）
+web/portal/     # React + Vite 门户源码与 Markdown 内容（预渲染产物 dist/portal）
+web/widgets/    # 渲染组件包（DSL 容器块渲染器、片段卡），管理台与学员端共用契约
+content/        # 发布清单 content/releases.json（下载文件放 dist/downloads）
+migrations/     # SQL 迁移（启动时自动执行；004 管线、005/006 模型配置、007 门户与 AI 运营、008–011 M8、012 M9、013 M10）
+data/seed.json  # 本地种子数据（与插件 mock 对齐）
+openapi/        # OpenAPI 3.1 契约
+test/           # 单元、契约、管线 E2E、门户静态与 AI 计量测试
+docs/           # 需求、架构、规范、部署与监控
+docker/         # 本地数据库初始化
+deploy/         # Caddy 与可选监控模板（不随 Compose 启动）
+scripts/        # migrate/seed、预渲染、压测与备份恢复入口
+```
+
+当前为 M10 实现阶段：M2 业务接口、设备码授权、签名 HLS、事件接收已落地；M3.1 账号与后台登录、M3.2 内容管理 API 与 React 控制台、M3.3 体系与进度接口已落地；M4.2 语音转写已落地（真实 MiniMax 已验收）；M4.3 模型配置页已落地（LLM/ASR 条目、密钥加密、连通性测试）；M1 视频→课程管线已落地（上传、单码率 HLS、长音频转写、切分、文章草稿、人工发布；真实 ASR/LLM/embedding 已验收）；M7 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换已落地；M9 语料级生产底座（帧轨道、source units、概念图谱、节与课件 spec 复检、溯源账本）已落地；M10 呈现层 R1（DSL 校验、节级图示与 SVG 模板、资产播放会话、发布门禁扩展、管理台渲染组件包）已落地，R2 实盘层与 R3 质量收敛待落地。多码率 HLS、召回评估、客服入口后置。

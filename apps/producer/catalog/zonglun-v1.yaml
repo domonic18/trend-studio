@@ -1,0 +1,29 @@
+# 总论卷 · 人工目录先验（门禁① 的骨架输入）
+# 规则：架构师 Agent 只做校验/概念归一/依赖标注，不得增删改目录条目。
+# 课时顺序即教学顺序；assets 与云端 media_assets 一一对应。
+course:
+  courseId: TC-ZONGLUN
+  title: 趋势交易体系 · 总论卷
+chapter:
+  chapterId: ZL-01
+  title: 总论
+sections:
+  - position: 1
+    title: 趋势交易体系总论 1
+    assetId: asset_53cc88bf29d3e03e
+  - position: 2
+    title: 趋势交易体系总论 2
+    assetId: asset_b49326c6e870f4c6
+    note: 素材文件原名「筹码分布2.mp4」，经确认为总论 2 同一内容，按总论 2 归一（2026-11-04 拍板）
+  - position: 3
+    title: 趋势交易体系总论 3
+    assetId: asset_47742dd0dab4a9d2
+  - position: 4
+    title: 三元一催化原则
+    assetId: asset_7689317a2d6fba3a
+  - position: 5
+    title: 阻尼运动
+    assetId: asset_22ee2066beaf26e0
+  - position: 6
+    title: 筹码分布 1
+    assetId: asset_46f003caa49aad85

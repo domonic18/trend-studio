@@ -1,0 +1,28 @@
+# 依赖与构建产物（三仓通用；app 特有规则在各 apps/*/.gitignore）
+node_modules/
+dist/
+build/
+lib/
+coverage/
+.turbo/
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+!.env.prod.example
+deploy/monitoring/metrics_token
+
+# 运行期持久化数据与备份（cloud：媒体与库数据不进 git）
+workspace/
+backups/
+media/*
+!media/.gitkeep
+
+# 日志与包产物
+*.log
+*.tgz
+
+# 本地工具
+.DS_Store
+.playwright-mcp/

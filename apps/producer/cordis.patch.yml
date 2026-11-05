@@ -1,0 +1,4 @@
+- insert:
+    - id: trend-producer
+      name: dsh-plugin-trend-producer
+      config: {}

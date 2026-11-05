@@ -1,0 +1,722 @@
+import type {
+  AiBindingsResponse,
+  AiHealthResponse,
+  AiRunDetail,
+  AiRunPage,
+  AiTaskBinding,
+  AiTaskKey,
+  AiUsageEventPage,
+  AiUsageSummary,
+  Article,
+  AsrModelConfig,
+  AsrProtocol,
+  ContentStatus,
+  Course,
+  CoursePublishResult,
+  CourseSummary,
+  CourseTree,
+  Figure,
+  FigureList,
+  LlmModelConfig,
+  LlmProtocol,
+  LlmPurpose,
+  ModelTestResult,
+  GenerationApplyResult,
+  GenerationPreview,
+  MediaAsset,
+  MediaAssetList,
+  MediaAssetStatus,
+  PipelineJob,
+  PipelineJobDetail,
+  PipelineJobKind,
+  PipelineJobList,
+  PipelineJobStatus,
+  Quiz,
+  QuizQuestion,
+  Segment,
+  SegmentList,
+  Section,
+  SectionPreview,
+  SessionResponse,
+  SessionUser,
+  TranscriptPage,
+  User,
+  UserList,
+  UserRole,
+  UserStatus,
+} from './types'
+
+const TOKEN_KEY = 'trend-coach-admin-token'
+
+let token: string | null = sessionStorage.getItem(TOKEN_KEY)
+
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+  }
+}
+
+type UnauthorizedListener = () => void
+const unauthorizedListeners = new Set<UnauthorizedListener>()
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener)
+  return () => {
+    unauthorizedListeners.delete(listener)
+  }
+}
+
+function notifyUnauthorized(): void {
+  clearToken()
+  for (const listener of unauthorizedListeners) listener()
+}
+
+export function hasToken(): boolean {
+  return token !== null
+}
+
+export function clearToken(): void {
+  token = null
+  sessionStorage.removeItem(TOKEN_KEY)
+}
+
+function saveToken(value: string): void {
+  token = value
+  sessionStorage.setItem(TOKEN_KEY, value)
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { accept: 'application/json' }
+  if (token !== null) headers.authorization = `Bearer ${token}`
+  if (body !== undefined) headers['content-type'] = 'application/json'
+
+  const response = await fetch(path, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  const payload: unknown = await response.json().catch(() => undefined)
+  if (!response.ok) {
+    if (response.status === 401) notifyUnauthorized()
+    throw new ApiError(response.status, errorMessage(payload, response.status))
+  }
+  return payload as T
+}
+
+/** 云端错误既可能是字符串，也可能是 { code, message }。 */
+function errorMessage(payload: unknown, status: number): string {
+  if (typeof payload === 'object' && payload !== null) {
+    const error = (payload as { error?: unknown }).error
+    if (typeof error === 'string') return error
+    if (typeof error === 'object' && error !== null) {
+      const { code, message } = error as { code?: unknown; message?: unknown }
+      if (typeof message === 'string') return message
+      if (typeof code === 'string') return code
+    }
+  }
+  return `请求失败（${status}）`
+}
+
+export async function login(username: string, password: string): Promise<SessionUser> {
+  const session = await request<SessionResponse>('POST', '/v1/auth/session', { username, password })
+  saveToken(session.token)
+  return session.user
+}
+
+export async function currentUser(): Promise<SessionUser> {
+  const body = await request<{ user: SessionUser }>('GET', '/v1/auth/session')
+  return body.user
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await request<{ revoked: boolean }>('DELETE', '/v1/auth/session')
+  } finally {
+    clearToken()
+  }
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await request('POST', '/v1/auth/session/password', { currentPassword, newPassword })
+}
+
+export async function listCourses(): Promise<CourseSummary[]> {
+  return (await request<{ courses: CourseSummary[] }>('GET', '/v1/admin/content/courses')).courses
+}
+
+export async function createCourse(input: { courseId: string; title: string; status?: ContentStatus }): Promise<Course> {
+  return (await request<{ course: Course }>('POST', '/v1/admin/content/courses', input)).course
+}
+
+export async function patchCourse(
+  courseId: string,
+  input: { title?: string; status?: ContentStatus },
+): Promise<Course> {
+  return (await request<{ course: Course }>('PATCH', `/v1/admin/content/courses/${encodeURIComponent(courseId)}`, input)).course
+}
+
+export async function getCourseTree(courseId: string): Promise<CourseTree> {
+  return request<CourseTree>('GET', `/v1/admin/content/courses/${encodeURIComponent(courseId)}`)
+}
+
+export async function createChapter(
+  courseId: string,
+  input: { chapterId: string; title: string; position?: number },
+): Promise<void> {
+  await request('POST', `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters`, input)
+}
+
+export async function patchChapter(
+  courseId: string,
+  chapterId: string,
+  input: { title?: string; position?: number },
+): Promise<void> {
+  await request(
+    'PATCH',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}`,
+    input,
+  )
+}
+
+export async function createKnowledgePoint(
+  courseId: string,
+  chapterId: string,
+  input: { knowledgePointId: string; title: string; position?: number },
+): Promise<void> {
+  await request(
+    'POST',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}/knowledge-points`,
+    input,
+  )
+}
+
+export async function patchKnowledgePoint(
+  knowledgePointId: string,
+  input: { title?: string; position?: number },
+): Promise<void> {
+  await request('PATCH', `/v1/admin/content/knowledge-points/${encodeURIComponent(knowledgePointId)}`, input)
+}
+
+export async function getChapterArticle(
+  courseId: string,
+  chapterId: string,
+): Promise<Article | null> {
+  return (await request<{ article: Article | null }>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}/article`,
+  )).article
+}
+
+export async function putChapterArticle(
+  courseId: string,
+  chapterId: string,
+  input: { markdown: string; status: ContentStatus },
+): Promise<Article> {
+  return (await request<{ article: Article }>(
+    'PUT',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}/article`,
+    input,
+  )).article
+}
+
+export async function getChapterQuiz(
+  courseId: string,
+  chapterId: string,
+): Promise<Quiz | null> {
+  return (await request<{ quiz: Quiz | null }>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}/quiz`,
+  )).quiz
+}
+
+export async function putChapterQuiz(
+  courseId: string,
+  chapterId: string,
+  input: { questions: QuizQuestion[]; status: ContentStatus },
+): Promise<Quiz> {
+  return (await request<{ quiz: Quiz }>(
+    'PUT',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/chapters/${encodeURIComponent(chapterId)}/quiz`,
+    input,
+  )).quiz
+}
+
+/** 列出课程（或某章节下）的节，用于管理台节导航。 */
+export async function listSections(courseId: string, chapterId?: string): Promise<Section[]> {
+  const params = new URLSearchParams()
+  params.set('courseId', courseId)
+  if (chapterId !== undefined && chapterId !== '') params.set('chapterId', chapterId)
+  return (await request<{ sections: Section[] }>(
+    'GET',
+    `/v1/admin/content/sections?${params.toString()}`,
+  )).sections
+}
+
+/** 管理台节渲染预览：教材 + 课件 spec/断言全量 + 节级图示。 */
+export async function getSectionPreview(sectionId: string): Promise<SectionPreview> {
+  return request<SectionPreview>(
+    'GET',
+    `/v1/admin/content/sections/${encodeURIComponent(sectionId)}/preview`,
+  )
+}
+
+export interface AssetPlaybackSession {
+  sessionId: string
+  playlistUrl: string
+  fromSec: number | null
+  toSec: number | null
+  expiresAt: number
+}
+
+export async function createAssetPlaybackSession(
+  assetId: string,
+  fromSec?: number,
+  toSec?: number,
+): Promise<AssetPlaybackSession> {
+  const body = fromSec === undefined || toSec === undefined ? {} : { fromSec, toSec }
+  return request<AssetPlaybackSession>(
+    'POST',
+    `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}/playback-sessions`,
+    body,
+  )
+}
+
+export async function enqueueIllustrate(
+  courseId: string,
+  chapterIds?: string[],
+): Promise<PipelineJob> {
+  return (await request<{ job: PipelineJob }>(
+    'POST',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/illustrate`,
+    chapterIds === undefined ? {} : { chapterIds },
+  )).job
+}
+
+export async function listFigures(filters: {
+  courseId?: string
+  chapterId?: string
+  offset?: number
+  limit?: number
+}): Promise<FigureList> {
+  return request<FigureList>('GET', `/v1/admin/content/figures${queryString(filters)}`)
+}
+
+export async function selectFigure(figureId: string, candidateId: string): Promise<Figure> {
+  return (await request<{ figure: Figure }>(
+    'POST',
+    `/v1/admin/content/figures/${encodeURIComponent(figureId)}/select`,
+    { candidateId },
+  )).figure
+}
+
+export async function regenerateFigure(figureId: string): Promise<Figure> {
+  return (await request<{ figure: Figure }>(
+    'POST',
+    `/v1/admin/content/figures/${encodeURIComponent(figureId)}/regenerate`,
+  )).figure
+}
+
+export async function deleteFigure(figureId: string): Promise<void> {
+  await request<undefined>('DELETE', `/v1/admin/content/figures/${encodeURIComponent(figureId)}`)
+}
+
+/** 候选图接口要 Bearer，<img> 带不了请求头，只能用 fetch 转 object URL。 */
+export async function getFigureCandidateBlob(candidateId: string): Promise<string> {
+  const headers: Record<string, string> = {}
+  if (token !== null) headers.authorization = `Bearer ${token}`
+  const response = await fetch(`/v1/admin/content/figure-candidates/${encodeURIComponent(candidateId)}`, { headers })
+  if (!response.ok) {
+    if (response.status === 401) notifyUnauthorized()
+    throw new ApiError(response.status, `图片加载失败（${response.status}）`)
+  }
+  return URL.createObjectURL(await response.blob())
+}
+
+export async function listSegments(filters: {
+  courseId?: string
+  knowledgePointId?: string
+  status?: ContentStatus
+  query?: string
+  offset?: number
+  limit?: number
+}): Promise<SegmentList> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const query = params.toString()
+  return request<SegmentList>('GET', `/v1/admin/content/segments${query === '' ? '' : `?${query}`}`)
+}
+
+export async function createSegment(input: {
+  segmentId: string
+  courseId: string
+  chapterId: string
+  knowledgePointId: string
+  title: string
+  startSec: number
+  endSec: number
+  text: string
+  status?: ContentStatus
+}): Promise<Segment> {
+  return (await request<{ segment: Segment }>('POST', '/v1/admin/content/segments', input)).segment
+}
+
+export async function patchSegment(
+  segmentId: string,
+  input: {
+    title?: string
+    startSec?: number
+    endSec?: number
+    text?: string
+    status?: ContentStatus
+  },
+): Promise<Segment> {
+  return (await request<{ segment: Segment }>(
+    'PATCH',
+    `/v1/admin/content/segments/${encodeURIComponent(segmentId)}`,
+    input,
+  )).segment
+}
+
+export async function reindex(courseId?: string): Promise<number> {
+  return (await request<{ embedded: number }>(
+    'POST',
+    '/v1/admin/content/reindex',
+    courseId === undefined ? {} : { courseId },
+  )).embedded
+}
+
+export async function listUsers(filters: {
+  query?: string
+  role?: UserRole
+  status?: UserStatus
+  offset?: number
+  limit?: number
+}): Promise<UserList> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const query = params.toString()
+  return request<UserList>('GET', `/v1/admin/users${query === '' ? '' : `?${query}`}`)
+}
+
+export async function createUser(input: {
+  username: string
+  displayName: string
+  role: UserRole
+  password?: string
+}): Promise<{ user: User; inviteCode?: string; inviteExpiresAt?: number }> {
+  return request('POST', '/v1/admin/users', input)
+}
+
+export async function patchUser(
+  userId: string,
+  input: { displayName?: string; role?: UserRole; status?: UserStatus },
+): Promise<User> {
+  return (await request<{ user: User }>('PATCH', `/v1/admin/users/${encodeURIComponent(userId)}`, input)).user
+}
+
+export async function resetUser(
+  userId: string,
+  password?: string,
+): Promise<{ updated: boolean; inviteCode?: string; inviteExpiresAt?: number }> {
+  return request('POST', `/v1/admin/users/${encodeURIComponent(userId)}/reset`, password === undefined ? {} : { password })
+}
+
+export async function listMediaAssets(filters: {
+  courseId?: string
+  status?: MediaAssetStatus
+  offset?: number
+  limit?: number
+}): Promise<MediaAssetList> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const query = params.toString()
+  return request<MediaAssetList>('GET', `/v1/admin/content/media-assets${query === '' ? '' : `?${query}`}`)
+}
+
+export async function createMediaAsset(input: { courseId: string; title: string }): Promise<MediaAsset> {
+  return (await request<{ asset: MediaAsset }>('POST', '/v1/admin/content/media-assets', input)).asset
+}
+
+export async function patchMediaAsset(
+  assetId: string,
+  input: { title?: string; status?: 'archived' },
+): Promise<MediaAsset> {
+  return (await request<{ asset: MediaAsset }>(
+    'PATCH',
+    `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}`,
+    input,
+  )).asset
+}
+
+/** 大文件走 XHR 才能拿上传进度；令牌放请求头，不进 URL。 */
+export function uploadMediaSource(
+  assetId: string,
+  file: File,
+  onProgress?: (ratio: number) => void,
+): Promise<MediaAsset> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}/source`)
+    xhr.setRequestHeader('content-type', 'application/octet-stream')
+    if (token !== null) xhr.setRequestHeader('authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) onProgress?.(event.loaded / event.total)
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败，请检查网络'))
+    xhr.onload = () => {
+      let payload: unknown
+      try {
+        payload = JSON.parse(xhr.responseText)
+      } catch {
+        payload = undefined
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve((payload as { asset: MediaAsset }).asset)
+        return
+      }
+      if (xhr.status === 401) notifyUnauthorized()
+      const message = typeof payload === 'object' && payload !== null
+        && typeof (payload as { error?: unknown }).error === 'string'
+        ? (payload as { error: string }).error
+        : `上传失败（${xhr.status}）`
+      reject(new ApiError(xhr.status, message))
+    }
+    xhr.send(file)
+  })
+}
+
+export async function enqueueIngest(assetId: string, language: 'zh' | 'en' | 'auto'): Promise<PipelineJob> {
+  return (await request<{ job: PipelineJob }>(
+    'POST',
+    `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}/ingest`,
+    { language },
+  )).job
+}
+
+export async function getTranscript(
+  assetId: string,
+  page: { offset?: number; limit?: number } = {},
+): Promise<TranscriptPage> {
+  const params = new URLSearchParams()
+  if (page.offset !== undefined) params.set('offset', String(page.offset))
+  if (page.limit !== undefined) params.set('limit', String(page.limit))
+  const query = params.toString()
+  return request<TranscriptPage>(
+    'GET',
+    `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}/transcript${query === '' ? '' : `?${query}`}`,
+  )
+}
+
+export async function listPipelineJobs(filters: {
+  status?: PipelineJobStatus
+  kind?: PipelineJobKind
+  courseId?: string
+  assetId?: string
+  offset?: number
+  limit?: number
+}): Promise<PipelineJobList> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const query = params.toString()
+  return request<PipelineJobList>('GET', `/v1/admin/content/pipeline/jobs${query === '' ? '' : `?${query}`}`)
+}
+
+export async function getPipelineJob(jobId: string): Promise<PipelineJobDetail> {
+  return (await request<{ job: PipelineJobDetail }>(
+    'GET',
+    `/v1/admin/content/pipeline/jobs/${encodeURIComponent(jobId)}`,
+  )).job
+}
+
+export async function retryPipelineJob(jobId: string): Promise<PipelineJob> {
+  return (await request<{ job: PipelineJob }>(
+    'POST',
+    `/v1/admin/content/pipeline/jobs/${encodeURIComponent(jobId)}/retry`,
+  )).job
+}
+
+export async function cancelPipelineJob(jobId: string): Promise<PipelineJob> {
+  return (await request<{ job: PipelineJob }>(
+    'POST',
+    `/v1/admin/content/pipeline/jobs/${encodeURIComponent(jobId)}/cancel`,
+  )).job
+}
+
+export async function enqueueGeneration(assetId: string): Promise<PipelineJob> {
+  return (await request<{ job: PipelineJob }>(
+    'POST',
+    `/v1/admin/content/media-assets/${encodeURIComponent(assetId)}/generations`,
+  )).job
+}
+
+export async function getGeneration(generationId: string): Promise<GenerationPreview> {
+  return request<GenerationPreview>(
+    'GET',
+    `/v1/admin/content/generations/${encodeURIComponent(generationId)}`,
+  )
+}
+
+export async function applyGeneration(generationId: string): Promise<GenerationApplyResult> {
+  return request<GenerationApplyResult>(
+    'POST',
+    `/v1/admin/content/generations/${encodeURIComponent(generationId)}/apply`,
+  )
+}
+
+export async function discardGeneration(generationId: string): Promise<void> {
+  await request<{ discarded: true }>(
+    'POST',
+    `/v1/admin/content/generations/${encodeURIComponent(generationId)}/discard`,
+  )
+}
+
+export async function publishCourse(courseId: string): Promise<CoursePublishResult> {
+  return request<CoursePublishResult>(
+    'POST',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/publish`,
+  )
+}
+
+export interface LlmConfigInput {
+  name: string
+  provider: string
+  protocol?: LlmProtocol
+  baseUrl: string
+  model: string
+  purpose: LlmPurpose
+  apiKey?: string
+  isDefault?: boolean
+  isActive?: boolean
+  /** 微美元/千 token；null 表示未配置，成本估算不猜测。 */
+  inputPriceMicrosPer1k?: number | null
+  outputPriceMicrosPer1k?: number | null
+  imagePriceMicros?: number
+}
+
+export async function listLlmConfigs(): Promise<LlmModelConfig[]> {
+  return request<LlmModelConfig[]>('GET', '/v1/admin/model-configs/llm')
+}
+
+export async function createLlmConfig(input: LlmConfigInput): Promise<LlmModelConfig> {
+  return request<LlmModelConfig>('POST', '/v1/admin/model-configs/llm', input)
+}
+
+export async function patchLlmConfig(
+  configId: string,
+  input: Partial<LlmConfigInput>,
+): Promise<LlmModelConfig> {
+  return request<LlmModelConfig>(
+    'PATCH',
+    `/v1/admin/model-configs/llm/${encodeURIComponent(configId)}`,
+    input,
+  )
+}
+
+export async function deleteLlmConfig(configId: string): Promise<void> {
+  await request<undefined>('DELETE', `/v1/admin/model-configs/llm/${encodeURIComponent(configId)}`)
+}
+
+export async function setDefaultLlmConfig(configId: string): Promise<LlmModelConfig> {
+  return request<LlmModelConfig>(
+    'POST',
+    `/v1/admin/model-configs/llm/${encodeURIComponent(configId)}/set-default`,
+  )
+}
+
+export async function testLlmConfig(configId: string): Promise<ModelTestResult> {
+  return request<ModelTestResult>(
+    'POST',
+    `/v1/admin/model-configs/llm/${encodeURIComponent(configId)}/test`,
+  )
+}
+
+export async function getAsrConfig(): Promise<AsrModelConfig> {
+  return request<AsrModelConfig>('GET', '/v1/admin/model-configs/asr')
+}
+
+export async function patchAsrConfig(input: {
+  provider?: string
+  protocol?: AsrProtocol
+  baseUrl?: string
+  model?: string
+  apiKey?: string
+  enabled?: boolean
+}): Promise<AsrModelConfig> {
+  return request<AsrModelConfig>('PATCH', '/v1/admin/model-configs/asr', input)
+}
+
+export async function testAsrConfig(): Promise<ModelTestResult> {
+  return request<ModelTestResult>('POST', '/v1/admin/model-configs/asr/test')
+}
+
+export interface AiUsageQuery {
+  from: string
+  to: string
+  task?: '' | AiTaskKey
+}
+
+export interface AiEventQuery extends AiUsageQuery {
+  model?: string
+  cursor?: string | null
+  limit?: number
+}
+
+export interface AiRunQuery extends AiUsageQuery {
+  status?: '' | 'running' | 'succeeded' | 'failed'
+  source?: '' | 'pipeline' | 'admin'
+  cursor?: string | null
+  limit?: number
+}
+
+function queryString(params: object): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue
+    if (typeof value === 'string' || typeof value === 'number') search.set(key, String(value))
+  }
+  const encoded = search.toString()
+  return encoded === '' ? '' : `?${encoded}`
+}
+
+export async function getAiUsageSummary(query: AiUsageQuery): Promise<AiUsageSummary> {
+  return request<AiUsageSummary>('GET', `/v1/admin/ai/usage/summary${queryString(query)}`)
+}
+
+export async function listAiUsageEvents(query: AiEventQuery): Promise<AiUsageEventPage> {
+  return request<AiUsageEventPage>('GET', `/v1/admin/ai/usage/events${queryString(query)}`)
+}
+
+export async function listAiRuns(query: AiRunQuery): Promise<AiRunPage> {
+  return request<AiRunPage>('GET', `/v1/admin/ai/runs${queryString(query)}`)
+}
+
+export async function getAiRun(runId: string): Promise<AiRunDetail> {
+  return request<AiRunDetail>('GET', `/v1/admin/ai/runs/${encodeURIComponent(runId)}`)
+}
+
+export async function getAiBindings(): Promise<AiBindingsResponse> {
+  return request<AiBindingsResponse>('GET', '/v1/admin/ai/bindings')
+}
+
+export async function putAiBinding(
+  taskKey: string,
+  input: { primaryConfigId: string | null; fallbackConfigId: string | null },
+): Promise<AiTaskBinding> {
+  return request<AiTaskBinding>(
+    'PUT',
+    `/v1/admin/ai/bindings/${encodeURIComponent(taskKey)}`,
+    input,
+  )
+}
+
+export async function getAiHealth(): Promise<AiHealthResponse> {
+  return request<AiHealthResponse>('GET', '/v1/admin/ai/health')
+}

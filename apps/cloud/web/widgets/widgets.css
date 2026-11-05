@@ -1,0 +1,254 @@
+/* M10 呈现层组件包：编辑部式版式——衬线标题、卡片化、颜色只留给数据。 */
+
+.wg-article {
+  font-size: 15px;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.wg-markdown p { margin: 0 0 0.9em; }
+.wg-markdown h1, .wg-markdown h2, .wg-markdown h3,
+.wg-markdown h4, .wg-markdown h5, .wg-markdown h6 {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
+  margin: 1.2em 0 0.5em;
+  line-height: 1.4;
+}
+.wg-markdown ul, .wg-markdown ol { padding-left: 1.4em; margin: 0 0 0.9em; }
+.wg-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.wg-markdown pre code { display: block; padding: 0.8em 1em; overflow-x: auto; }
+.wg-markdown blockquote {
+  margin: 0 0 0.9em;
+  padding: 0.2em 1em;
+  border-left: 3px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.6);
+}
+.wg-markdown table { border-collapse: collapse; margin: 0 0 0.9em; }
+.wg-markdown th, .wg-markdown td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.35em 0.8em;
+}
+
+/* 个股锚：R1 高亮徽章 */
+.wg-stock-anchor {
+  display: inline-block;
+  padding: 0 0.5em;
+  border: 1px solid rgba(64, 140, 255, 0.55);
+  border-radius: 999px;
+  color: #6ea8ff;
+  font-size: 0.88em;
+  line-height: 1.6;
+  margin: 0 0.1em;
+  white-space: nowrap;
+}
+
+/* 语料徽章 */
+.wg-unit-badge {
+  display: inline-block;
+  padding: 0 0.5em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.78em;
+  line-height: 1.7;
+}
+
+/* :::board 板书 */
+.wg-board {
+  margin: 1.2em 0;
+  padding: 1em 1.2em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 4px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.wg-block-head { margin-bottom: 0.5em; }
+.wg-board-text { margin: 0; white-space: pre-wrap; }
+
+/* :::bignum 大数字 */
+.wg-bignum {
+  display: flex;
+  gap: 12px;
+  margin: 1.2em 0;
+}
+.wg-bignum-item {
+  flex: 1;
+  padding: 0.9em 1.1em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.wg-bignum-label {
+  display: block;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.85em;
+  margin-bottom: 0.3em;
+}
+.wg-bignum-value {
+  display: block;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.9em;
+  line-height: 1.2;
+  color: #e8b64c;
+}
+.wg-bignum-note {
+  display: block;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.8em;
+  margin-top: 0.35em;
+}
+
+/* :::cmp 对照 */
+.wg-cmp { margin: 1.2em 0; }
+.wg-cmp-title {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
+  margin: 0 0 0.6em;
+  font-size: 1.05em;
+}
+.wg-cmp-cols { display: flex; gap: 12px; }
+.wg-cmp-side {
+  flex: 1;
+  padding: 0.9em 1.1em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.wg-cmp-head { margin: 0 0 0.5em; font-size: 0.95em; }
+.wg-cmp-items { margin: 0; padding-left: 1.2em; }
+.wg-cmp-items li { margin: 0.25em 0; }
+.wg-cmp-table th, .wg-cmp-table td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.4em 0.9em;
+  text-align: left;
+}
+
+/* :::timeline 时间线 */
+.wg-timeline {
+  list-style: none;
+  margin: 1.2em 0;
+  padding: 0;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+}
+.wg-timeline-event {
+  position: relative;
+  padding: 0 0 1em 1.4em;
+}
+.wg-timeline-event::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 0.45em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+.wg-timeline-date {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.wg-timeline-title { display: block; }
+.wg-timeline-desc {
+  display: block;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9em;
+}
+
+/* :::warn 提醒 */
+.wg-warn {
+  margin: 1.2em 0;
+  padding: 0.9em 1.2em;
+  border: 1px solid rgba(232, 90, 90, 0.4);
+  border-radius: 6px;
+  background: rgba(232, 90, 90, 0.07);
+}
+.wg-warn-title {
+  margin: 0 0 0.4em;
+  font-size: 0.98em;
+  color: #e87a7a;
+}
+.wg-warn-text { margin: 0; white-space: pre-wrap; }
+
+/* :::figure 图示 */
+.wg-figure { margin: 1.2em 0; }
+.wg-figure-img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.wg-figure-caption {
+  margin-top: 0.45em;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.88em;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.wg-figure-loading, .wg-figure-missing, .wg-parse-error {
+  padding: 1.4em;
+  text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.9em;
+}
+
+/* :::clip 片段卡 */
+.wg-clip { margin: 1.2em 0; }
+.wg-clip-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin-bottom: 0.5em;
+}
+.wg-clip-title { font-weight: 600; }
+.wg-clip-window {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 0 0.4em;
+}
+.wg-clip-video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  border-radius: 8px;
+  background: #000;
+}
+.wg-clip-start, .wg-clip-retry {
+  cursor: pointer;
+  border: 1px solid rgba(110, 168, 255, 0.5);
+  background: rgba(110, 168, 255, 0.1);
+  color: #6ea8ff;
+  border-radius: 6px;
+  padding: 0.45em 1.1em;
+  font-size: 0.92em;
+}
+.wg-clip-start { display: block; width: 100%; padding: 0.9em; }
+.wg-clip-error, .wg-clip-ended {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.6em 0.9em;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  font-size: 0.9em;
+  margin-top: 0.5em;
+}
+.wg-clip-session {
+  display: block;
+  margin-top: 0.4em;
+  font-size: 0.75em;
+  color: rgba(255, 255, 255, 0.3);
+}

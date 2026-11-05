@@ -1,0 +1,346 @@
+# 趋势交易课程云端服务需求
+
+版本：v0.9（2026-11-05）
+状态：与插件 PRD v1.8 §6、插件架构 v1.8 §6/§9/§10/§12/§17 对齐；v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
+
+## 1. 背景与目标
+
+`dsh-plugin-trend-coach` 是学员本地 dsh 客户端中的伴学插件：推理走学员自己的模型（BYOK），云端只提供课程知识与内容服务。
+
+本服务的目标：
+
+1. 提供课程知识库检索，返回可引用的 Top-K 视频片段与权威起止秒。
+2. 提供片段详情与短时效签名 HLS 播放会话，支撑插件内视频定位。
+3. 提供设备码授权与令牌轮换，把云端凭据限制在插件 Host 侧。
+4. 提供公开门户、开放注册与个人中心，让学员自助了解体系、安装插件并管理账号与设备。
+5. 为云端 AI 任务提供用量账本、运行链路与任务级主备模型路由，支撑成本与稳定性运营。
+6. 为内容后台、指标与学习进度提供清晰边界。
+7. 为语料级课程生产（M9）提供确定性底座：多模态理解产物与概念图谱的存储/检索、节级内容与课件 spec 的服务端复检、生产溯源账本与发布门禁；生产 Agent 循环由外部 dsh 生产插件承担，云端不内嵌。
+8. 为教材呈现层（M10）提供确定性底座：富文本 DSL 的安全校验与组件渲染契约、节级媒体引用（关键帧配图、HLS 时间窗片段）的解析与回溯校验、案例股清单与课程侧行情缓存的存储与供给；渲染组件在管理台先行验证，学员端启用时机另定。
+
+**不做**：学员侧生成式大模型推理、模型 API Key 托管、全库正文下发、第三方分析 SDK、客服/工单系统、云端内嵌生产 Agent 循环、LLM 生成可执行课件代码。云端模型能力仅限：语音转写（ASR）、查询/片段 embedding、管理端内容生产的内容 LLM（生成章节/知识点/章节教材草稿）与文生图模型（M8 `illustrate` 遗留路径）。**视觉理解（VLM）在生产端自配执行，云端只做抽帧与存储**。生成类产物必须人工审核并显式发布，不得自动进入检索；密钥仅存云端数据库或环境变量，不进浏览器、插件与日志；生产插件的模型密钥在生产端自配，不经云端。
+
+**不耦合 `ai-invest`**：独立仓库、独立数据库、独立鉴权与用户体系；只借鉴 PostgreSQL halfvec + pg_trgm + RRF 的技术选型与调优经验。
+
+## 2. 调用方与角色
+
+| 角色 | 说明 |
+|---|---|
+| 访客 | 无需登录浏览门户公开页（体系、功能、向导、下载、FAQ）与公开接口（发布清单、统计） |
+| 学员插件 | `dsh-plugin-trend-coach` Host 半，携带 Bearer 与 `x-device-id` 调用业务接口 |
+| 浏览器播放器 | 只拿签名 `playlistUrl`，直接向媒体域取流，不持 Bearer |
+| 学员账号 | 可在门户自助注册；也可由管理员创建并用一次性邀请码设置密码；设备授权页登录后绑定设备 |
+| 内容运营 / 管理员 | 后台账号（用户名 + 密码）登录控制台，按角色管理账号、课程、知识点、文章与索引；运营/管理员可查看 AI 用量与运行，任务绑定仅管理员 |
+| 生产插件（M9） | `dsh-plugin-trend-producer`（教员本机 dsh），以 operator/admin 会话调用生产 admin API 写入草稿并上报溯源；模型自配（含主备），密钥不经云端；无发布权限 |
+
+## 3. 功能需求
+
+### C1 知识库检索（M2，P0）
+
+- `POST /v1/kb/search`，请求 `query`、可选 `topK` / `courseId`。
+- 只返回 Top-K 片段与元数据，不下发全库正文；查询 embedding 在云端计算。
+- 每个片段必须包含：`segmentId、courseId、chapterId、knowledgePointId、title、startSec、endSec、text、score`，以及可选展示标题 `courseTitle、chapterTitle、knowledgePointTitle`。
+- 空召回或最高分低于阈值时返回 `relatedKnowledgePoints`（≤5 条，仅 `knowledgePointId/title`），不得携带起止秒或正文。
+- 请求边界：`query` 去首尾空白后 1–500 字符；`topK` 整数 1–20（默认 5）；`courseId` ≤64 且仅 `[A-Za-z0-9._-]`；越界返回 `400`。
+- 响应边界：单次 ≤512KiB；`text` ≤4000 字符；`title` 与展示标题 ≤200 字符；结构不合法整体失败，不静默截断。
+- 召回质量：以自建评估集把关，≥100 条真实学员问题，Top-5 命中率 ≥90%。
+
+### C2 片段详情（M2，P0）
+
+- `GET /v1/kb/segments/{segmentId}`，返回单个片段元数据与展示标题，`score` 可为 `1`。
+- 插件以此接口的 `startSec/endSec` 为唯一权威定位依据；不存在或已下架返回 `404`。
+- `segmentId` 形如 `seg-[A-Za-z0-9._-]+` 且 ≤80 字符，全局唯一、跨版本稳定。
+
+### C3 播放会话与签名 HLS（M2，P0）
+
+- `POST /v1/playback/sessions`，请求 `segmentId`，返回 `sessionId / playlistUrl / expiresAt / watermark.label`。
+- `playlistUrl` 为短时效签名地址；m3u8 内 key URI 与分片地址携带同一 token。
+- `expiresAt` 至少覆盖一个片段播放窗口（60s），推荐 5–10 分钟。
+- 媒体域必须支持 CORS（至少 `GET/OPTIONS`、`Range`、`Content-Type`）与 HTTP Range。
+- 播放地址绑定设备与并发数；播放中过期由播放器给出可读提示，不静默黑屏。
+
+### C4 设备码授权与令牌轮换（M2，P0）
+
+- `POST /v1/auth/device/code`：`{ clientId, deviceId }` → `{ deviceCode, userCode, verificationUri, expiresIn, interval }`。
+- `POST /v1/auth/device/token`：`{ deviceCode }` → `pending | expired | authorized(grant)`。
+- `POST /v1/auth/refresh`：`{ refreshToken, deviceId }` → 新 grant；access/refresh 同时轮换，旧 refresh 立即失效。
+- 业务接口统一携带 `Authorization: Bearer <accessToken>` 与 `x-device-id`；缺失/过期 `401`，设备不匹配 `403`。
+- 设备批准必须绑定已存在的账号：学员在授权页用用户名密码，或用一次性邀请码设置密码后批准；运营/管理员可用后台会话代批并指定 `userId`。不再使用共享控制台令牌。
+- grant 只存在于插件 Host 与 dsh credentials，云端不得把令牌下发给浏览器、写入日志或返回额外字段。
+
+### C5 指标事件（M2，P1，待冻结）
+
+- 端点建议 `POST /v1/events`，必须鉴权、字段白名单、用户同意后可上报且可撤回。
+- 一期字段：`search_requested`（耗时、topK、命中数、是否空召回）、`citation_clicked`（segmentId）、`player_started`（起播耗时、是否自动播放被拒）、`feedback_submitted`（评分 up/down）。
+- 不采集 query 原文、回答内容、完整播放地址；未登录或无 consent 不上报。
+
+### C6 视频→课程管线（M1，P0）
+
+- 输入：单个录播视频 + 课程标题；输出：可人工审核的章节、章节教材、知识点、图示、片段映射、HLS 与带时间戳转写。
+- 媒体素材：`POST /v1/admin/content/media-assets` 绑定 `draft` 课程；`PUT .../source` 流式上传 `application/octet-stream`（≤2GiB，可选 `x-file-sha256` 校验）；ffprobe 必须同时检测到视频流与音频流，时长 ≤14400s，否则 `422`；失败素材可重传，不做物理删除（`archived`）。
+- 转码：单码率 H.264/AAC HLS（6s 分片、VOD），产物原子发布；本地文件系统经 `MediaStore` 抽象预留对象存储。播放仅选择 `status=ready` 且 `hls_path` 非空的最新素材。
+- 转写：ffmpeg 抽取 16kHz 单声道 PCM16 WAV；`silencedetect` 切块 ≤480s；调用 MiniMax 长音频转写（`verbose_json` + sentence 时间戳），逐块缓存、每块最多 3 次重试；全部完成后合并为全局时间戳，按 ≤30s 分组写入数据库。已成功块不重复计费。
+- 切分与生成：先基于转写节选与总时长生成全局章节大纲（3–6 章，单章不短于 5 分钟），再按 600s 窗口调用内容 LLM（最多 24 窗口）生成 ≤8 个知识点，`chapterTitle` 从全局大纲中选择；知识点 `excerpt` 必须逐字锚定，无法锚定标 `excerpt_not_found`，置信度 <0.6 标 `low_confidence`；按标题去重、同一时间段去重，无知识点的章节丢弃，只有一个知识点的章节合并到相邻章节。片段由知识点时间窗与转写片段交集确定性生成，≤120s/4000 字，超限在转写片段边界拆分。**不再生成知识点文章**；改为每章一次章节教材生成：章节转写按知识点锚点切成 3–6 节，先逐节摘要，再合成 1500–3000 字 Markdown（H2 分节、只用转写事实、正文可带知识点/片段锚点），走安全 Markdown 与 ≤20000 字校验；失败标 `article_invalid`、正文 <1200 字标 `article_short`。
+- 图示生成：章节教材生成后规划 0–3 张图/章（价值低不硬凑），来源两类：① 原视频关键帧（按知识点时间锚点抽帧、去重与清晰度过滤）；② Seedream 文生图（直连火山方舟 `/images/generations`，默认 `doubao-seedream-5-0-260128`，2K，每图 2 候选）。文生图只做无长段文字的示意图，禁止生成写实 K 线/收益曲线/行情截图；每图记录 prompt、model、seed 与来源。图片生成放在独立 `illustrate` 作业，失败只标该图，不阻塞教材与课程发布。
+- 任务编排：`pipeline_jobs` 状态 `queued/running/succeeded/failed/canceled`，ingest 阶段 `probe→transcode→transcribe→finalize`，generate 阶段 `structure→generate→finalize`，illustrate 阶段 `figure_plan→figure_render→finalize`；支持取消、重试、心跳与崩溃恢复；同一素材同类型同时最多一个 active job；失败只暴露稳定 `error_code` 与静态文案。
+- 审核与发布：生成结果只写 `draft`，不得自动发布；`apply` 单事务把章节、章节教材、知识点、图示与片段写入草稿课程；`POST /v1/admin/content/courses/{courseId}/publish` 需显式调用，配置 embedding 时先重建索引，失败返回 `503` 且不翻状态；发布前校验教材中每个 `figure:` 引用都有已选中的已发布图片，否则 `409` 并列出缺失项。
+- 边界：内容生产 LLM 只允许管理端会话调用；`sourceRelPath`、`hlsPath`、SHA、ffmpeg stderr、provider 原始响应与生成正文不进列表/预览响应或日志；转写正文只经管理端转写接口返回。
+- 隐私与留存：源视频、转写与生成草稿用于建课并持久化；清理策略未冻结前不自动删除，版权授权由运营保证；学员侧 ASR 音频与文本仍不落盘（C10）。
+- 转写、章节教材、图示与视频片段必须能回溯到同一章节/知识点；片段映射粒度为秒。
+
+### C7 后台管理（M3，P0）
+
+- 用户与权限、课程内容管理、索引重建/召回测试、模型配置（仅内容生产）、运营看板、插件版本与灰度。
+- 学员不可访问后台接口；越权返回 `401/403`；密钥不明文落库、不进日志与响应。
+- M3.1 交付账号与登录基础；M3.2 交付 React 后台内容控制台。
+- M3.2 范围：课程、章节、知识点、文章与片段的创建/修改、发布/归档；文章保存即版本递增，发布时写入 `publishedAt`；片段可编辑标题、起止秒和文本。媒体上传与自动建课由 M1 C6 提供；召回评估看板、运营看板、插件版本与灰度不在本期。M8 起知识点文章由章节教材取代，图示在后台按章节审核选图。
+- 内容写接口仅 `operator`/`admin` 会话可用；账号管理仍仅 `admin`。发布/归档即时影响学员可见性：课程非 `published` 时其下内容对学员不可见；章节教材、图示与片段状态独立。
+- 控制台 `/admin` 为 React 单页应用，构建产物由服务端静态托管；会话令牌只存浏览器 `sessionStorage`，关闭页面即清除；接口逐请求鉴权，静态资源不影响鉴权边界。
+- 配置 embedding 时支持 `POST /v1/admin/content/reindex` 按课程重建片段向量；未配置返回 `409`，不静默跳过。
+
+### C8 账号与后台登录（M3.1，P0）
+
+- 后台账号由管理员创建；学员可在门户自助注册（见 C11），注册只创建 `student`。字段：`username`（3–32，小写字母开头，唯一）、`displayName`、`role`（`student/operator/admin`）、`status`（`active/disabled`）。
+- 创建或重置时可直接设置初始密码，或生成一次性邀请码（默认 7 天有效，单次使用）；邀请码只返回一次，服务端只存哈希。
+- 密码 10–128 字符，使用带随机盐的 scrypt 存储；任何接口、日志与错误消息不得回显密码或哈希。
+- 后台登录 `POST /v1/auth/session`：`{ username, password }` → 会话令牌；默认 12 小时有效，只存哈希，支持注销与自助改密；改密、禁用或角色变更立即吊销该账号后台会话。
+- 角色边界：`admin` 可创建/修改账号与重置凭据；`operator` 可读用户列表并做内容运营；`student` 不可登录控制台、不可访问 `/v1/admin/*`。
+- 首个管理员由启动配置 `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` 在库中无管理员时创建；密码至少 12 字符，不写日志。
+- 登录、邀请码兑换与设备批准按 IP 限流；账号禁用后其设备令牌立即不可用。
+
+### C9 体系数据与学习进度（M3，P0）
+
+- 只读体系接口：`GET /v1/catalog/courses`、`GET /v1/catalog/courses/{courseId}`、`GET /v1/catalog/courses/{courseId}/chapters/{chapterId}`、`GET /v1/catalog/knowledge-points/{knowledgePointId}`；只返回 `published` 内容，未发布或不存在返回 `404`。课程树返回 `contractVersion`（M8 起为 `2`），插件低于最低支持版本时提示升级。章节教材取代知识点文章：章节接口返回 `markdown` 与图片清单（`figureId/url/width/height/alt/caption`，`url` 为 10–15 分钟签名）；知识点详情只返回章节引用、片段与相邻知识点，不再返回 `article`。
+- 新增进度接口：`PUT /v1/progress/knowledge-points/{knowledgePointId}`，请求 `{ watchedSec, completed }`；按当前授权用户与设备写入，幂等，`watchedSec` 取历史最大值，`completed` 一旦为 `true` 不可回退。
+- 进度是业务写入，不走 `POST /v1/events`，不受指标同意开关影响；只允许读写本人进度，设备不匹配 `403`，越限 `429`。
+- 课程树不得携带 `startSec/endSec` 或教材正文；仅返回章节与知识点目录，教材按章节懒加载。片段定位仍以 `GET /v1/kb/segments/{segmentId}` 为唯一权威来源。`segmentId` 可缺省，表示该知识点暂无可用片段。
+- 响应边界：课程列表 ≤50；单课程 ≤50 章节、总知识点 ≤1000；标题 ≤200 字符；单次响应 ≤512KiB；章节教材 `markdown` ≤20000 字符、单章图片 ≤3，只允许 Markdown 子集，不下发可执行 HTML/脚本；图片 URL 只允许签名地址，不含长期令牌。
+- 后台管理接口不属于插件契约；学员令牌不可访问，越权返回 `401/403`。
+
+
+### C10 语音转写（M4.2，P0）
+
+- 新增 `POST /v1/asr/transcribe`：请求 `{ audio: "<base64 WAV>", format: "wav", durationMs }`，返回 `{ text, durationMs }`。
+- 音频边界：解码后 ≤1,920,044B（60s）；RIFF/WAVE、PCM（format=1）、单声道、16000Hz、16bit；`data` 字节换算时长与 `durationMs` 误差 ≤1s；`durationMs` 为整数 1–60,000；路由级请求体上限 3MiB。
+- 文本边界：去除控制字符、折叠空白、trim 后 1–2000 字符；空结果 `422`，不返回空串。
+- 上游：MiniMax `POST {base}/v1/speech_to_text`（Bearer；multipart `file=audio/wav` + `model` + `response_format=json`），默认 `base=https://api.minimaxi.com`、`model=asr-1.0`。业务错误为 HTTP 200 + `base_resp.status_code != 0`。
+- 鉴权与限流：Bearer + `x-device-id`；按设备限流 `RATE_LIMIT_ASR_PER_MINUTE`（默认 20）。ASR 连接与密钥由后台「模型配置」维护（M4.3）；未配置或未启用时返回 `503`，不阻止服务启动。
+- 错误：`400` 入参/音频非法；`401/403` 鉴权；`413` 请求过大；`422` 未识别；`429` 限流；`502` 上游协议异常；`503` 上游不可用或未配置。不自动重试。
+- 隐私：音频与转写只经内存转发到 MiniMax，不落盘、不落日志、不进入指标；日志只记错误类别，不记 `status_msg`、正文或完整 deviceId。
+
+### C11 公开门户与账号自助（M7，P0）
+
+- 门户与后台同域部署：`/` 首页、`/system` 体系、`/features` 功能、`/guide` 安装向导、`/downloads` 版本下载、`/faq`、`/legal/privacy`、`/legal/terms`；`/admin` 保持独立控制台。门户内容来自仓库 Markdown，不做 CMS。
+- 预渲染：构建期生成各路由静态 HTML、`routes.json`、`sitemap.xml` 与 `robots.txt`；深链刷新直接返回对应 HTML。未知前端路径返回 SPA 壳并带 `x-robots-tag: noindex`，`/v1/*` 未知路径仍为 JSON `404`。
+- 注册 `POST /v1/portal/auth/register`：`username`（3–32，小写字母开头，`[a-z0-9._-]`）+ 密码（10–128），可选 `displayName`；只创建 `student`；成功后直接返回门户会话。用户名冲突 `409`，按 IP 限流。
+- 登录 `POST /v1/portal/auth/login`：任意非禁用账号；返回 `{ token, expiresAt, user }`；按 IP 与用户名双维度限流，失败统一 `401`，超限 `429`。
+- 门户会话与后台会话同表不同 `scope`（`portal`/`console`）；学员令牌只能访问 `/v1/portal/*`，访问 `/v1/admin/*` 一律 `401/403`。
+- 个人中心：`GET/PATCH /v1/portal/me`、`POST /v1/portal/me/password`（改密后吊销其他会话）、`GET /v1/portal/me/devices`、`DELETE /v1/portal/me/devices/{deviceId}`（只能操作本人设备）。
+- 公开数据：`GET /v1/portal/releases` 返回 `content/releases.json` 发布清单（dsh 版本、插件包文件名、SHA-256、大小、发布日期、更新说明）；`GET /v1/portal/stats` 返回已发布课程/知识点/片段/文章计数；两者 `max-age=60`，不返回内部路径。
+- 下载文件位于 `dist/downloads/`，由服务端以 `Content-Disposition: attachment` 提供；发布清单缺失或格式错误时返回空版本，不返回 `500`。
+- 不提供邮件/短信验证与找回密码；忘记密码走管理员重置。客服/联系入口不在本期。
+
+### C12 AI 用量与任务级模型路由（M7，P0）
+
+- 云端 AI 任务白名单：`content.outline`、`content.points`、`content.chapter`、`content.figure`、`content.image`、`embedding.query`、`embedding.segment`、`asr.longform`。每次调用写一条用量账本，只记数字与模型标识（任务、provider、model、configId、输入/输出/缓存 token、音频秒数、字符数、出图张数、延迟、状态、错误码），不落 prompt、转写正文、图片内容或音频。
+- `ai_runs` 记录一次业务运行的来源（`pipeline`/`admin`）、主配置、是否降级、耗时与汇总；`ai_run_steps` 记录每次尝试（主/备、序号、用量 ID、错误码）。`GET /v1/admin/ai/runs/{runId}` 返回步骤链。
+- 后台读接口（operator/admin）：`GET /v1/admin/ai/usage/summary?from&to&task`（总量、按日、按任务、按模型、估算成本）、`GET /v1/admin/ai/usage/events`（游标分页明细）、`GET /v1/admin/ai/runs`、`GET /v1/admin/ai/runs/{runId}`、`GET /v1/admin/ai/bindings`、`GET /v1/admin/ai/health`。
+- `PUT /v1/admin/ai/bindings/{taskKey}` 仅 admin：为 LLM 任务指定主/备模型（备用可为空）；主备必须同用途且启用，主备相同 `400`，未绑定则回落到现有「按用途默认启用模型」。
+- 自动切换：主模型出现 429/5xx/网络/超时等可重试错误时切到备用，仅单跳；两次调用都记用量，运行标 `fallback_used=true`，失败配置进入 60s 冷却（进程内 Map + `llm_config_health` 双写）；冷却期内直接走备用。
+- 成本估算：`llm_configs` 增加输入/输出单价（微美元/千 token）与图片单价（微元/张，Seedream 默认 ¥0.12/张）；图片任务按 `images × 图片单价` 估算；任一参与计费的模型价格未配置时，该聚合成本返回 `null`，前端显示「未配置价格」，不猜测单价。
+- 图片模型：`llm_configs.purpose` 增加 `image`，`protocol=openai`（走 `POST {base}/images/generations`），默认 `base=https://ark.cn-beijing.volces.com/api/v3`、`model=doubao-seedream-5-0-260128`；密钥只存密文。后台「模型配置」新增文生图条目与连通性测试（测试会真实出图，需提示计费）；`content.image` 只可绑定 `purpose=image` 的主/备配置。
+- 图片限额：每章成图 0–3（默认目标 2）、每课 ≤24、每图 2 候选、每图最多重试 1 次；单课预算 ¥10、组织月度预算 ¥300，80% 预警、100% 硬停；硬停后章节教材照常发布，图片标「待生成」，不影响主链路。
+- 时间范围：`from/to` 为 ISO 时间，默认最近 7 天；`from > to` 或格式非法 `400`；列表 `limit` 1–200（默认 50）；事件游标为 `usageId`，运行游标为 `startedAt:runId`。
+- 后台 AI 读接口按账号限流；绑定写接口仅 admin；日志与响应不含 prompt、回答与密钥。
+
+### C13 语料级课程生产与交互课件（M9，P0）
+
+- 目标形态：约 69 集录播（10 卷、≈35 小时、720p h264）→ 一门结构化图文课程：篇→章→节目录、节级 grounded 教材、图示与可交互课件。生产 Agent 循环（理解摘要/课程综合/逐节写作/主编评审）全部在外部 `dsh-plugin-trend-producer` 执行；云端只提供确定性底座（帧轨道/存储/检索/复检/溯源账本/发布门禁），职责边界见架构 v0.10 §6.5。
+- 帧轨道：ingest 阶段按场景检测 + 1 帧/15s 固定采样，去重后缓存；`GET /v1/admin/content/media-assets/{assetId}/frames?from&to` 返回短时签名帧 URL（仅管理端），供生产端 VLM 使用。
+- 多模态理解：生产端逐 chunk（5–10 分钟）取转写分组与采样帧，产出 source unit `{时间范围, 转写, 画面描述, 图表类型, 讲解要点, 关键帧引用}`；`POST /v1/admin/content/source-units` 批量写入（`(assetId, startMs)` 幂等）；`GET .../source-units` 支持词法+向量混合检索，复用既有召回栈。
+- 课程综合：以人工目录（篇→卷→课时文件名）为**先验骨架**，Agent 只做校验、概念归一与依赖标注，不发明目录；概念归一入 `concepts`（含别名）与 `concept_edges`（`prerequisite` 依赖序），`concepts.name` 为正文与课件术语校验基准；骨架、概念图谱与术语表须经人工批准（门禁①，在生产端 dsh 审批）后方可逐节生产。
+- 节级生产：`sections` 为教学单元（约对应 1 个课时，可拆分/合并）；节教材 1200–3000 字 grounded Markdown，事实段落必须携带 `citations`（source unit 引用），无出处断言校验拒绝；图示三路分工——`diagram`（LLM 出结构化 spec、服务端渲染器确定性出 SVG，标注文字必须正确）、`keyframe`（按 source unit 时间戳取源画面）、`generated`（文生图仅装饰，禁止承载教学信息）。**配额以 C14 与架构 §6.6.2 为准**（节级 `keyframe` ≤6/节、`diagram` ≤2/节；`generated` 不经节级图示端点，沿用 M8 限额每章 ≤3）。
+- 交互课件：白名单 8 类组件的 JSON spec——`kline-annotator`（K 线标注练习）、`pattern-quiz`（形态识别）、`step-reveal`（分步解盘）、`calc-trainer`（参数化计算）、`mcq-quiz`、`flashcards`、`checklist`、`timeline-explorer`（概念依赖浏览）；每节 1–3 个。spec 携带教学断言与 citations；图表数据由**确定性生成器**按 spec 声明合成（seed 可重放），服务端**断言证明器**逐条验证并把证明记录落 `validation`，缺任一证明拒绝入库 `409 assertion_unproven`；**禁止 LLM 生成可执行代码**，渲染由学员端/管理台确定性 React 渲染器按 `spec_version` 契约执行。
+- 三层校验与收敛：① schema（生产端工具边界 + 云端复检，zod）→ ② 语义（断言证明、答案唯一性、术语∈`concepts`、citations 可回溯、教材内图示块（SVG 模板 spec，M10 起取代 Mermaid）grounded 且可渲染）→ ③ 教学质量（主编 Agent 按 `quality-rubric` skill 结构化评分）。失败把错误回灌模型重写（默认上限 3 次），仍失败显式进入管理台人工待办，绝不部分落库。
+- 溯源上报：`POST /v1/admin/content/provenance` 上报生产端模型调用（`taskKey/model/provider/tokens/latency/skillVersions/targetId/status`，评审类可带 `summary` 结构化摘要），写入 `ai_runs(source='producer')` 与 `ai_usage_events`，与云端任务同一账本筛选；任务键命名空间 `vision.describe、content.chunk_summary、content.concept_map、content.curriculum、content.section_draft、content.section_edit、content.figure_spec、content.widget_spec、content.rubric_review`；不收 prompt 与产物正文。生产端 token 为自报数据，账本按 `source` 区分口径。
+- 断点恢复：生产中间产物（source units、概念、节草稿、课件 spec）全部经 admin API 增量落库（云 DB 即 checkpoint）；生产中断按云 DB 缺失单元重入队，不依赖生产端本地状态。
+- 发布演进：学员契约升级 `contractVersion=3`——目录树含节层，节响应含教材、`figures` 映射与 `widgets`（spec 列表）；插件低于最低支持版本提示升级，不静默降级。publish 硬门禁扩展：每个课件的 `validation` 证明记录必须完整，缺失 `409`；其余发布语义（draft→显式 publish→reindex、缺图 `409 figure_unresolved`）不变。
+- 边界与门禁归属：生产接口仅 operator/admin 会话，学员令牌 `403`；门禁①（骨架）与门禁②（主编评审）在生产端 dsh 审批完成，云端不重复强制，云端只守 publish 硬门禁；服务端 spec 复检为确定性校验（无 LLM）；学员侧只消费已发布内容，不感知生产过程。
+
+### C14 教材呈现层与个股实盘对照（M10，P0）
+
+- 定位：教材从「Markdown 文章 + Mermaid 图 + 8 类课件」升级为**编辑部式富文本长文**，由四层构成：叙事层（组件化版式）、图示层（参数化 SVG 模板）、媒体层（关键帧配图 + 时间窗片段）、实盘层（个股 K 线对照）。2026-11-05 三轮原型（V1 版式 / V2 媒体 / V3 实盘）经用户验收定版，本条为产品化落地方向。
+- 正文承载（已定 2026-11-05）：**Markdown 扩展 DSL**。正文仍是 Markdown + citations，新增容器块语法承载组件——**v1 为 7 个容器块**（板书引用卡、大数字卡、对比卡/表〔同一 directive 的两种模式〕、时间轴、警示卡、配图卡、片段卡）**+ 1 个个股内联锚** `[[stock:code|label]]`；安全 Markdown 子集校验同步扩展，禁止 HTML/脚本约束不变；**DSL 语法、组件清单与逐组件 schema 的唯一契约源为架构 §6.6.1**（v1 冻结于 2026-11-05，`dslVersion=1` 随节响应下发），服务端在 `PUT .../article` 时复检（引用不存在、片段窗越界等一律 `400`）。存量 6 节教材按新格式重写回灌，不保留旧格式双轨。
+- 媒体层（已定 2026-11-05）：配图卡引用节级 `keyframe` figure（沿用 `figure:` 引用与签名 URL 机制），caption 携带 source unit 徽章可回溯；片段卡正文只记 `(assetId, startSec, endSec)` 时间窗，播放复用 C3 签名 HLS 会话（播放器按起止秒 seek 与停止），**不产预切片文件**；时间窗必须完整落在某 source unit 范围内（grounded 校验），单节片段 ≤3、单窗 ≤60s。
+- 实盘层（已定 2026-11-05）：
+  - 节级**案例股清单**结构化字段：每股 `name / exchange(SZSE|SSE|BSE) + code(6 位数字) / 案例窗口(起止日) / 事件锚点[{date, label, unitId}] / 用途注记`；由生产端从 source units 画面理解与教材事实提取，云端复检（代号格式合法、窗口日期合法、事件锚点 unitId 可回溯、日期落在窗口内）。**代号双形态**：数据库与接口存 6 位数字形态，正文内联锚 `[[stock:code|label]]` 用带交易所前缀形态（前缀映射 `SZSE→sz`、`SSE→sh`、`BSE→bj` + 6 位数字），两者按此映射等价。
+  - 行情缓存：课程侧自建轻量日线表（**不耦合 `ai-invest`**，§1 边界不变）——按全课案例股清单（约 10 只）拉取腾讯前复权日 K，历史一次性回填 + 交易日日更；仅存 OHLCV 原始值并标注复权口径；课程图示为录制时点复权，与当前复权的价差在渲染层声明，不改数据。
+  - 渲染组件：K 线 + 成交量双面板（红涨绿跌）、M60 叠加、悬停读数、缩放平移、事件锚点点选定位；管理台与学员端共用组件契约；展示必须携带「不构成投资建议」与复权口径声明。
+  - 行情数据接口仅对已发布课程的案例股开放，学员不可查询清单外标的。
+- 图示层：`diagram` 类改为**参数化 SVG 模板**（服务端确定性渲染器按 spec 渲染，模板白名单首批：密集 vs 发散对比双栏、横线筹码示意、时间轴、大数字卡内嵌图），模板按节需扩展并冻结版本（白名单 v1 已冻结，架构 §6.6.4）；Mermaid 不再作为教材图示通道（2026-11-05 原型否决）；文生图（`generated`）仍仅装饰、不承载教学信息。
+- 课件范围（已定 2026-11-05）：本期**换皮 + 新题型**——既有 8 类渲染器视觉升级为编辑部风格（spec、断言、评分口径不动）；白名单扩容首批新题型 `image-juxtaposition`（两图对比滑块，筹码/形态前后对照）、`branching-scenario`（决策树情境练习）与 `bar-replay-decision`（2026-11-05 采纳增补提案：真实案例股逐根回放 + 先判断后揭晓的检索练习闭环），spec schema 冻结新 `spec_version` 并配断言词表；**生成式 h5-page 逃生舱维持不做**（「禁止 LLM 生成可执行代码」约束不变）。
+- 老师标注与逐根回放（2026-11-05 采纳增补提案，DSL/课件 v2 草案批次）：原片里老师画过的线与说过的判断沉淀为结构化教学资产——①正文 DSL `:::annotation`（原话/原片时间码/术语/citation/跳回原片；定位用交易日期非 bar 索引；候选由生产端从 source units 抽取、门禁②人工确认）；②`bar-replay-decision` 课件（判断点暂停遮罩、提交锁定、揭晓老师结论，`bars` 不入 spec）；③正文 `:::replay` 入口按 code 内嵌（不携带 widgetId）。**隐私护栏**：学员作答只做本地反馈，不采集、不进 provenance 与 M2 事件。零新端点、零新表；契约见架构 v0.10 §6.6.1/§6.6.5 与 ADR C33/C34。
+- 评审门禁升级：rubric 的 `grounded` 维度扩义——配图帧引用、片段时间窗、案例股事件锚点、老师标注与判断点（quote/atMs/d/revealText）均为可回溯引用，缺失或与 source unit 对不上按 grounded 失败计；`quality-rubric` skill 0.3.0 → 0.4.0；存量 2 节 reject（总论 1、筹码分布 1）与全部 6 节按新格式重写并重新过门禁②。
+- 管理台先行：本条全部能力先在管理台节预览落地（不耦合学员端）；渲染组件以可移植方式实现（独立包边界，禁止依赖管理台私有运行时）；学员端启用时机与契约字段并入尚未发布的 `contractVersion=3`（节响应扩展：DSL 教材、figures、片段窗、案例股清单），不新开版本号。
+
+## 4. 非功能需求
+
+| 类别 | 要求 |
+|---|---|
+| 可用性 | 知识与视频服务 ≥99.5%；staging/production 分离，有效 TLS |
+| 性能 | 检索 P95 ≤300ms（云端侧）；视频起播 ≤2s（CDN）；分片支持 Range |
+| 安全 | HTTPS + Bearer + `x-device-id`；门户会话 `scope=portal` 与后台隔离；按用户/设备/账号限流；业务只读；最小权限；管线上传先鉴权/限流再消费 body；ffmpeg/ffprobe 使用参数数组、禁止 shell |
+| 隐私 | 数据最小化；支持注销；敏感字段脱敏；日志不记 token、完整 query、完整 deviceId、prompt 与生成正文；学员语音音频与转写不落盘、不落日志、不进指标；建课源视频/转写按管线规则持久化且不对外暴露路径 |
+| 成本 | 学员 ASR 按音频时长计费、单次 ≤60s 且不做自动重试；长音频转写按块缓存成功结果，避免重复计费；内容 LLM 有窗口/知识点/文章与 token 预算上限；AI 用量按模型单价估算，价格缺失显示未配置 |
+| 内容安全 | 云端文本按不可信数据处理；不得下发可执行指令；插件侧负责边界转义；生成内容必须人工审核，禁止自动发布 |
+| 错误 | HTTP 状态码承载语义；响应必须为 JSON 对象；不得返回 HTML 错误页 |
+| 可观测性 | 检索 P95、错误分桶、429/5xx、带宽、并发、索引任务状态；管线任务状态/阶段耗时/队列深度；AI 任务请求量/token/延迟/错误率/降级次数/估算成本/配置冷却状态 |
+
+## 5. 数据与内容前置
+
+- 至少一门真实课程完成结构化上线：带时间戳转写、章节/知识点、标题、片段映射；可由 M1 管线生成草稿后人工审核发布。
+- 联调最小数据集：2 门课程、10+ 片段、一门加密 HLS 样片（含 key 与分片），以及一段 2–5 分钟中文样片用于管线验收。
+- 视频加密方案（云点播私有加密或 AES-128）需与插件 hls.js 解密配置对齐；M1 生成的是未加密 HLS，靠签名 URL 保护。
+- 真实课程与样片版权授权须覆盖转写、改写文章、入库检索；源视频保留期限由运营确认。
+
+## 6. 验收标准
+
+| 类别 | 用例 | 期望 |
+|---|---|---|
+| 授权 | 设备码发起 → 批准 → 轮询 | 返回 grant，可调用业务接口 |
+| 授权 | access 过期 → 刷新 → 重试 | 刷新成功；旧 refresh 复用被拒 |
+| 授权 | deviceId 不匹配 | `403` |
+| 检索 | 正常查询 | Top-K 字段与边界合法，展示标题可用 |
+| 检索 | 空召回 | `segments=[]` + `relatedKnowledgePoints`（≤5、仅标题） |
+| 检索 | `query=501`、`topK=0/21`、非法 `courseId` | `400`，不发起检索 |
+| 检索 | 非法片段或响应超 512KiB | 整体失败，不静默截断 |
+| 片段 | 存在 / 不存在 | `200` 权威起止秒 / `404` |
+| 播放 | 换会话 → 播放 | HLS 解密成功、可 seek；Range 生效 |
+| 播放 | 签名过期 / token 无效 | 播放器可读提示，不黑屏 |
+| 播放 | 跨域 | CORS 允许媒体请求 |
+| 限流 | 超配额 | `429`，插件提示稍后重试 |
+| 服务 | 5xx / 超时 | 插件报服务故障，不伪造引用 |
+| 指标 | 同意 / 撤回 | 仅白名单字段上报；撤回后停止 |
+| 体系 | 课程列表 / 课程树 / 章节教材 / 知识点详情 | 仅已发布内容；章节教材可连续阅读；知识点详情不含文章；不携带起止秒 |
+| 体系 | 未发布或不存在 | `404`；学员令牌访问后台接口 `401/403` |
+| 进度 | 上报后回读 | `watchedSec` 取最大值、`completed` 不回退、重复上报幂等 |
+| 进度 | 非本人设备 | `403`；超限 `429`；不受指标同意开关影响 |
+| 账号 | 管理员创建 + 邀请码首次登录 | 邀请码单次有效；密码 10–128；账号与角色可回读 |
+| 账号 | 登录 / 注销 / 改密 / 禁用 | 会话只存哈希；注销改密禁用后旧会话失效；禁用后设备令牌 `401` |
+| 账号 | 越权访问 `/v1/admin/*` | 未登录 `401`；学员 `403`；运营不可写账号 |
+| 设备授权 | 学员账号登录批准 | 设备绑定到该账号；未知账号/错误密码 `401`；成功后 grant 可用 |
+| 设备授权 | 运营/管理员代批 | 需后台会话；可指定 `userId`；学员令牌不可代批 |
+| 语音 | 合法 WAV（16kHz/单声道/PCM16，≤60s） | `200`，返回清洗后的 `text` 与 `durationMs` |
+| 语音 | 未鉴权 / 设备不匹配 | `401` / `403` |
+| 语音 | 非法 base64、非 WAV、立体声/44.1k/8bit、时长不符 | `400` |
+| 语音 | 请求体 >3MiB / 音频 >1,920,044B | `413` |
+| 语音 | 上游返回空文本或 `base_resp.status_code != 0` | `422` / `502` |
+| 语音 | 上游 429 / 5xx / 超时 | `429` / `503`，不自动重试 |
+| 语音 | 超过按设备限流 | `429` |
+| 语音 | 未配置或未启用 ASR | `503`；服务可正常启动 |
+| 语音 | 日志检查 | 无 base64、无转写正文、无完整 deviceId |
+| 管线 | 创建素材 → 上传 → ingest | `202` 返回 job；转写就绪且时间戳单调；生成 HLS 可播放 |
+| 管线 | 无音轨 / 超时长 / SHA 不符 / 非流式类型 | `422` / `400` / `415`，并清理半成品 |
+| 管线 | 生成 → 预览 → apply | 章节/章节教材/知识点/图示/片段均为 `draft`；待审原因可见；重复 apply 返回原映射 |
+| 管线 | 章节教材 | 每章 1500–3000 字、H2 分节；无知识点独立文章；单知识点章节被合并；正文只用转写事实 |
+| 管线 | 发布课程 | 配置 embedding 时先重建索引；catalog/检索/播放可见；索引失败 `503` 且不翻状态；教材缺图 `409` |
+| 图示 | 关键帧 + Seedream | 每章 ≤3 图、每图 2 候选；签名 URL 10–15 分钟可刷新；发布时缺图 `409` |
+| 图示 | 成本与失败 | 单课 ≤¥10、月度 ≤¥300 硬停；图片失败只标该图，不影响教材发布 |
+| 管线 | 取消 / 重试 / 心跳超时恢复 | 终态正确；同一素材同类型无重复 active job |
+| 管线 | 学员令牌访问管线接口 | `403`；未登录 `401`；上传超限 `413` |
+| 管线 | 响应与日志检查 | 无源路径、HLS 路径、SHA、provider 响应；转写正文仅管理端转写接口返回 |
+| 管线 | 管线或 LLM/ASR 未配置 | 对应接口 `503`，服务仍可启动（`PIPELINE_ENABLED=false`） |
+| 门户 | 直连刷新 `/`、`/guide`、`/system`、`/faq` | 返回对应预渲染 HTML；未知路径返回壳并 `noindex`；`/v1/nope` 仍 JSON `404` |
+| 门户 | 注册 / 重复用户名 / 弱密码 / 限流 | `201` 自动登录；`409`；`400`；`429` |
+| 门户 | 登录 / 注销 / 改密 / 设备解绑 | 会话 `scope=portal`；改密后其他会话失效；只能解绑本人设备 |
+| 门户 | 学员令牌访问 `/v1/admin/*` | `401/403`；门户接口可用 |
+| 门户 | 发布清单 / 统计 / 下载 | 清单缺失返回空版本；下载带 `attachment`；公开数据 `max-age=60` |
+| AI | 生成任务产生用量 | `ai_usage_events` 记录 token/延迟/模型；`ai_runs` 与 steps 可查 |
+| AI | 主模型 429 → 备用 | 自动切换、`fallback_used=true`、健康进入冷却；冷却期直接走备用 |
+| AI | 成本估算 | 价格缺失返回 `null`；配置价格后按微美元/千 token 估算 |
+| AI | 权限 | operator 可读用量/运行；绑定写仅 admin；学员 `403` |
+| 语料 | 帧轨道与理解写入 | `frames` 返回短时签名帧 URL；source units `(assetId,startMs)` 幂等，重复写入返回既有 unitId |
+| 语料 | source units 检索 | 词法+向量混合召回出结果；空结果 `units=[]`；学员令牌 `403` |
+| 语料 | 目录先验与概念归一 | 目录外章节/节不被创建；概念别名归一唯一，重复 name `409`；自环边 `400` |
+| 课件 | spec 复检与断言证明 | 全部断言有证明记录 `200`；缺任一证明 `409 assertion_unproven`；同 seed 重放数据一致 |
+| 课件 | 白名单与版本契约 | `type` 白名单外 `400`；不支持的 `spec_version` `400`；spec 无可执行代码落点 |
+| 课件 | 三层校验收敛 | 失败回灌重写，3 次不过进人工待办；不部分落库；节教材 citations 指向不存在的 unitId `400` |
+| 溯源 | provenance 上报 | 写入 `ai_runs(source='producer')` 与用量；缺 `taskKey/model/status` 整体 `400`；后台可按 source 筛选；不含 prompt/正文 |
+| 发布 | `contractVersion=3` | 目录含节；节响应含教材/figures/widgets；插件低版本提示升级 |
+| 发布 | publish 校验扩展 | 课件 `validation` 缺失 `409`；figure 与断言引用完整才可发布；其余发布语义不变 |
+| 呈现 | DSL 容器块写入 | 合法正文 `version+1`；未知 directive/未声明属性/非法 JSON body 一律 `400` 附定位 |
+| 呈现 | DSL 引用完整性 | `figureId` 不属本节 `400 figure_ref_unknown`；`unitId` 不存在 `400 unit_ref_unknown`；片段窗越界/超时长/超数量 `400 clip_not_grounded` |
+| 呈现 | 节级图示写入 | keyframe 抽帧落候选并选定；`sec` 不落 source unit `400 sec_not_grounded`；超配额 `409 figure_quota_exceeded`；diagram 模板白名单外 `400`，同 `template+params` 重放 SVG 逐字节一致 |
+| 呈现 | 片段卡播放 | 换签名会话后窗内起播、到点停止；资产未就绪拒绝签发 |
+| 呈现 | 发布门禁扩展 | DSL `:::figure` 引用缺失 `409 figure_unresolved`；片段窗非法 `409 clip_invalid`；补齐后照常发布 |
+| 呈现 | 案例股与行情 | 事件日期不落窗/`unitId` 不存在 `400`；行情仅同步清单内 code；学员查清单外标的 `403`；缓存未就绪 `503`（渲染层降级，不伪造数据） |
+
+质量门槛：召回评估集 Top-5 ≥90%；接口契约测试覆盖上表全部用例；压测满足 P95 与并发目标。真实 MiniMax ASR、content LLM（`MiniMax-M3.1-Flash`，anthropic 协议）与 embedding（智谱 `embedding-3`，1024 维）均已完成链路验证（2026-11-01，33 分钟中文样片，详见运维手册 §11），发布 `indexed=true` 且检索为词法 + 向量混合召回。
+
+## 7. 指标与告警
+
+- 业务：检索量、空召回率、引用点击率、播放起播成功率、问答满意度。
+- 系统：检索 P95/P99、错误率分桶（400/401/403/404/429/5xx）、限流命中、数据库连接与慢查询、索引任务耗时与失败率、媒体带宽与并发。
+- 告警：5xx/429 异常升高、检索 P95 超阈值、索引任务连续失败、证书到期、媒体签名失败率异常。
+
+## 8. 里程碑
+
+| 阶段 | 云端交付 | 出口标准 |
+|---|---|---|
+| M1 | 视频上传/转码、带时间戳长音频转写、章节/知识点/片段切分、文章草稿、人工发布与索引 | 1 门课程结构化上线，可检索；已落地并完成真实链路验收（ASR、content LLM、embedding） |
+| M2 | 六个接口、设备码授权、签名 HLS、契约测试 | 对接清单验收通过，插件联调完成 |
+| M3 | 后台管理、账号与体系数据、学习进度 | 内容可运营、用户可管理 |
+| M4.2 | 语音转写（MiniMax ASR）、限流与密钥配置 | 契约测试通过；真实 MiniMax 已验收（后台录入密钥） |
+| M6 | 公测加固：限流、压测、备份、合规 | 公测放行；已落地限流补齐、压测脚本、恢复演练与合规清单，账号注销/数据删除待完成 |
+| M7 | 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换 | 门户深链可刷新；注册/登录/个人中心闭环；AI 调用可计量、主备可切换 |
+| M8 | 教材阅读层（章节教材替换知识点文章）、视频关键帧与 Seedream 图示、短时签名图片、旧课程重生成 | 1 门课程按章连续阅读；每章图文完整；图片签名与成本限额验收通过；已落地，插件 S12 已验收（真实 Ark 出图待图片模型 Key） |
+| M9 | 语料级生产：关键帧轨道、source units、概念图谱与节存储/检索、生产溯源上报、课件 spec 复检与断言证明、管理台渲染预览、`contractVersion=3`；配套 `dsh-plugin-trend-producer`（独立仓库，生产 Agent 循环 + Skill 工艺包） | 以"总论"卷（7 集 ≈3.5h）跑通阶段 0–4 全链路：骨架审批→逐节生产→三层校验收敛→课件断言证明→人工终审发布可检索；rubric 评估集盲评占优 M8 产物；溯源账本完整覆盖生产调用；rc 版 dsh 长任务稳定性通过试点验证 |
+| M10 | 教材呈现层：富文本 DSL 校验与组件渲染器、关键帧配图卡与 HLS 片段窗、参数化 SVG 模板图示、案例股清单与课程侧行情缓存、K 线对照组件、课件换皮 + 新题型（image-juxtaposition / branching-scenario）、rubric 0.4.0 | 管理台节预览以 V3 原型形态呈现全部 6 节；全部教材按 DSL 重写并通过门禁②（含 2 节 reject 回灌）；片段窗与事件锚点 grounded 校验生效；新题型 spec 冻结且断言证明通过；行情缓存覆盖全课案例股且日更稳定。**R1 呈现层已落地（DSL 校验 / figures 端点与 SVG 模板渲染器 / 资产时间窗播放会话与发布门禁 / `web/widgets` 组件包）；R2 实盘层、R3 质量收敛待启动** |
+
+## 9. 待冻结事项
+
+| 事项 | 当前建议 | 影响 |
+|---|---|---|
+| access/refresh TTL、并发设备数、吊销 | 待账号后台定稿 | 授权验收与安全策略 |
+| 片段长度/注入策略 | 建议单片段 ≤2KB、总 ≤12KB；插件当前按 4KB/512KiB 校验 | 云端裁剪与插件上限需一致 |
+| 引用 host | 暂用 `trend-coach.local`；换真实域名需插件同步 | 历史回答引用兼容 |
+| 事件端点与同意模型 | 建议 `POST /v1/events`，默认关闭、可撤回 | 指标上报与隐私合规 |
+| 视频加密方案 | 云点播私有加密或 AES-128 | hls.js 解密配置 |
+| 相邻知识点阈值 | 空召回或最高分低于阈值（数值待定） | 召回质量 |
+| 账号体系与后台登录方式 | 已定（M3.1/M7）：后台账号由管理员创建；学员可门户自助注册；密码或一次性邀请码首次登录；角色 student/operator/admin；后台会话默认 12 小时；短信登录后置 | 已替代临时 `CONSOLE_TOKEN`；短信开放时补充绑定与找回流程 |
+| 教材范围与长度 | 已定：章节教材替换知识点文章；单章 1500–3000 字、≤20000 字符，仅 Markdown 子集，不含 HTML/脚本 | 内容运营与插件渲染边界 |
+| 章节与知识点粒度 | 已定：3–6 章、单章 ≥5 分钟；知识点仅用于检索/锚点，单知识点章节合并 | 目录与阅读体验 |
+| 图示配额与成本 | 已定：每章 2 张（上限 3）、每课 ≤24、每图 2 候选、¥0.12/张、单课 ¥10、月度 ¥300 | 成本与审核 |
+| 文生图供应商 | 已定：直连火山方舟 Seedream 5.0 lite，备用 4.5；文生图不生成写实行情图 | 供应商稳定性与合规 |
+| 关键帧筛选 | 建议先人工勾选，自动筛选后置 | 人力与质量 |
+| 旧课程处置 | 已定：归档作废并重新生成，不做文章数据迁移 | 历史内容与审核 |
+| 公测期可见范围 | 所有已登录学员可见全部已发布课程，不引入选课/权限分组 | 课程列表与进度模型复杂度 |
+| ASR 供应商与模型 | MiniMax `asr-1.0`；保留 provider 接口，暂不做多供应商切换 | 供应商抖动与成本 |
+| 语音成本上限 | 单次 ≤60s、每设备 20 次/分钟；不做自动重试 | 滥用与账单 |
+| 内容 LLM 供应商与模型 | OpenAI 兼容 `/chat/completions`；连接信息在后台「模型配置」维护；只用于管理端草稿生成 | 生成质量、成本与供应商锁定 |
+| 长音频转写参数 | 静音切块 ≤480s、每块最多 3 次重试、转写分组 ≤30s；MiniMax 真实时间戳字段需联调确认 | 计费、对齐精度与供应商限制 |
+| 源视频与转写留存 | 默认保留、不自动清理；建议按版权授权人工归档 | 存储成本与合规 |
+| 生成质量门槛 | 逐字锚定 + 置信度 0.6 + 人工发布；评估集与人工抽检比例待定 | 生成内容可用性 |
+| 多码率与对象存储 | 本期单码率本地存储；`MediaStore` 预留 S3/MinIO | 带宽与扩容 |
+| 门户内容维护 | 仓库内 Markdown + 构建期预渲染，不做 CMS | 内容更新需重新构建发布 |
+| 门户会话安全 | 令牌存 `sessionStorage`，不引入刷新令牌与 Cookie | 新标签页需重新登录 |
+| 客服/联系入口 | 本期不做，后续单独立项 | 门户转化与支持路径 |
+| AI 限流与冷却 | 单实例内存实现，DB 记录健康状态 | 横向扩容前需换共享存储 |
+| 课件 spec 契约 | 已定（2026-11-04）：8 类组件 spec schema v1、断言词表与生成器白名单冻结于架构 §6.5.5；`spec_version` 演进=只增不减，扩展组件需冻结新契约与渲染器版本 | 渲染器、插件与管理台版本门禁 |
+| 生产端 VLM 与采样率 | 已定（2026-11-04 实测）：VLM=`MiniMax-M3.1-Flash`（包年额度，生产端自配）；理解取用 1 帧/30s 起步（帧轨道仍 15s+场景检测）；max_tokens≥32768；漂移由 prompt 锚定+归一化+云端 refine 拦截 | 生产成本与理解质量 |
+| rubric 阈值与重试 | 主编评分阈值、回灌重试上限（默认 3）待试点标定 | 生产质量与成本平衡 |
+| 生产插件运行时 | `dsh-plugin-trend-producer` 独立仓库；skill 包向 Agent Skills（SKILL.md）规范对齐；dsh rc 版 engines 精确锁版，关键路径只用稳定包 | 长任务稳定性与升级耦合（升级触发条件：校验回灌无法稳定收敛时重启选型，备选 DeepAgents） |
+| 节与卷导读 | `sections` 上线后 `chapter_articles` 是否保留卷级导读 | 契约字段与插件渲染 |
+| 生产溯源口径 | token 为生产端自报，云端按 `source='producer'` 区分，不做核验 | 成本账本口径与信任边界 |
+| 呈现层 DSL 与 SVG 模板 | 已定（2026-11-05）：Markdown 扩展容器块承载组件；`diagram` 走参数化 SVG 模板，Mermaid 退出；DSL v1 与模板白名单 v1 已冻结于架构 §6.6.1/§6.6.4 | 渲染器版本门禁与生产端工艺 |
+| 课件新题型 | 已定（2026-11-05）：白名单扩容首批 `image-juxtaposition`、`branching-scenario`、`bar-replay-decision`，随 `spec_version=2` 冻结（草案见架构 §6.6.5，断言词表随首个试点节定稿）；生成式 h5-page 逃生舱不做 | 课件契约与渲染器门禁 |
+| 个股行情源与口径 | 已定（2026-11-05）：课程侧轻量缓存（腾讯前复权日 K，案例股 ~10 只回填 + 日更，`quotes_sync` 任务，架构 §6.6.3），不耦合 ai-invest；复权价差在渲染层声明；单源无备用，连续失败渲染层降级 | 数据管道、存储与合规声明 |
+| 视频片段通道 | 已定（2026-11-05）：HLS 时间窗直放（复用 C3 签名会话），不产预切片文件（架构 §6.6.2）；学员离线降级为关键帧封面，预切片兜底另议 | 存储成本与播放体验 |
+
+## 10. 关联文档
+
+- [云端服务对接清单](../architecture/cloud-service-integration-checklist.md)
+- [云端架构设计](../architecture/architecture-design.md)
+- [项目规范](../conventions/project-conventions.md)
+- 插件仓库：`../dsh-plugin-trend-coach`（PRD v1.8 §6、架构 v1.8 §6/§9/§10/§12/§17）
+- 生产插件仓库：`../dsh-plugin-trend-producer`（已建；PRD v0.3/架构 v0.4 承载生产 Agent 循环、呈现层生产（F7）与审批卡点；契约见本文 §6（C13/C14）与云端架构 v0.10 §6.5/§6.6）

@@ -1,0 +1,6912 @@
+openapi: 3.1.0
+info:
+  title: 趋势课程云端服务
+  version: 0.2.0
+  description: |
+    仅供 dsh-plugin-trend-coach 使用。学员业务接口只读知识内容（进度与事件同意除外），凭据只出现在插件 Host 侧。
+    接口口径以 docs/architecture/cloud-service-integration-checklist.md 为准。
+servers:
+  - url: http://127.0.0.1:3939
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    deviceId:
+      type: apiKey
+      in: header
+      name: x-device-id
+    sessionAuth:
+      type: http
+      scheme: bearer
+      description: 后台会话令牌（仅 operator/admin），与设备 accessToken 分离。
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        requestId:
+          type: string
+
+    Segment:
+      type: object
+      additionalProperties: false
+      required:
+        [segmentId, courseId, chapterId, knowledgePointId, title, startSec, endSec, text, score]
+      properties:
+        segmentId:
+          type: string
+          pattern: '^seg-[A-Za-z0-9._-]+$'
+          maxLength: 80
+        courseId:
+          type: string
+        chapterId:
+          type: string
+        knowledgePointId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        courseTitle:
+          type: string
+          maxLength: 200
+        chapterTitle:
+          type: string
+          maxLength: 200
+        knowledgePointTitle:
+          type: string
+          maxLength: 200
+        startSec:
+          type: integer
+          minimum: 0
+        endSec:
+          type: integer
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    RelatedKnowledgePoint:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, title]
+      properties:
+        knowledgePointId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    SearchResponse:
+      type: object
+      additionalProperties: false
+      required: [segments, relatedKnowledgePoints]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Segment'
+        relatedKnowledgePoints:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RelatedKnowledgePoint'
+
+    Grant:
+      type: object
+      additionalProperties: false
+      required: [accessToken, refreshToken, expiresAt, deviceId]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳
+        deviceId:
+          type: string
+
+    DeviceCodeStart:
+      type: object
+      additionalProperties: false
+      required: [deviceCode, userCode, verificationUri, expiresIn, interval]
+      properties:
+        deviceCode:
+          type: string
+        userCode:
+          type: string
+        verificationUri:
+          type: string
+          format: uri
+        expiresIn:
+          type: integer
+          description: 秒
+        interval:
+          type: integer
+          description: 轮询间隔，秒
+
+    DeviceTokenResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status:
+              const: pending
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status:
+              const: expired
+        - type: object
+          additionalProperties: false
+          required: [status, grant]
+          properties:
+            status:
+              const: authorized
+            grant:
+              $ref: '#/components/schemas/Grant'
+
+    PlaybackSession:
+      type: object
+      additionalProperties: false
+      required: [sessionId, playlistUrl, expiresAt, watermark]
+      properties:
+        sessionId:
+          type: string
+        playlistUrl:
+          type: string
+          format: uri
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳，至少覆盖 60s 播放窗口
+        watermark:
+          type: object
+          additionalProperties: false
+          required: [label]
+          properties:
+            label:
+              type: string
+
+    AssetPlaybackSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [sessionId, playlistUrl, fromSec, toSec, expiresAt]
+      properties:
+        sessionId:
+          type: string
+        playlistUrl:
+          type: string
+          format: uri
+        fromSec:
+          type: integer
+          nullable: true
+          description: 片段窗起秒；未提供窗口时为 null（全片）
+        toSec:
+          type: integer
+          nullable: true
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳
+
+    EventsConsent:
+      type: object
+      additionalProperties: false
+      required: [consent]
+      properties:
+        consent:
+          type: boolean
+
+    EventRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, name, props]
+      properties:
+        eventId:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{8,64}$'
+        name:
+          type: string
+          enum: [search_requested, citation_clicked, player_started]
+        occurredAt:
+          type: integer
+          description: 毫秒时间戳；缺省为服务端接收时间
+        props:
+          type: object
+          description: |
+            字段白名单随 name 变化，不接受其它字段：
+            search_requested = durationMs/topK/hits/empty；
+            citation_clicked = segmentId；
+            player_started = startupMs/autoplayBlocked。
+
+    CatalogCourseSummary:
+      type: object
+      additionalProperties: false
+      required: [courseId, title, chapterCount, knowledgePointCount, completedCount]
+      properties:
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        chapterCount:
+          type: integer
+          minimum: 0
+        knowledgePointCount:
+          type: integer
+          minimum: 0
+        completedCount:
+          type: integer
+          minimum: 0
+
+    CatalogCourseList:
+      type: object
+      additionalProperties: false
+      required: [courses]
+      properties:
+        courses:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CatalogCourseSummary'
+
+    CatalogKnowledgePoint:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, title, position, watchedSec, completed]
+      properties:
+        knowledgePointId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+        segmentId:
+          type: string
+          pattern: '^seg-[A-Za-z0-9._-]+$'
+          maxLength: 80
+        watchedSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        completed:
+          type: boolean
+
+    CatalogChapter:
+      type: object
+      additionalProperties: false
+      required: [chapterId, title, position, hasArticle, figureCount, knowledgePoints]
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+        hasArticle:
+          type: boolean
+        figureCount:
+          type: integer
+          minimum: 0
+          maximum: 3
+        knowledgePoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogKnowledgePoint'
+
+    CatalogCourse:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, courseId, title, chapters]
+      properties:
+        contractVersion:
+          type: integer
+          minimum: 1
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        chapters:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CatalogChapter'
+
+    ChapterArticle:
+      type: object
+      additionalProperties: false
+      required: [markdown, version, publishedAt]
+      properties:
+        markdown:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: 仅 Markdown 子集；图片引用只允许 ![alt](figure:figureId)。
+        version:
+          type: integer
+          minimum: 1
+        publishedAt:
+          type: integer
+          description: 毫秒时间戳
+
+    ChapterFigure:
+      type: object
+      additionalProperties: false
+      required: [url, width, height, alt]
+      properties:
+        url:
+          type: string
+          description: 短时签名地址，默认 10 分钟；过期后重新请求本章。
+        width:
+          type: integer
+          minimum: 800
+        height:
+          type: integer
+          minimum: 800
+        alt:
+          type: string
+          minLength: 1
+          maxLength: 200
+        caption:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    CatalogChapterArticle:
+      type: object
+      additionalProperties: false
+      required: [chapterId, courseId, title, article, figures, adjacentChapters, quiz]
+      properties:
+        chapterId:
+          type: string
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/ChapterArticle'
+            - type: 'null'
+        figures:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ChapterFigure'
+        adjacentChapters:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RelatedChapter'
+        quiz:
+          oneOf:
+            - $ref: '#/components/schemas/ChapterQuiz'
+            - type: 'null'
+
+    QuizQuestion:
+      type: object
+      additionalProperties: false
+      required: [questionId, prompt, options, answerIndex, explanation]
+      properties:
+        questionId:
+          type: string
+          pattern: '^q_[A-Za-z0-9._-]{1,40}$'
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 300
+        options:
+          type: array
+          minItems: 2
+          maxItems: 6
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+        answerIndex:
+          type: integer
+          minimum: 0
+          maximum: 5
+        explanation:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    ChapterQuiz:
+      type: object
+      additionalProperties: false
+      required: [version, publishedAt, questions]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        publishedAt:
+          type: integer
+        questions:
+          type: array
+          minItems: 3
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/QuizQuestion'
+
+    RelatedChapter:
+      type: object
+      additionalProperties: false
+      required: [chapterId, title]
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    KnowledgePointDetail:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, courseId, chapterId, title, adjacentKnowledgePoints]
+      properties:
+        knowledgePointId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        chapterId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        segmentId:
+          type: string
+          pattern: '^seg-[A-Za-z0-9._-]+$'
+          maxLength: 80
+        adjacentKnowledgePoints:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RelatedKnowledgePoint'
+
+    ProgressUpdate:
+      type: object
+      additionalProperties: false
+      required: [watchedSec, completed]
+      properties:
+        watchedSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        completed:
+          type: boolean
+
+    ProgressResult:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, watchedSec, completed, updatedAt]
+      properties:
+        knowledgePointId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        watchedSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        completed:
+          type: boolean
+        updatedAt:
+          type: integer
+          description: 毫秒时间戳
+
+    UserRole:
+      type: string
+      enum: [student, operator, admin]
+    UserStatus:
+      type: string
+      enum: [active, disabled]
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName, role, status, createdAt]
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+          nullable: true
+          description: 历史设备自动创建账号可能为空；M3 起账号均由管理员创建。
+        displayName:
+          type: string
+          nullable: true
+          maxLength: 200
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        deviceCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: integer
+          description: 毫秒时间戳
+        lastActiveAt:
+          type: integer
+          nullable: true
+          description: 最近设备活跃时间（毫秒时间戳）
+    SessionUser:
+      type: object
+      additionalProperties: false
+      required: [userId, username, displayName, role]
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳
+        user:
+          $ref: '#/components/schemas/SessionUser'
+    UserListResponse:
+      type: object
+      additionalProperties: false
+      required: [users, total, offset, limit]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        total:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+    InviteRedeemRequest:
+      type: object
+      additionalProperties: false
+      required: [inviteCode, password]
+      properties:
+        inviteCode:
+          type: string
+          maxLength: 32
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [username, displayName, role]
+      properties:
+        username:
+          type: string
+          pattern: '^[a-z][a-z0-9._-]{2,31}$'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        role:
+          $ref: '#/components/schemas/UserRole'
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    CreateUserResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/AdminUser'
+        inviteCode:
+          type: string
+          description: 仅在未提供初始密码时返回一次。
+        inviteExpiresAt:
+          type: integer
+          description: 邀请码过期时间（毫秒时间戳）
+    PatchUserRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    ResetUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+        newPassword:
+          type: string
+          minLength: 10
+          maxLength: 128
+
+    ContentStatus:
+      type: string
+      enum: [draft, published, archived]
+
+    AdminCourse:
+      type: object
+      additionalProperties: false
+      required: [courseId, title, status]
+      properties:
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    AdminCourseSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [courseId, title, status, chapterCount, knowledgePointCount, segmentCount,
+         chapterArticleCount, figureCount]
+      properties:
+        courseId:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+        chapterCount:
+          type: integer
+          minimum: 0
+        knowledgePointCount:
+          type: integer
+          minimum: 0
+        segmentCount:
+          type: integer
+          minimum: 0
+        chapterArticleCount:
+          type: integer
+          minimum: 0
+        figureCount:
+          type: integer
+          minimum: 0
+
+    AdminArticleMeta:
+      type: object
+      additionalProperties: false
+      required: [version, status]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+        publishedAt:
+          type: [integer, 'null']
+
+    AdminArticle:
+      type: object
+      additionalProperties: false
+      required: [markdown, version, status]
+      properties:
+        markdown:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        version:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+        publishedAt:
+          type: [integer, 'null']
+
+    AdminQuiz:
+      type: object
+      additionalProperties: false
+      required: [questions, version, status, publishedAt]
+      properties:
+        questions:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/QuizQuestion'
+        version:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+        publishedAt:
+          type: [integer, 'null']
+
+    AdminKnowledgePoint:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, title, position, segmentCount]
+      properties:
+        knowledgePointId:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+        segmentCount:
+          type: integer
+          minimum: 0
+
+    AdminChapter:
+      type: object
+      additionalProperties: false
+      required: [chapterId, title, position]
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+
+    AdminChapterTree:
+      type: object
+      additionalProperties: false
+      required: [chapterId, title, position, article, figureCount, knowledgePoints]
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/AdminArticleMeta'
+            - type: 'null'
+        figureCount:
+          type: integer
+          minimum: 0
+        knowledgePoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminKnowledgePoint'
+
+    AdminCourseTree:
+      type: object
+      additionalProperties: false
+      required: [course, chapters]
+      properties:
+        course:
+          $ref: '#/components/schemas/AdminCourse'
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChapterTree'
+
+    AdminSegment:
+      type: object
+      additionalProperties: false
+      required:
+        [segmentId, courseId, chapterId, knowledgePointId, title, startSec, endSec, text, status, hasEmbedding]
+      properties:
+        segmentId:
+          type: string
+          pattern: '^seg-[A-Za-z0-9._-]{1,76}$'
+        courseId:
+          type: string
+        chapterId:
+          type: string
+        knowledgePointId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        endSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+        hasEmbedding:
+          type: boolean
+
+    AdminSegmentList:
+      type: object
+      additionalProperties: false
+      required: [segments, total, offset, limit]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSegment'
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+
+    CreateCourseRequest:
+      type: object
+      additionalProperties: false
+      required: [courseId, title]
+      properties:
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    PatchCourseRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    CreateChapterRequest:
+      type: object
+      additionalProperties: false
+      required: [chapterId, title]
+      properties:
+        chapterId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    PatchChapterRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    CreateKnowledgePointRequest:
+      type: object
+      additionalProperties: false
+      required: [knowledgePointId, title]
+      properties:
+        knowledgePointId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    PatchKnowledgePointRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    PutArticleRequest:
+      type: object
+      additionalProperties: false
+      required: [markdown, status]
+      properties:
+        markdown:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    PutQuizRequest:
+      type: object
+      additionalProperties: false
+      required: [questions, status]
+      properties:
+        questions:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/QuizQuestion'
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    CreateSegmentRequest:
+      type: object
+      additionalProperties: false
+      required: [segmentId, courseId, chapterId, knowledgePointId, title, startSec, endSec, text]
+      properties:
+        segmentId:
+          type: string
+          pattern: '^seg-[A-Za-z0-9._-]{1,76}$'
+        courseId:
+          type: string
+        chapterId:
+          type: string
+        knowledgePointId:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        endSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    PatchSegmentRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        endSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        status:
+          $ref: '#/components/schemas/ContentStatus'
+
+    ReindexRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+
+    AsrRequest:
+      type: object
+      additionalProperties: false
+      required: [audio, format, durationMs]
+      properties:
+        audio:
+          type: string
+          minLength: 1
+          maxLength: 2560064
+          description: 完整 WAV 的 base64；16kHz、单声道、PCM16，解码后 ≤1920044B。
+        format:
+          type: string
+          enum: [wav]
+        durationMs:
+          type: integer
+          minimum: 1
+          maximum: 60000
+
+    AsrResponse:
+      type: object
+      additionalProperties: false
+      required: [text, durationMs]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        durationMs:
+          type: integer
+          minimum: 1
+          maximum: 60000
+
+    MediaAssetStatus:
+      type: string
+      enum: [awaiting_upload, uploaded, processing, ready, failed, archived]
+
+    MediaAsset:
+      type: object
+      additionalProperties: false
+      required:
+        [assetId, courseId, title, status, durationMs, sourceSizeBytes, errorCode, createdAt, updatedAt]
+      properties:
+        assetId:
+          type: string
+          pattern: '^asset_[0-9a-f]{16}$'
+        courseId:
+          type: string
+        title:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/MediaAssetStatus'
+        durationMs:
+          type: [integer, 'null']
+          minimum: 0
+        sourceSizeBytes:
+          type: [integer, 'null']
+          minimum: 0
+        errorCode:
+          type: [string, 'null']
+          maxLength: 64
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+
+    MediaAssetList:
+      type: object
+      additionalProperties: false
+      required: [assets, total, offset, limit]
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaAsset'
+        total:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+
+    CreateMediaAssetRequest:
+      type: object
+      additionalProperties: false
+      required: [courseId, title]
+      properties:
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    PatchMediaAssetRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum: [archived]
+
+    IngestRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        language:
+          type: string
+          enum: [zh, en, auto]
+
+    PipelineJobStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, canceled]
+
+    PipelineJobKind:
+      type: string
+      enum: [ingest, generate, illustrate]
+
+    PipelineJobStage:
+      type: string
+      enum: [queued, probe, transcode, transcribe, structure, generate, figure_plan, figure_render, finalize, done]
+
+    PipelineJob:
+      type: object
+      additionalProperties: false
+      required:
+        [jobId, assetId, courseId, kind, status, stage, progress, attempts, maxAttempts,
+         cancelRequested, errorCode, createdAt, startedAt, finishedAt]
+      properties:
+        jobId:
+          type: string
+          pattern: '^job_[0-9a-f]{16}$'
+        assetId:
+          type: [string, 'null']
+        courseId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/PipelineJobKind'
+        status:
+          $ref: '#/components/schemas/PipelineJobStatus'
+        stage:
+          $ref: '#/components/schemas/PipelineJobStage'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        attempts:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        cancelRequested:
+          type: boolean
+        errorCode:
+          type: [string, 'null']
+          maxLength: 64
+        createdAt:
+          type: integer
+        startedAt:
+          type: [integer, 'null']
+        finishedAt:
+          type: [integer, 'null']
+
+    PipelineJobDetail:
+      type: object
+      additionalProperties: false
+      required:
+        [jobId, assetId, courseId, kind, status, stage, progress, attempts, maxAttempts,
+         cancelRequested, errorCode, createdAt, startedAt, finishedAt, result]
+      properties:
+        jobId:
+          type: string
+          pattern: '^job_[0-9a-f]{16}$'
+        assetId:
+          type: [string, 'null']
+        courseId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/PipelineJobKind'
+        status:
+          $ref: '#/components/schemas/PipelineJobStatus'
+        stage:
+          $ref: '#/components/schemas/PipelineJobStage'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        attempts:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        cancelRequested:
+          type: boolean
+        errorCode:
+          type: [string, 'null']
+          maxLength: 64
+        createdAt:
+          type: integer
+        startedAt:
+          type: [integer, 'null']
+        finishedAt:
+          type: [integer, 'null']
+        result:
+          type: object
+          additionalProperties: false
+          required: [transcriptId, generationId]
+          properties:
+            transcriptId:
+              type: [string, 'null']
+            generationId:
+              type: [string, 'null']
+
+    PipelineJobList:
+      type: object
+      additionalProperties: false
+      required: [jobs, total, offset, limit]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineJob'
+        total:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+
+    TranscriptMeta:
+      type: object
+      additionalProperties: false
+      required:
+        [transcriptId, assetId, status, language, durationMs, chunkCount, segmentCount, errorCode]
+      properties:
+        transcriptId:
+          type: string
+        assetId:
+          type: string
+        status:
+          type: string
+        language:
+          type: string
+        durationMs:
+          type: [integer, 'null']
+        chunkCount:
+          type: integer
+          minimum: 0
+        segmentCount:
+          type: integer
+          minimum: 0
+        errorCode:
+          type: [string, 'null']
+
+    TranscriptSegment:
+      type: object
+      additionalProperties: false
+      required: [idx, startMs, endMs, text]
+      properties:
+        idx:
+          type: integer
+          minimum: 0
+        startMs:
+          type: integer
+          minimum: 0
+        endMs:
+          type: integer
+          minimum: 1
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    TranscriptPage:
+      type: object
+      additionalProperties: false
+      required: [transcript, segments, total, offset, limit]
+      properties:
+        transcript:
+          $ref: '#/components/schemas/TranscriptMeta'
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TranscriptSegment'
+        total:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+
+    GenerationStatus:
+      type: string
+      enum: [draft, applied, discarded, failed]
+
+    GenerationCounts:
+      type: object
+      additionalProperties: false
+      required: [chapters, knowledgePoints, chapterArticles, figures, segments, needsReview]
+      properties:
+        chapters:
+          type: integer
+          minimum: 0
+        knowledgePoints:
+          type: integer
+          minimum: 0
+        chapterArticles:
+          type: integer
+          minimum: 0
+        figures:
+          type: integer
+          minimum: 0
+        segments:
+          type: integer
+          minimum: 0
+        needsReview:
+          type: integer
+          minimum: 0
+
+    GenerationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [generationId, assetId, courseId, status, promptVersion, model, counts, createdAt, appliedAt]
+      properties:
+        generationId:
+          type: string
+          pattern: '^gen_[0-9a-f]{16}$'
+        assetId:
+          type: string
+        courseId:
+          type: string
+        status:
+          $ref: '#/components/schemas/GenerationStatus'
+        promptVersion:
+          type: string
+        model:
+          type: string
+        counts:
+          $ref: '#/components/schemas/GenerationCounts'
+        createdAt:
+          type: integer
+        appliedAt:
+          type: [integer, 'null']
+
+    GenerationChapterPreview:
+      type: object
+      additionalProperties: false
+      required: [key, title, position, articleLength, hasArticle, figureCount]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+          minimum: 0
+        articleLength:
+          type: integer
+          minimum: 0
+        hasArticle:
+          type: boolean
+        figureCount:
+          type: integer
+          minimum: 0
+
+    GenerationKnowledgePointPreview:
+      type: object
+      additionalProperties: false
+      required:
+        [key, chapterKey, title, position, confidence, needsReview, reviewReasons]
+      properties:
+        key:
+          type: string
+        chapterKey:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+          minimum: 0
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        needsReview:
+          type: boolean
+        reviewReasons:
+          type: array
+          items:
+            type: string
+
+    GenerationFigurePreview:
+      type: object
+      additionalProperties: false
+      required: [key, chapterKey, kind, caption, candidateCount, needsReview]
+      properties:
+        key:
+          type: string
+        chapterKey:
+          type: string
+        kind:
+          type: string
+        caption:
+          type: string
+        candidateCount:
+          type: integer
+          minimum: 0
+        needsReview:
+          type: boolean
+
+    GenerationSegmentPreview:
+      type: object
+      additionalProperties: false
+      required: [key, pointKey, title, startMs, endMs]
+      properties:
+        key:
+          type: string
+        pointKey:
+          type: string
+        title:
+          type: string
+        startMs:
+          type: integer
+          minimum: 0
+        endMs:
+          type: integer
+          minimum: 1
+
+    GenerationPreview:
+      type: object
+      additionalProperties: false
+      required: [generation, chapters, knowledgePoints, figures, segments]
+      properties:
+        generation:
+          $ref: '#/components/schemas/GenerationSummary'
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationChapterPreview'
+        knowledgePoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationKnowledgePointPreview'
+        figures:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationFigurePreview'
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationSegmentPreview'
+
+    AppliedContent:
+      type: object
+      additionalProperties: false
+      required: [chapters, knowledgePoints, figures, segments]
+      properties:
+        chapters:
+          type: object
+          additionalProperties:
+            type: string
+        knowledgePoints:
+          type: object
+          additionalProperties:
+            type: string
+        figures:
+          type: object
+          additionalProperties:
+            type: string
+        segments:
+          type: object
+          additionalProperties:
+            type: string
+
+    GenerationApplyResult:
+      type: object
+      additionalProperties: false
+      required:
+        [generationId, alreadyApplied, courseId, chapters, knowledgePoints, figures,
+         segments, chapterArticles, figuresApplied]
+      properties:
+        generationId:
+          type: string
+          pattern: '^gen_[0-9a-f]{16}$'
+        alreadyApplied:
+          type: boolean
+        courseId:
+          type: string
+        chapters:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [chapterId, key]
+            properties:
+              chapterId:
+                type: string
+              key:
+                type: string
+        knowledgePoints:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [knowledgePointId, key]
+            properties:
+              knowledgePointId:
+                type: string
+              key:
+                type: string
+        figures:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [figureId, key]
+            properties:
+              figureId:
+                type: string
+              key:
+                type: string
+        segments:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [segmentId, key]
+            properties:
+              segmentId:
+                type: string
+              key:
+                type: string
+        chapterArticles:
+          type: integer
+          minimum: 0
+        figuresApplied:
+          type: integer
+          minimum: 0
+
+    CoursePublishResult:
+      type: object
+      additionalProperties: false
+      required: [courseId, published, indexed, embedded, counts]
+      properties:
+        courseId:
+          type: string
+        published:
+          type: boolean
+          enum: [true]
+        indexed:
+          type: boolean
+        embedded:
+          type: integer
+          minimum: 0
+        counts:
+          type: object
+          additionalProperties: false
+          required: [chapters, knowledgePoints, chapterArticles, figures, segments, sections, widgets]
+          properties:
+            chapters:
+              type: integer
+              minimum: 0
+            knowledgePoints:
+              type: integer
+              minimum: 0
+            chapterArticles:
+              type: integer
+              minimum: 0
+            figures:
+              type: integer
+              minimum: 0
+            segments:
+              type: integer
+              minimum: 0
+            sections:
+              type: integer
+              minimum: 0
+            widgets:
+              type: integer
+              minimum: 0
+
+    FigureStatus:
+      type: string
+      enum: [planned, rendering, ready, failed, published]
+
+    FigureCandidateStatus:
+      type: string
+      enum: [rendering, ready, failed]
+
+    FigureCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        [candidateId, status, width, height, bytes, sourceSec, errorCode, previewUrl]
+      properties:
+        candidateId:
+          type: string
+          pattern: '^cand_[0-9a-f]{8,32}$'
+        status:
+          $ref: '#/components/schemas/FigureCandidateStatus'
+        width:
+          type: [integer, 'null']
+          minimum: 800
+        height:
+          type: [integer, 'null']
+          minimum: 800
+        bytes:
+          type: [integer, 'null']
+          minimum: 1
+        sourceSec:
+          type: [number, 'null']
+          minimum: 0
+        errorCode:
+          type: [string, 'null']
+          maxLength: 64
+        previewUrl:
+          type: [string, 'null']
+          description: 候选图预览地址，仅 ready 时有值。
+
+    Figure:
+      type: object
+      additionalProperties: false
+      required:
+        [figureId, chapterId, kind, caption, status, selectedCandidateId, prompt, model,
+         seed, reviewReasons, candidates]
+      properties:
+        figureId:
+          type: string
+          pattern: '^fig_[0-9a-f]{8}_[A-Za-z0-9._-]+$'
+        chapterId:
+          type: string
+        kind:
+          type: string
+          enum: [keyframe, generated]
+        caption:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/FigureStatus'
+        selectedCandidateId:
+          type: [string, 'null']
+        prompt:
+          type: [string, 'null']
+        model:
+          type: [string, 'null']
+        seed:
+          type: [integer, 'null']
+        reviewReasons:
+          type: array
+          items:
+            type: string
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/FigureCandidate'
+
+    FigureList:
+      type: object
+      additionalProperties: false
+      required: [figures, total, offset, limit]
+      properties:
+        figures:
+          type: array
+          items:
+            $ref: '#/components/schemas/Figure'
+        total:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+
+    IllustrateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        chapterIds:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: 缺省时处理该课程全部有教材的章节。
+
+    SelectFigureRequest:
+      type: object
+      additionalProperties: false
+      required: [candidateId]
+      properties:
+        candidateId:
+          type: string
+          pattern: '^cand_[0-9a-f]{8,32}$'
+
+    LlmPurpose:
+      type: string
+      enum: [content, embedding, image]
+
+    AiTaskKey:
+      type: string
+      enum:
+        [content.outline, content.points, content.article, content.chapter_article,
+         content.figure_plan, image.figure, embedding.query, embedding.segment,
+         asr.longform]
+
+    LlmProtocol:
+      type: string
+      enum: [openai, anthropic]
+
+    AsrProtocol:
+      type: string
+      enum: [minimax, openai]
+
+    ModelTestResult:
+      type: object
+      additionalProperties: false
+      required: [status, detail, testedAt]
+      properties:
+        status:
+          type: string
+          enum: [success, failed]
+        detail:
+          type: string
+        testedAt:
+          type: integer
+
+    LlmConfig:
+      type: object
+      additionalProperties: false
+      required:
+        [configId, name, provider, protocol, baseUrl, model, purpose, apiKeyConfigured,
+         apiKeyMasked, isDefault, isActive, inputPriceMicrosPer1k, outputPriceMicrosPer1k,
+         imagePriceMicros, lastTestedAt, lastTestStatus, lastTestError, createdAt, updatedAt]
+      properties:
+        configId:
+          type: string
+          pattern: '^llmc_[0-9a-f]{16}$'
+        name:
+          type: string
+        provider:
+          type: string
+        protocol:
+          $ref: '#/components/schemas/LlmProtocol'
+        baseUrl:
+          type: string
+        model:
+          type: string
+        purpose:
+          $ref: '#/components/schemas/LlmPurpose'
+        apiKeyConfigured:
+          type: boolean
+        apiKeyMasked:
+          type: [string, 'null']
+        isDefault:
+          type: boolean
+        isActive:
+          type: boolean
+        inputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+          description: 微美元/千输入 token；null 表示未配置，成本不估算。
+        outputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+        imagePriceMicros:
+          type: integer
+          minimum: 0
+          description: 单张图片成本（微美元），默认 120000（¥0.12）。
+        lastTestedAt:
+          type: [integer, 'null']
+        lastTestStatus:
+          type: [string, 'null']
+          enum: [success, failed, null]
+        lastTestError:
+          type: [string, 'null']
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+
+    CreateLlmConfigRequest:
+      type: object
+      additionalProperties: false
+      required: [name, provider, baseUrl, model, purpose]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        provider:
+          type: string
+          maxLength: 32
+        protocol:
+          $ref: '#/components/schemas/LlmProtocol'
+        baseUrl:
+          type: string
+          maxLength: 500
+        model:
+          type: string
+          maxLength: 200
+        purpose:
+          $ref: '#/components/schemas/LlmPurpose'
+        apiKey:
+          type: string
+          maxLength: 500
+          description: 明文只在写入时出现；留空表示不配置密钥。
+        isDefault:
+          type: boolean
+        isActive:
+          type: boolean
+        inputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+        outputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+        imagePriceMicros:
+          type: integer
+          minimum: 0
+
+    UpdateLlmConfigRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        provider:
+          type: string
+          maxLength: 32
+        protocol:
+          $ref: '#/components/schemas/LlmProtocol'
+        baseUrl:
+          type: string
+          maxLength: 500
+        model:
+          type: string
+          maxLength: 200
+        purpose:
+          $ref: '#/components/schemas/LlmPurpose'
+        apiKey:
+          type: string
+          maxLength: 500
+          description: 留空字符串表示保留原密钥。
+        isDefault:
+          type: boolean
+        isActive:
+          type: boolean
+        inputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+        outputPriceMicrosPer1k:
+          type: [integer, 'null']
+          minimum: 0
+        imagePriceMicros:
+          type: integer
+          minimum: 0
+
+    AsrConfig:
+      type: object
+      additionalProperties: false
+      required:
+        [provider, protocol, baseUrl, model, apiKeyConfigured, apiKeyMasked, enabled,
+         lastTestedAt, lastTestStatus, lastTestError, updatedAt]
+      properties:
+        provider:
+          type: string
+        protocol:
+          $ref: '#/components/schemas/AsrProtocol'
+        baseUrl:
+          type: string
+        model:
+          type: string
+        apiKeyConfigured:
+          type: boolean
+        apiKeyMasked:
+          type: [string, 'null']
+        enabled:
+          type: boolean
+        lastTestedAt:
+          type: [integer, 'null']
+        lastTestStatus:
+          type: [string, 'null']
+          enum: [success, failed, null]
+        lastTestError:
+          type: [string, 'null']
+        updatedAt:
+          type: integer
+
+    UpdateAsrConfigRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+          maxLength: 32
+        protocol:
+          $ref: '#/components/schemas/AsrProtocol'
+        baseUrl:
+          type: string
+          maxLength: 500
+        model:
+          type: string
+          maxLength: 200
+        apiKey:
+          type: string
+          maxLength: 500
+        enabled:
+          type: boolean
+
+    KeyframeFrame:
+      type: object
+      required: [sec, url, width, height]
+      additionalProperties: false
+      properties:
+        sec:
+          type: integer
+          minimum: 0
+        url:
+          type: string
+          maxLength: 2000
+        width:
+          type: integer
+        height:
+          type: integer
+
+    FramesResponse:
+      type: object
+      required: [frames, nextFrom]
+      additionalProperties: false
+      properties:
+        frames:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyframeFrame'
+        nextFrom:
+          description: 下一段查询起点（毫秒）；范围内无更多帧为 null
+          type: [integer, 'null']
+
+    SourceUnitSaved:
+      type: object
+      required: [unitId, assetId, startMs, deduped]
+      additionalProperties: false
+      properties:
+        unitId:
+          type: string
+          pattern: '^su_[0-9a-f]{16}$'
+        assetId:
+          type: string
+        startMs:
+          type: integer
+          minimum: 0
+        deduped:
+          type: boolean
+
+    SourceUnitsSaveResponse:
+      type: object
+      required: [saved]
+      additionalProperties: false
+      properties:
+        saved:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceUnitSaved'
+
+    SourceUnitsReindexResponse:
+      type: object
+      required: [embedded, failed, remaining]
+      additionalProperties: false
+      properties:
+        embedded:
+          type: integer
+          minimum: 0
+          description: 本次成功写入向量的 unit 数
+        failed:
+          type: integer
+          minimum: 0
+          description: 本次生成/写入失败的 unit 数（保持 NULL，下次可重试）
+        remaining:
+          type: integer
+          minimum: 0
+          description: 全库仍缺向量的 unit 总数（含本次失败），为 0 即补齐
+
+    SourceUnitSearchItem:
+      type: object
+      required: [unitId, assetId, startMs, endMs, summary, score]
+      additionalProperties: false
+      properties:
+        unitId:
+          type: string
+          pattern: '^su_[0-9a-f]{16}$'
+        assetId:
+          type: string
+        startMs:
+          type: integer
+          minimum: 0
+        endMs:
+          type: integer
+          minimum: 0
+        summary:
+          type: string
+        score:
+          type: number
+
+    SourceUnitsSearchResponse:
+      type: object
+      required: [units, nextCursor]
+      additionalProperties: false
+      properties:
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceUnitSearchItem'
+        nextCursor:
+          type: [string, 'null']
+
+    ConceptCreated:
+      type: object
+      required: [conceptId]
+      additionalProperties: false
+      properties:
+        conceptId:
+          type: string
+          pattern: '^cpt_[0-9a-f]{16}$'
+
+    ConceptList:
+      type: object
+      required: [concepts]
+      additionalProperties: false
+      properties:
+        concepts:
+          type: array
+          items:
+            type: object
+            required: [conceptId, name, aliases, definition]
+            additionalProperties: false
+            properties:
+              conceptId:
+                type: string
+                pattern: '^cpt_[0-9a-f]{16}$'
+              name:
+                type: string
+                maxLength: 200
+              aliases:
+                type: array
+                items:
+                  type: string
+                  maxLength: 200
+              definition:
+                type: string
+                nullable: true
+                maxLength: 2000
+
+    ConceptEdgeCreated:
+      type: object
+      required: [edgeId]
+      additionalProperties: false
+      properties:
+        edgeId:
+          type: string
+          pattern: '^ced_[0-9a-f]{16}$'
+
+    Section:
+      type: object
+      required: [sectionId, courseId, chapterId, title, position, status, sourceAssetIds, conceptRefs, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        courseId:
+          type: string
+        chapterId:
+          type: string
+        title:
+          type: string
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+        summary:
+          type: string
+        sourceAssetIds:
+          type: array
+          items:
+            type: string
+        conceptRefs:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    SectionsResponse:
+      type: object
+      required: [sections]
+      additionalProperties: false
+      properties:
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+
+    SectionCreated:
+      type: object
+      required: [section]
+      additionalProperties: false
+      properties:
+        section:
+          $ref: '#/components/schemas/Section'
+
+    SectionArticleSaved:
+      type: object
+      required: [sectionId, version, status]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+
+    WidgetSummary:
+      type: object
+      required: [widgetId, type, specVersion, specBytes, validation, status, version, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        widgetId:
+          type: string
+          pattern: '^wgt_[0-9a-f]{16}$'
+        type:
+          type: string
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+        specVersion:
+          type: integer
+        specBytes:
+          type: integer
+        validation:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          enum: [draft, published, archived]
+        version:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    WidgetListResponse:
+      type: object
+      required: [widgets]
+      additionalProperties: false
+      properties:
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WidgetSummary'
+
+    SectionPreview:
+      type: object
+      required: [section, article, widgets, figures]
+      additionalProperties: false
+      properties:
+        section:
+          $ref: '#/components/schemas/SectionBrief'
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/ArticleBrief'
+            - type: 'null'
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WidgetDetail'
+        figures:
+          type: array
+          items:
+            $ref: '#/components/schemas/FigureBrief'
+
+    SectionBrief:
+      type: object
+      required: [sectionId, courseId, chapterId, title, position, status, conceptRefs]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        courseId:
+          type: string
+        chapterId:
+          type: string
+        title:
+          type: string
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+        summary:
+          type: string
+        conceptRefs:
+          type: array
+          items:
+            type: string
+
+    ArticleBrief:
+      type: object
+      required: [markdown, citations, version, status, dslVersion]
+      additionalProperties: false
+      properties:
+        markdown:
+          type: string
+        citations:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+        dslVersion:
+          type: integer
+          minimum: 1
+          description: 富文本 DSL 能力版本（§6.6.1，当前 1）；渲染器按版本门禁
+
+    WidgetDetail:
+      type: object
+      required: [widgetId, type, specVersion, spec, assertions, validation, status, version, createdAt]
+      additionalProperties: false
+      properties:
+        widgetId:
+          type: string
+          pattern: '^wgt_[0-9a-f]{16}$'
+        type:
+          type: string
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+        specVersion:
+          type: integer
+        spec:
+          type: object
+          additionalProperties: true
+        assertions:
+          type: object
+          additionalProperties: true
+        validation:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          enum: [draft, published, archived]
+        version:
+          type: integer
+        createdAt:
+          type: string
+
+    FigureBrief:
+      type: object
+      required: [figureId, kind, caption, status, selectedCandidateId, spec, sectionId]
+      additionalProperties: false
+      properties:
+        figureId:
+          type: string
+          pattern: '^fig_[A-Za-z0-9._-]{1,60}$'
+        kind:
+          type: string
+          enum: [keyframe, generated, diagram]
+        caption:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          enum: [planned, rendering, ready, failed, published]
+        selectedCandidateId:
+          type: [string, 'null']
+        spec:
+          type: ['object', 'null']
+          additionalProperties: true
+        sectionId:
+          type: [string, 'null']
+
+    WidgetCreated:
+      type: object
+      required: [widgetId, validation, status]
+      additionalProperties: false
+      properties:
+        widgetId:
+          type: string
+          pattern: '^wgt_[0-9a-f]{16}$'
+        validation:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [pass]
+        status:
+          type: string
+
+    FigureWriteRequest:
+      description: 节级图示写入（§6.6.2）；generated 走 M8 illustrate 通道不经此端点
+      oneOf:
+        - type: object
+          required: [kind, assetId, sec, caption, unitId]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [keyframe]
+            assetId:
+              type: string
+              pattern: '^asset_[0-9a-f]{16}$'
+            sec:
+              type: integer
+              minimum: 0
+              maximum: 86400
+              description: 抽帧秒位，须完整落在 unitId 所指 source unit 窗口内
+            caption:
+              type: string
+              minLength: 1
+              maxLength: 200
+            unitId:
+              type: string
+              pattern: '^su_[0-9a-f]{16}$'
+        - type: object
+          required: [kind, template, params, caption]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [diagram]
+            template:
+              type: string
+              enum: [chip-contrast, chip-horizontal, timeline, stat-inline]
+              description: SVG 模板白名单 v1（§6.6.4）
+            params:
+              type: object
+              additionalProperties: true
+              description: 模板参数，服务端逐模板 zod 复检；同参数确定性渲染
+            caption:
+              type: string
+              minLength: 1
+              maxLength: 200
+
+    SectionFigure:
+      type: object
+      required: [figureId, kind, caption, status, selectedCandidateId, assetId, sourceSec, spec]
+      additionalProperties: false
+      properties:
+        figureId:
+          type: string
+          pattern: '^fig_[0-9a-f]{16}$'
+        kind:
+          type: string
+          enum: [keyframe, diagram]
+        caption:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          enum: [ready]
+        selectedCandidateId:
+          type: string
+        assetId:
+          type: [string, 'null']
+        sourceSec:
+          type: [integer, 'null']
+        spec:
+          type: ['object', 'null']
+          additionalProperties: true
+
+    SectionFiguresList:
+      type: object
+      required: [figures]
+      additionalProperties: false
+      properties:
+        figures:
+          type: array
+          items:
+            type: object
+            required: [figureId, kind, caption, status, selectedCandidateId, assetId, sourceSec, spec, createdAt]
+            additionalProperties: false
+            properties:
+              figureId:
+                type: string
+              kind:
+                type: string
+                enum: [keyframe, generated, diagram]
+              caption:
+                type: string
+              status:
+                type: string
+                enum: [planned, rendering, ready, failed, published]
+              selectedCandidateId:
+                type: [string, 'null']
+              assetId:
+                type: [string, 'null']
+              sourceSec:
+                type: [integer, 'null']
+              spec:
+                type: ['object', 'null']
+                additionalProperties: true
+              createdAt:
+                type: string
+
+    CaseStocksWriteRequest:
+      type: object
+      required: [stocks]
+      additionalProperties: false
+      properties:
+        stocks:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            required: [name, exchange, code, windowStart, windowEnd, events]
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 50
+              exchange:
+                type: string
+                enum: [SZSE, SSE, BSE]
+              code:
+                type: string
+                pattern: '^[0-9]{6}$'
+              windowStart:
+                type: string
+                pattern: '^\d{4}-\d{2}-\d{2}$'
+              windowEnd:
+                type: string
+                pattern: '^\d{4}-\d{2}-\d{2}$'
+              events:
+                type: array
+                maxItems: 20
+                items:
+                  type: object
+                  required: [date, label, unitId]
+                  additionalProperties: false
+                  properties:
+                    date:
+                      type: string
+                      pattern: '^\d{4}-\d{2}-\d{2}$'
+                    label:
+                      type: string
+                      minLength: 1
+                      maxLength: 100
+                    unitId:
+                      type: string
+                      pattern: '^su_[0-9a-f]{16}$'
+              note:
+                type: string
+                maxLength: 500
+
+    CaseStocksWriteResponse:
+      type: object
+      required: [saved]
+      additionalProperties: false
+      properties:
+        saved:
+          type: array
+          items:
+            type: object
+            required: [stockRefId, code, deduped]
+            additionalProperties: false
+            properties:
+              stockRefId:
+                type: string
+                pattern: '^cst_[0-9a-f]{16}$'
+              code:
+                type: string
+                pattern: '^[0-9]{6}$'
+              deduped:
+                type: boolean
+
+    SectionCaseStocksList:
+      type: object
+      required: [stocks]
+      additionalProperties: false
+      properties:
+        stocks:
+          type: array
+          items:
+            type: object
+            required: [stockRefId, sectionId, name, exchange, code, windowStart, windowEnd, events, note, status, position, createdAt]
+            additionalProperties: false
+            properties:
+              stockRefId:
+                type: string
+              sectionId:
+                type: string
+              name:
+                type: string
+              exchange:
+                type: string
+                enum: [SZSE, SSE, BSE]
+              code:
+                type: string
+              windowStart:
+                type: string
+              windowEnd:
+                type: string
+              events:
+                type: array
+                items:
+                  type: object
+                  required: [date, label, unitId]
+                  properties:
+                    date:
+                      type: string
+                    label:
+                      type: string
+                    unitId:
+                      type: string
+              note:
+                type: [string, 'null']
+              status:
+                type: string
+              position:
+                type: integer
+              createdAt:
+                type: string
+
+    AssertionUnproven:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum: [assertion_unproven]
+
+    ProvenanceAccepted:
+      type: object
+      required: [runId, usageId]
+      additionalProperties: false
+      properties:
+        runId:
+          type: string
+          format: uuid
+        usageId:
+          type: string
+
+  responses:
+    BadRequest:
+      description: 入参或结构不合法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 未授权或令牌过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 设备不匹配或越权
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: 资源不存在或已下架
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: 超出配额
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 资源已存在或当前状态不允许该操作
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: 请求体或音频超过上限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaType:
+      description: 不支持的请求内容类型
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: 未识别到语音
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadGateway:
+      description: 上游协议异常
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: 上游不可用或未配置
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+paths:
+  /health:
+    get:
+      summary: 健康检查（含数据库连通性）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        '503':
+          description: 数据库不可用
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+
+  /v1/auth/device/code:
+    post:
+      summary: 发起设备码授权
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [clientId, deviceId]
+              properties:
+                clientId:
+                  const: dsh-plugin-trend-coach
+                deviceId:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '200':
+          description: 设备码已签发
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceCodeStart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/auth/device/token:
+    post:
+      summary: 轮询设备码状态
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deviceCode]
+              properties:
+                deviceCode:
+                  type: string
+      responses:
+        '200':
+          description: 待批准 / 已过期 / 已授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/auth/refresh:
+    post:
+      summary: 轮换 access/refresh 令牌
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refreshToken, deviceId]
+              properties:
+                refreshToken:
+                  type: string
+                deviceId:
+                  type: string
+      responses:
+        '200':
+          description: 新 grant；旧 refresh 立即失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/auth/revoke:
+    post:
+      summary: 注销当前设备并吊销其令牌
+      description: 吊销该设备全部 access/refresh 并置为 revoked；重新设备授权可恢复，不影响同账号其它设备。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      responses:
+        '200':
+          description: 已注销
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/auth/device/approve:
+    post:
+      summary: 批准设备码并绑定账号
+      description: |
+        学员：提交 `userCode` + `username`/`password`，或 `userCode` + `inviteCode` + 新 `password`。
+        运营/管理员：带后台会话 Bearer，提交 `userCode` 与可选 `userId` 代批。
+        不再接受共享控制台令牌；设备批准后绑定固定账号。
+      security:
+        - sessionAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userCode]
+              properties:
+                userCode:
+                  type: string
+                  pattern: '^[A-Z0-9]{4}-[A-Z0-9]{4}$'
+                username:
+                  type: string
+                  pattern: '^[a-z][a-z0-9._-]{2,31}$'
+                password:
+                  type: string
+                  minLength: 10
+                  maxLength: 128
+                inviteCode:
+                  type: string
+                  maxLength: 32
+                userId:
+                  type: string
+                  maxLength: 64
+                  description: 仅后台会话代批时可用。
+      responses:
+        '200':
+          description: 已批准
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approved]
+                properties:
+                  approved:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/kb/search:
+    post:
+      summary: Top-K 片段检索
+      security:
+        - bearerAuth: []
+          deviceId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: 去首尾空白后 1–500 字符
+                topK:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                courseId:
+                  type: string
+                  pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 检索结果；空召回时给 relatedKnowledgePoints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/kb/segments/{segmentId}:
+    get:
+      summary: 片段详情（权威起止秒）
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: segmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^seg-[A-Za-z0-9._-]+$'
+            maxLength: 80
+      responses:
+        '200':
+          description: 片段元数据，score 恒为 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Segment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses:
+    get:
+      summary: 已发布课程列表
+      security:
+        - bearerAuth: []
+          deviceId: []
+      responses:
+        '200':
+          description: 课程列表，含当前用户完成数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogCourseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/catalog/courses/{courseId}:
+    get:
+      summary: 课程树（章节与知识点）
+      description: 只返回已发布课程；知识点不携带起止秒，播放定位仍以片段详情为准。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 课程树，知识点内联当前用户进度
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogCourse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses/{courseId}/chapters/{chapterId}:
+    get:
+      summary: 章节教材与图示
+      description: '只返回已发布章节教材；正文中的 figure: 引用由插件按 figures 映射替换为短时签名地址。'
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 章节教材；未发布时 article 为 null
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogChapterArticle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/knowledge-points/{knowledgePointId}:
+    get:
+      summary: 知识点详情与相邻知识点
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: knowledgePointId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 知识点详情；M8 起不再返回文章，正文由章节接口提供
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgePointDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/progress/knowledge-points/{knowledgePointId}:
+    put:
+      summary: 上报学习进度
+      description: 幂等；观看时长取历史最大值，完成状态不可回退，不受指标同意开关影响。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: knowledgePointId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressUpdate'
+      responses:
+        '200':
+          description: 合并后的进度
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/playback/sessions:
+    post:
+      summary: 换取短时效签名播放会话
+      security:
+        - bearerAuth: []
+          deviceId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [segmentId]
+              properties:
+                segmentId:
+                  type: string
+      responses:
+        '200':
+          description: 签名 playlistUrl；浏览器不持 Bearer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybackSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: 媒体资源不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/events/consent:
+    get:
+      summary: 读取指标上报同意状态
+      description: 默认未同意；插件只在该用户明确同意后上报白名单事件。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      responses:
+        '200':
+          description: 当前同意状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsConsent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      summary: 修改指标上报同意状态
+      description: 撤销后立即停止接收事件；已上报数据不回溯删除。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [consent]
+              properties:
+                consent:
+                  type: boolean
+      responses:
+        '200':
+          description: 修改后的同意状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsConsent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/events:
+    post:
+      summary: 接收白名单指标事件
+      description: 需要用户同意；按 eventId 幂等。不接收 query 原文、回答内容或播放地址。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventRequest'
+      responses:
+        '202':
+          description: 已接收（重复 eventId 同样返回 202）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 未同意上报
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/asr/transcribe:
+    post:
+      summary: 语音转写（MiniMax ASR）
+      description: 音频仅在内存中转发给上游，不落盘、不落日志；文本清洗后返回，空结果 422。请求体上限 3MiB。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsrRequest'
+      responses:
+        '200':
+          description: 转写成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsrResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/auth/invite/redeem:
+    post:
+      summary: 一次性邀请码设置密码
+      description: 邀请码单次有效；成功后账号可用用户名密码登录。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRedeemRequest'
+      responses:
+        '200':
+          description: 已兑换
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [redeemed]
+                properties:
+                  redeemed:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: 邀请码无效、过期或已使用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/auth/session:
+    post:
+      summary: 后台登录（operator/admin）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  pattern: '^[a-z][a-z0-9._-]{2,31}$'
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: 用户名或密码错误、账号禁用或未激活
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 学员账号不可登录后台
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      summary: 读取当前后台会话
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 当前账号
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/SessionUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: 注销当前后台会话
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 已注销
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/session/password:
+    post:
+      summary: 自助修改后台密码
+      description: 修改成功后吊销该账号全部后台会话（含当前会话）。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/admin/users:
+    get:
+      summary: 用户列表（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: role
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserRole'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: 创建账号（admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: 已创建；未提供密码时返回一次性邀请码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/admin/users/{userId}:
+    patch:
+      summary: 修改账号资料、角色或状态（admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserRequest'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 角色不足、操作自己或移除最后一个管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/users/{userId}/reset:
+    post:
+      summary: 重置账号凭据（admin）
+      description: 提供 password 直接设置；否则生成新邀请码并使旧邀请码失效。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetUserRequest'
+      responses:
+        '200':
+          description: 已重置
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: boolean
+                  inviteCode:
+                    type: string
+                  inviteExpiresAt:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/courses:
+    get:
+      summary: 课程列表（operator/admin）
+      description: 返回全部课程及其章节、知识点、片段、文章计数。
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 课程列表
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [courses]
+                properties:
+                  courses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdminCourseSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: 创建课程（operator/admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCourseRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [course]
+                properties:
+                  course:
+                    $ref: '#/components/schemas/AdminCourse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/content/courses/{courseId}:
+    get:
+      summary: 课程树（operator/admin）
+      description: 返回课程、章节与知识点（含文章版本元数据），用于控制台编辑。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 课程树
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCourseTree'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: 修改课程（operator/admin）
+      description: 可改标题或状态；归档后其下内容对学员不可见。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCourseRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [course]
+                properties:
+                  course:
+                    $ref: '#/components/schemas/AdminCourse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/courses/{courseId}/chapters:
+    post:
+      summary: 新增章节（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChapterRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [chapter]
+                properties:
+                  chapter:
+                    $ref: '#/components/schemas/AdminChapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/content/courses/{courseId}/chapters/{chapterId}:
+    patch:
+      summary: 修改章节（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchChapterRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [chapter]
+                properties:
+                  chapter:
+                    $ref: '#/components/schemas/AdminChapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/courses/{courseId}/chapters/{chapterId}/knowledge-points:
+    post:
+      summary: 新增知识点（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKnowledgePointRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [knowledgePoint]
+                properties:
+                  knowledgePoint:
+                    $ref: '#/components/schemas/AdminKnowledgePoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/content/knowledge-points/{knowledgePointId}:
+    patch:
+      summary: 修改知识点（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: knowledgePointId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchKnowledgePointRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [knowledgePoint]
+                properties:
+                  knowledgePoint:
+                    $ref: '#/components/schemas/AdminKnowledgePoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/courses/{courseId}/chapters/{chapterId}/article:
+    get:
+      summary: 读取章节教材（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 教材或 null
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [article]
+                properties:
+                  article:
+                    oneOf:
+                      - $ref: '#/components/schemas/AdminArticle'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: 保存章节教材（operator/admin）
+      description: 每次保存 version+1；发布时写 publishedAt；图片引用只允许 ![alt](figure:figureId)。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutArticleRequest'
+      responses:
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [article]
+                properties:
+                  article:
+                    $ref: '#/components/schemas/AdminArticle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/courses/{courseId}/chapters/{chapterId}/quiz:
+    get:
+      summary: 读取章节随堂测验（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 题库或 null
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [quiz]
+                properties:
+                  quiz:
+                    oneOf:
+                      - $ref: '#/components/schemas/AdminQuiz'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: 保存章节随堂测验（operator/admin）
+      description: 每次保存 version+1；发布需 3–5 道题且写入 publishedAt。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutQuizRequest'
+      responses:
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [quiz]
+                properties:
+                  quiz:
+                    $ref: '#/components/schemas/AdminQuiz'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/segments:
+    get:
+      summary: 片段列表（operator/admin）
+      description: 支持按课程、知识点、状态与标题/文本关键字过滤。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: knowledgePointId
+          in: query
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ContentStatus'
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 片段列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSegmentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: 创建片段（operator/admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSegmentRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [segment]
+                properties:
+                  segment:
+                    $ref: '#/components/schemas/AdminSegment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/content/segments/{segmentId}:
+    patch:
+      summary: 修改片段（operator/admin）
+      description: 文本变更时清空 embedding，等待重建索引。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: segmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^seg-[A-Za-z0-9._-]{1,76}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSegmentRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [segment]
+                properties:
+                  segment:
+                    $ref: '#/components/schemas/AdminSegment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/content/reindex:
+    post:
+      summary: 重建片段向量（operator/admin）
+      description: 未配置 embedding 时返回 409；指定课程不存在返回 404。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReindexRequest'
+      responses:
+        '200':
+          description: 重建完成
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [embedded]
+                properties:
+                  embedded:
+                    type: integer
+                    minimum: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/content/media-assets:
+    get:
+      summary: 媒体素材列表（operator/admin）
+      description: 仅返回素材元数据；不含源文件路径、HLS 路径与签名地址。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MediaAssetStatus'
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 素材列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAssetList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      summary: 创建媒体素材（operator/admin）
+      description: 课程必须处于 draft；新素材状态为 awaiting_upload。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMediaAssetRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [asset]
+                properties:
+                  asset:
+                    $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}:
+    patch:
+      summary: 修改媒体素材（operator/admin）
+      description: 仅支持改标题或归档；归档后不再接受上传与处理。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchMediaAssetRequest'
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [asset]
+                properties:
+                  asset:
+                    $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/source:
+    put:
+      summary: 上传媒体源文件（operator/admin）
+      description: 流式写入 application/octet-stream；可选 x-file-sha256 校验；换源会清理旧转写。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: x-file-sha256
+          in: header
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 已上传
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [asset]
+                properties:
+                  asset:
+                    $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/ingest:
+    post:
+      summary: 入队视频处理任务（operator/admin）
+      description: 依次执行探测、转码、转写与落库；同一素材同一类型仅允许一个活动任务。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '202':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/transcript:
+    get:
+      summary: 查看转写片段（operator/admin）
+      description: 管理端唯一返回转写正文的接口；按 idx 升序分页。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: 转写分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/pipeline/jobs:
+    get:
+      summary: 处理任务列表（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/PipelineJobStatus'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/PipelineJobKind'
+        - name: courseId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: assetId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 任务列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineJobList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/pipeline/jobs/{jobId}:
+    get:
+      summary: 处理任务详情（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^job_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJobDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/pipeline/jobs/{jobId}/retry:
+    post:
+      summary: 重试失败或已取消任务（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^job_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 已重新入队
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/pipeline/jobs/{jobId}/cancel:
+    post:
+      summary: 取消排队或运行中的任务（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^job_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 已取消或已请求取消
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/generations:
+    post:
+      summary: 入队内容生成任务（operator/admin）
+      description: 素材与转写必须就绪、课程处于 draft；同一素材只允许一个 draft 生成。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '202':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/generations/{generationId}:
+    get:
+      summary: 生成结果预览（operator/admin）
+      description: 返回章节/知识点/片段摘要与待审原因，不含文章正文与片段正文。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: generationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^gen_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 生成预览
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/generations/{generationId}/apply:
+    post:
+      summary: 应用生成结果到草稿课程（operator/admin）
+      description: 课程必须为 draft 且无既有内容；重复调用幂等返回同一映射。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: generationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^gen_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 已应用或此前已应用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationApplyResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/generations/{generationId}/discard:
+    post:
+      summary: 丢弃草稿生成结果（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: generationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^gen_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 已丢弃
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [generation]
+                properties:
+                  generation:
+                    $ref: '#/components/schemas/GenerationSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/courses/{courseId}/publish:
+    post:
+      summary: 发布课程并建立索引（operator/admin）
+      description: 至少一个片段；配置 embedding 时先同步重建索引，失败则不翻状态。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 已发布
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoursePublishResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/courses/{courseId}/illustrate:
+    post:
+      summary: 为章节教材生成图示（operator/admin）
+      description: 课程须为 draft 且已有教材；仅成功生成的候选图计入图片预算。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IllustrateRequest'
+      responses:
+        '202':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [job]
+                properties:
+                  job:
+                    $ref: '#/components/schemas/PipelineJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/figures:
+    get:
+      summary: 图示列表（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: chapterId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 图示分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FigureList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/figures/{figureId}/select:
+    post:
+      summary: 选定图示候选图（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: figureId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^fig_[0-9a-f]{8}_[A-Za-z0-9._-]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectFigureRequest'
+      responses:
+        '200':
+          description: 已选定
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [figure]
+                properties:
+                  figure:
+                    $ref: '#/components/schemas/Figure'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/figures/{figureId}/regenerate:
+    post:
+      summary: 重新生成图示候选（operator/admin）
+      description: 重新规划并清空选择；预算不足返回 409 image_budget_exceeded。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: figureId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^fig_[0-9a-f]{8}_[A-Za-z0-9._-]+$'
+      responses:
+        '202':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [figure]
+                properties:
+                  figure:
+                    $ref: '#/components/schemas/Figure'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/figures/{figureId}:
+    delete:
+      summary: 删除图示（operator/admin）
+      description: 已发布或仍被章节教材引用时返回 409 figure_in_use。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: figureId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^fig_[0-9a-f]{8}_[A-Za-z0-9._-]+$'
+      responses:
+        '204':
+          description: 已删除
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/figure-candidates/{candidateId}:
+    get:
+      summary: 读取候选图原图（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^cand_[0-9a-f]{8,32}$'
+      responses:
+        '200':
+          description: PNG 或 JPEG 原图
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/model-configs/llm:
+    get:
+      summary: 模型配置列表（admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 模型配置列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LlmConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: 新增模型配置（admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLlmConfigRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/model-configs/llm/{configId}:
+    parameters:
+      - name: configId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^llmc_[0-9a-f]{16}$'
+    get:
+      summary: 模型配置详情（admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 模型配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: 更新模型配置（admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLlmConfigRequest'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      summary: 删除模型配置（admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '204':
+          description: 已删除
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/model-configs/llm/{configId}/set-default:
+    parameters:
+      - name: configId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^llmc_[0-9a-f]{16}$'
+    post:
+      summary: 设为该用途的默认模型（admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 已设为默认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/model-configs/llm/{configId}/test:
+    parameters:
+      - name: configId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^llmc_[0-9a-f]{16}$'
+    post:
+      summary: 连通性测试（admin）
+      description: content 发一次最小 chat 请求；embedding 校验返回 1024 维。
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 测试结果（写入 lastTest* 字段）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelTestResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/model-configs/asr:
+    get:
+      summary: ASR 渠道配置（admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: ASR 配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsrConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      summary: 更新 ASR 渠道配置（admin）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAsrConfigRequest'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsrConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/admin/model-configs/asr/test:
+    post:
+      summary: ASR 连通性测试（admin）
+      description: 上传 1 秒合成 WAV，2xx 且 MiniMax base_resp 正常即通过。
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 测试结果（写入 lastTest* 字段）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelTestResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/admin/ai/usage/summary:
+    get:
+      summary: AI 用量汇总（operator/admin）
+      description: 汇总、按日趋势、按任务与按模型分组；价格未配置时 costMicros 为 null。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: task
+          in: query
+          schema:
+            $ref: '#/components/schemas/AiTaskKey'
+      responses:
+        '200':
+          description: 用量汇总
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, totals, daily, byTask, byModel]
+                properties:
+                  from:
+                    type: string
+                    format: date-time
+                  to:
+                    type: string
+                    format: date-time
+                  totals:
+                    type: object
+                    additionalProperties: true
+                  daily:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  byTask:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  byModel:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/ai/usage/events:
+    get:
+      summary: AI 用量明细（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: task
+          in: query
+          schema:
+            $ref: '#/components/schemas/AiTaskKey'
+        - name: model
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: cursor
+          in: query
+          description: 上一页最后一条 usageId
+          schema:
+            type: string
+            pattern: '^\d+$'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: 用量明细
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, nextCursor]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  nextCursor:
+                    type: [string, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/ai/runs:
+    get:
+      summary: AI 运行列表（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: task
+          in: query
+          schema:
+            $ref: '#/components/schemas/AiTaskKey'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, succeeded, failed]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [pipeline, admin]
+        - name: cursor
+          in: query
+          description: '<startedAtMs>:<runId>'
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: 运行列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs, nextCursor]
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  nextCursor:
+                    type: [string, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/ai/runs/{runId}:
+    get:
+      summary: AI 运行详情与步骤（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 运行详情
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required: [runId, taskKey, status, steps]
+                properties:
+                  runId:
+                    type: string
+                    format: uuid
+                  taskKey:
+                    $ref: '#/components/schemas/AiTaskKey'
+                  status:
+                    type: string
+                    enum: [running, succeeded, failed]
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/admin/ai/bindings:
+    get:
+      summary: 任务模型绑定与可选模型（operator/admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 绑定列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bindings, configs]
+                properties:
+                  bindings:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  configs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LlmConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/ai/bindings/{taskKey}:
+    put:
+      summary: 设置任务主/备模型（admin）
+      description: primaryConfigId 为 null 时删除绑定并回落到用途默认模型。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: taskKey
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/AiTaskKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primaryConfigId]
+              properties:
+                primaryConfigId:
+                  type: [string, 'null']
+                  pattern: '^llmc_[0-9a-f]{16}$'
+                fallbackConfigId:
+                  type: [string, 'null']
+                  pattern: '^llmc_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/ai/health:
+    get:
+      summary: 模型健康与冷却状态（operator/admin）
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 健康状态
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configs]
+                properties:
+                  configs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/portal/auth/register:
+    post:
+      summary: 门户注册（公开）
+      description: 仅创建 student 账号；成功即返回门户会话。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  pattern: '^[a-z][a-z0-9._-]{2,31}$'
+                password:
+                  type: string
+                  minLength: 10
+                  maxLength: 128
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '201':
+          description: 已注册
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: 用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/portal/auth/login:
+    post:
+      summary: 门户登录（公开）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/portal/auth/session:
+    get:
+      summary: 当前门户会话
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    type: object
+                    additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: 退出门户会话
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 已退出
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/portal/me:
+    get:
+      summary: 个人资料
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 资料
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile]
+                properties:
+                  profile:
+                    type: object
+                    additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      summary: 修改显示名
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName]
+              properties:
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile]
+                properties:
+                  profile:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/portal/me/password:
+    post:
+      summary: 修改密码（吊销其他会话）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 10
+                  maxLength: 128
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/portal/me/devices:
+    get:
+      summary: 我的设备
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 设备列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/portal/me/devices/{deviceId}:
+    delete:
+      summary: 解绑我的设备
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._:-]{8,128}$'
+      responses:
+        '200':
+          description: 已解绑
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/portal/releases:
+    get:
+      summary: 版本发布清单（公开）
+      responses:
+        '200':
+          description: 清单（60 秒缓存）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dshVersion, webAppPackage, plugin]
+                properties:
+                  dshVersion:
+                    type: string
+                  webAppPackage:
+                    type: string
+                  plugin:
+                    type: [object, 'null']
+                    additionalProperties: true
+        '503':
+          description: 清单格式错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/portal/stats:
+    get:
+      summary: 站点统计（公开）
+      responses:
+        '200':
+          description: 已发布内容计数（60 秒缓存）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [courses, knowledgePoints, segments, articles]
+                properties:
+                  courses:
+                    type: integer
+                  knowledgePoints:
+                    type: integer
+                  segments:
+                    type: integer
+                  articles:
+                    type: integer
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/media-assets/{assetId}/frames:
+    get:
+      summary: 关键帧轨道（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^asset_[0-9a-f]{16}$'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 86400000
+            default: 3600000
+      responses:
+        '200':
+          description: 短时签名帧 URL 分页（单段最多 1 小时）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FramesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/playback-sessions:
+    post:
+      summary: asset+时间窗播放会话（operator/admin，M10 片段卡预览）
+      description: 不要求课程 published（草稿预览用）；TTL 与学员会话一致由服务端回收。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^asset_[0-9a-f]{16}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                fromSec:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                toSec:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+      responses:
+        '201':
+          description: 会话已签发（fromSec/toSec 必须成对提供，窗长 ≤3600s）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetPlaybackSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/source-units:
+    get:
+      summary: source units 混合检索/列表（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^asset_[0-9a-f]{16}$'
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: conceptId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^cpt_[0-9a-f]{16}$'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: 词法+向量 RRF 融合（q 缺省为按时间轴列表）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUnitsSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: 批量写入理解产物（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [units]
+              additionalProperties: false
+              properties:
+                units:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [assetId, startMs, endMs, transcriptText, summary]
+                    additionalProperties: false
+                    properties:
+                      assetId:
+                        type: string
+                        pattern: '^asset_[0-9a-f]{16}$'
+                      transcriptId:
+                        type: string
+                        pattern: '^tr_[0-9a-f]{16}$'
+                      startMs:
+                        type: integer
+                        minimum: 0
+                      endMs:
+                        type: integer
+                        minimum: 0
+                      transcriptText:
+                        type: string
+                        maxLength: 8000
+                      visual:
+                        type: object
+                        additionalProperties: true
+                      summary:
+                        type: string
+                        maxLength: 2000
+                      conceptRefs:
+                        type: array
+                        maxItems: 30
+                        items:
+                          type: string
+                      producedBy:
+                        type: object
+                        additionalProperties: true
+      responses:
+        '200':
+          description: (assetId, startMs) 幂等；重复返回既有 unitId 且 deduped=true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUnitsSaveResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/source-units/reindex:
+    post:
+      summary: 补向量：为 embedding 为 NULL 的 units 批量生成 summary 向量（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 500
+                  default: 200
+                  description: 单次处理条数；分批调用直到 remaining=0
+      responses:
+        '200':
+          description: 可重入（断点即 embedding IS NULL）；失败单位保持 NULL 供下次重试
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUnitsReindexResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/concepts:
+    get:
+      summary: 课程术语清单（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: 全量概念（含 conceptId，供 conceptRefs 回填）；未知课程返回空列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConceptList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    put:
+      summary: 术语归一写入（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, name]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                aliases:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    maxLength: 200
+                definition:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: 课程内 name 唯一；冲突 409
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConceptCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/concept-edges:
+    post:
+      summary: 概念依赖边（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, fromConceptId, toConceptId, kind]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                fromConceptId:
+                  type: string
+                  pattern: '^cpt_[0-9a-f]{16}$'
+                toConceptId:
+                  type: string
+                  pattern: '^cpt_[0-9a-f]{16}$'
+                kind:
+                  type: string
+                  enum: [prerequisite, related]
+      responses:
+        '200':
+          description: 自环 400；未知引用 404；重复边幂等返回既有 edgeId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConceptEdgeCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections:
+    get:
+      summary: 节列表（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: chapterId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: 按 position 升序
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    put:
+      summary: 节草稿 upsert（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, chapterId, title, position]
+              additionalProperties: false
+              properties:
+                sectionId:
+                  type: string
+                  pattern: '^sec_[0-9a-f]{16}$'
+                  description: 缺省创建；提供则更新（仅 draft 课程可写）
+                courseId:
+                  type: string
+                  maxLength: 64
+                chapterId:
+                  type: string
+                  maxLength: 64
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                position:
+                  type: integer
+                  minimum: 1
+                summary:
+                  type: string
+                  maxLength: 2000
+                sourceAssetIds:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: string
+                    pattern: '^asset_[0-9a-f]{16}$'
+                conceptRefs:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: string
+                    pattern: '^cpt_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节草稿（创建或更新）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections/{sectionId}/article:
+    put:
+      summary: 节教材草稿（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [markdown, citations]
+              additionalProperties: false
+              properties:
+                markdown:
+                  type: string
+                  minLength: 1
+                  maxLength: 20000
+                citations:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: string
+                    pattern: '^su_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: >-
+            citations 指向未知 unitId 400；非 draft 课程 409；保存 version+1。
+            富文本 DSL 容器块（§6.6.1 v1）复检失败 400：figure_ref_unknown / unit_ref_unknown /
+            clip_not_grounded（窗越界、每节超 3 个或未完整落 source unit）及 schema 家族
+            （未知 directive、未声明属性、非法 JSON body、个股锚格式）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionArticleSaved'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections/{sectionId}/widgets:
+    get:
+      summary: 课件 spec 元数据列表（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 仅长度/类型/状态，不含 spec 正文全文（隐私口径）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+    post:
+      summary: 课件 spec 草稿提交与服务端断言证明（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, specVersion, spec, assertions]
+              additionalProperties: false
+              properties:
+                type:
+                  type: string
+                  enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+                specVersion:
+                  type: integer
+                  enum: [1]
+                spec:
+                  type: object
+                  additionalProperties: true
+                  description: 逐类型 schema 冻结于架构 §6.5.5（v1）；未列字段拒绝
+                assertions:
+                  type: object
+                  additionalProperties: true
+                  description: 断言词表见架构 §6.5.5；必带断言缺失 400
+                citations:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: string
+                    pattern: '^su_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 全部断言有证明记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 任一断言证明失败或缺失
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: object
+                    required: [code]
+                    properties:
+                      code:
+                        type: string
+                        enum: [assertion_unproven]
+                      failed:
+                        type: array
+                        items:
+                          type: string
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections/{sectionId}/figures:
+    get:
+      summary: 节级图示清单（operator/admin，M10）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节级图示列表（kind/caption/spec/选定状态）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionFiguresList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: 节级图示写入（operator/admin，M10；keyframe 抽帧或 diagram 模板 SVG，自动选定）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FigureWriteRequest'
+      responses:
+        '201':
+          description: 已创建并自动选定候选（spec 为 diagram 模板参数）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionFigure'
+        '400':
+          description: 请求不合法——schema 家族 / unit_ref_unknown / sec_not_grounded / figure template 白名单或参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 配额超限（figure_quota_exceeded：keyframe 每节 ≤6、diagram 每节 ≤2）或课程非草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: 图示存储未配置或管线未启用（keyframe 抽帧不可用）
+
+  /v1/admin/content/sections/{sectionId}/case-stocks:
+    get:
+      summary: 节级案例股清单（operator/admin，M10 R2）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节级案例股清单（含事件锚点）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionCaseStocksList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    put:
+      summary: 节级案例股清单批量 upsert（operator/admin，M10 R2）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseStocksWriteRequest'
+      responses:
+        '200':
+          description: 已落库或覆盖；返回每只 stock_ref_id 与是否命中既有行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseStocksWriteResponse'
+        '400':
+          description: 请求不合法——schema 家族 / unit_ref_unknown / event_date_out_of_window / 窗口倒置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 课程非草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections/{sectionId}/preview:
+    get:
+      summary: 管理台节渲染预览（教材 + 课件全量 + 图示，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节预览聚合（教材 + 课件 spec/断言全量 + 节级图示）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/sections/{sectionId}/widgets/{widgetId}:
+    delete:
+      summary: 管理端纠错删除课件（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^wgt_[0-9a-f]{16}$'
+      responses:
+        '204':
+          description: 已删除（草稿/已发布均可；重复删除 404）
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/provenance:
+    post:
+      summary: 生产溯源上报（operator/admin，M9）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskKey, model, status]
+              additionalProperties: false
+              properties:
+                taskKey:
+                  type: string
+                  enum: [vision.describe, content.chunk_summary, content.concept_map, content.curriculum, content.section_draft, content.section_edit, content.figure_spec, content.widget_spec, content.rubric_review]
+                model:
+                  type: string
+                  maxLength: 200
+                provider:
+                  type: string
+                  maxLength: 32
+                inputTokens:
+                  type: integer
+                  minimum: 0
+                outputTokens:
+                  type: integer
+                  minimum: 0
+                cachedTokens:
+                  type: integer
+                  minimum: 0
+                latencyMs:
+                  type: integer
+                  minimum: 0
+                status:
+                  type: string
+                  enum: [success, error]
+                errorCode:
+                  type: string
+                  maxLength: 64
+                skillVersions:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    maxLength: 200
+                targetId:
+                  type: string
+                  maxLength: 200
+                summary:
+                  type: object
+                  description: 产物级结构化摘要（如评审评分与 verdict），落 ai_runs.summary；序列化后 ≤8KB
+                  additionalProperties: true
+      responses:
+        '202':
+          description: 写入 ai_runs(source='producer') 与用量账本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvenanceAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
