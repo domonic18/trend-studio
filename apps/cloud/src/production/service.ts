@@ -335,7 +335,7 @@ export class ProductionService {
     const section = await this.requireSection(sectionId)
     await this.assertCourseDraft(section.course_id)
     if (citations.length > 0) await this.assertCount('source_units', 'unit_id', citations, 'citations contain unknown source unit')
-    await this.validateArticleGrounding(sectionId, parsed)
+    await this.validateArticleGrounding(sectionId, section.course_id, parsed)
     const { rows } = await this.pool.query<{ version: number; status: string }>(
       `INSERT INTO section_articles (section_id, markdown, citations, version, status)
        VALUES ($1, $2, $3::jsonb, 1, 'draft')
@@ -351,7 +351,7 @@ export class ProductionService {
   }
 
   /** DSL 语义校验上下文按正文引用懒查：figureId 查本节 figures、unitId 查 source_units。 */
-  private async validateArticleGrounding(sectionId: string, parsed: DslParseResult): Promise<void> {
+  private async validateArticleGrounding(sectionId: string, courseId: string, parsed: DslParseResult): Promise<void> {
     const { rows: figureRows } = await this.pool.query<{ figure_id: string }>(
       'SELECT figure_id FROM figures WHERE section_id = $1',
       [sectionId],
@@ -372,6 +372,7 @@ export class ProductionService {
     await validateArticleDsl(parsed, {
       sectionFigureIds: new Set(figureRows.map(row => row.figure_id)),
       units,
+      courseUnitIds: await this.loadCourseUnitIds(courseId, parsed.unitAnchors.map(anchor => anchor.unitId)),
       clipGrounded: async (assetId, fromMs, toMs) => {
         const { rows } = await this.pool.query(
           'SELECT 1 FROM source_units WHERE asset_id = $1 AND start_ms <= $2 AND end_ms >= $3 LIMIT 1',
@@ -387,6 +388,19 @@ export class ProductionService {
         return rows.length > 0
       },
     })
+  }
+
+  /** 内联锚 unitId 是否属于本课程：source_units 经 media_assets.course_id 归属课程。 */
+  private async loadCourseUnitIds(courseId: string, unitIds: string[]): Promise<ReadonlySet<string>> {
+    const wanted = [...new Set(unitIds)]
+    if (wanted.length === 0) return new Set()
+    const { rows } = await this.pool.query<{ unit_id: string }>(
+      `SELECT su.unit_id FROM source_units su
+         JOIN media_assets ma ON ma.asset_id = su.asset_id
+        WHERE ma.course_id = $1 AND su.unit_id = ANY($2::text[])`,
+      [courseId, wanted],
+    )
+    return new Set(rows.map(row => row.unit_id))
   }
 
   /** 管理台渲染预览：聚合节元信息、教材、课件(spec/断言全量) 与节级图示。 */

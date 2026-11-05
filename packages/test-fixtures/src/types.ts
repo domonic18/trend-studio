@@ -11,6 +11,7 @@ export type Expectation =
   | { verdict: 'reject'; kind: 'schema' }
   | { verdict: 'reject'; kind: 'figure_ref_unknown' }
   | { verdict: 'reject'; kind: 'unit_ref_unknown' }
+  | { verdict: 'reject'; kind: 'unit_anchor_unknown' }
   | { verdict: 'reject'; kind: 'clip_not_grounded' }
   | { verdict: 'reject'; kind: 'stock_not_in_list' }
 

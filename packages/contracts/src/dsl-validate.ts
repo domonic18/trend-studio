@@ -3,7 +3,7 @@
 import type { DslBlock, DslParseResult } from './dsl-parse.js'
 import type { DslErrorSink } from './errors-sink.js'
 import { checkAttrs, parseBody } from './dsl.js'
-import { STOCK_CODE } from './ids.js'
+import { SOURCE_UNIT_ID, STOCK_CODE } from './ids.js'
 import type { DslDirectiveName } from './enums.js'
 import { splitStockAnchorCode } from './stock-codes.js'
 
@@ -16,6 +16,8 @@ export interface DslUnitRef {
 export interface DslValidateCtx {
   sectionFigureIds: Set<string>
   units: Map<string, DslUnitRef>
+  /** [[unit:]] 锚的 unitId 必须落在本课程（经 media_assets.course_id 关联的全部 source units）。 */
+  courseUnitIds: ReadonlySet<string>
   /** clip 时间窗是否完整落在该 assetId 某 source unit 的 [startMs, endMs] 内（宿主懒查）。 */
   clipGrounded: (assetId: string, fromMs: number, toMs: number) => Promise<boolean>
   /** 个股锚是否在本节案例股清单内（宿主懒查；清单以 exchange + 6 位数字形态比对）。 */
@@ -24,6 +26,7 @@ export interface DslValidateCtx {
 
 export const CLIP_MAX_PER_SECTION = 3
 export const CLIP_WINDOW_MAX_SEC = 60
+export const UNIT_ANCHOR_LABEL_MAX = 50
 
 export async function validateArticleDsl(parsed: DslParseResult, ctx: DslValidateCtx, sink: DslErrorSink): Promise<void> {
   const clipBlocks = parsed.blocks.filter(block => block.directive === 'clip')
@@ -44,6 +47,21 @@ export async function validateArticleDsl(parsed: DslParseResult, ctx: DslValidat
     if (!(await ctx.stockInSection(parts.exchange, parts.code))) {
       sink.coded('stock_not_in_list', 'stock anchor is not in the section case stock list', {
         stockCode: anchor.code,
+        line: anchor.line,
+      })
+    }
+  }
+  for (const anchor of parsed.unitAnchors) {
+    if (!SOURCE_UNIT_ID.test(anchor.unitId)) {
+      sink.bad(`dsl: unit anchor id '${anchor.unitId}' invalid (line ${anchor.line})`)
+      continue
+    }
+    if ([...anchor.label].length > UNIT_ANCHOR_LABEL_MAX) {
+      sink.bad(`dsl: unit anchor label must be at most ${UNIT_ANCHOR_LABEL_MAX} characters (line ${anchor.line})`)
+    }
+    if (!ctx.courseUnitIds.has(anchor.unitId)) {
+      sink.coded('unit_anchor_unknown', 'unit anchor is not in this course', {
+        unitId: anchor.unitId,
         line: anchor.line,
       })
     }

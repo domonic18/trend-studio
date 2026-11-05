@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.11）
+# 趋势课程云端服务 · 架构设计（v0.12）
 
-版本：v0.11（2026-11-06；M3b 契约阻断项批次 B1：新增 `producer` 角色与生产/发布分权——生产命名空间 `/v1/admin/content/*` 接受 operator/admin/producer，发布/审批/账号/模型配置仍限 operator/admin；迁移 015 含 content_approvals 与 course_stock_quotes 表结构）
+版本：v0.12（2026-11-06；M3b 契约阻断项批次 B2：§6.6.1 DSL 增段落级 `[[unit:su_xxx|label]]` 内联锚——引用集口径 = 扁平 citations ∪ 锚（并集去重计数）；锚 unitId 不属本课程 `400 unit_anchor_unknown`，课程归属经 `media_assets.course_id` 关联）
+v0.11（2026-11-06；M3b 契约阻断项批次 B1：新增 `producer` 角色与生产/发布分权——生产命名空间 `/v1/admin/content/*` 接受 operator/admin/producer，发布/审批/账号/模型配置仍限 operator/admin；迁移 015 含 content_approvals 与 course_stock_quotes 表结构）
 v0.10（2026-11-05；文档体系梳理：M10 R1 呈现层落地状态回写、§7 小节编号去重（模型配置由重复的「7.1」改为 7.6）、案例股代号双形态统一（DB 6 位数字 + exchange ↔ 正文带前缀形态）、§6.5.4 图示配额改为指向 §6.6.2、跨仓版本引用校正）
 v0.9（2026-11-05；采纳「老师标注详情 + 逐根回放判断闭环」增补提案（来源 producer 调研线 `docs/research/m10-replay-annotation-proposal.md`，评审修正 3 处）：DSL v2 草案增 `:::annotation`/`:::replay`（按 code 解析，不带 widgetId）、`spec_version=2` 批次增 `bar-replay-decision`（3 条新断言、bars 不入 spec）、渲染组件输入扩 `annotations[]`、ADR C33/C34；隐私护栏：学员作答不采集。实现挂 R2 后半/R3 试点，R1 范围不变）
 v0.8（2026-11-05；补充 M10 教材呈现层与个股实盘对照目标架构 §6.6：富文本 DSL v1 冻结、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板取代 Mermaid、案例股清单与课程侧行情缓存、课件新题型草案；依据 2026-11-05 原型 V1–V3 用户验收与需求 v0.8 C14）
@@ -612,6 +613,7 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 - 块容器：`:::name key=value ...` 起始行、独占一行 `:::` 结束；`name` ∈ 组件白名单，未知 directive `400`；属性值含空格时引号包裹；未声明属性 `400`（白名单校验，沿用「边界即防线」）。
 - 结构化组件 body 为单个 JSON 对象（zod 逐组件 schema）；文本组件 body 为纯文本（1–500 字符，禁嵌套块级 Markdown 与 HTML）。
 - 内联锚：`[[stock:<code>|<label>]]`；`code = sz|sh|bj` 前缀 + 6 位数字；`label` 1–20 字符。**代号双形态**：正文锚用带前缀形态，数据库与案例股接口存 6 位数字形态 + `exchange` 列，两者按 `SZSE→sz`、`SSE→sh`、`BSE→bj` 映射等价（§5 `section_case_stocks`）。
+- 段落级引用锚（M3b B2）：`[[unit:<unitId>|<label>]]`，`unitId` 形如 `su_<16 hex>`，`label` ≤50 字符（可空，空时渲染端回退到 unitId 截短显示）；锚只出现在散文段落，不进容器块。**引用集口径 = 扁平 `citations` 字段 ∪ 正文 `[[unit:]]` 锚**，取并集去重后计入引用数——扁平集是节级证据清单，锚标出「哪一段引用了哪条证据」。
 - 安全约束不变：正文整体仍是安全 Markdown 子集，禁止 HTML/脚本/事件属性；DSL 只承载结构化数据，不引入自由排版面。
 
 **组件清单（v1）**：
@@ -626,12 +628,14 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 | `:::figure` | 配图卡（keyframe / diagram 图示） | `figureId` 必填、`caption` 1–200、`unitId?` | 空 |
 | `:::clip` | 片段卡（HLS 时间窗直放） | `assetId`、`from`、`to`（秒，整数）、`caption`、`unitId` 必填 | 空 |
 | `[[stock:code\|label]]` | 个股锚（内联，点击定位实盘侧栏） | — | — |
+| `[[unit:unitId\|label]]` | 段落级证据锚（内联，点击回溯该条 source unit） | — | — |
 
 **服务端写入校验（第 2 层语义，随 `PUT .../article` 复检）**：
 
 - `figureId` → 本节 `figures` 存在（`400 figure_ref_unknown`）；`unitId` → source unit 存在（`400 unit_ref_unknown`）。
 - `clip`：`0 ≤ from < to`、窗长 ≤60s、每节 ≤3；时间窗必须**完整落在某 source unit** `[startMs, endMs]` 内（`400 clip_not_grounded`）。
 - `[[stock:code]]` → code ∈ 本节案例股清单（`400 stock_not_in_list`；案例股须先于或同批写入）——**R2 实现**（R1 只校验 code 格式，成员校验待案例股表落地）。
+- `[[unit:unitId]]` → 锚 unitId 形状非法 `400`；**不属于本课程** source units `400 unit_anchor_unknown`（课程归属经 `media_assets.course_id` 关联，允许跨节引用同课程他节证据）。
 - 版本演进：`dslVersion=1` 随节响应下发；组件扩容升版本，规则同 §6.5.5 `specVersion`（只增不减，渲染器按版本门禁）。
 
 **组件扩容（v2 草案，2026-11-05 采纳增补提案，随首个试点节冻结）**：

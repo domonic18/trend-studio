@@ -1,8 +1,8 @@
 # 云端服务对接清单
 
 本文用于启动**独立的云端服务仓库**，供 `dsh-plugin-trend-coach` 插件对接。
-版本：v0.9（2026-11-06）
-状态：接口口径以需求 v0.10 §3（C13/C14）与架构 v0.11 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
+版本：v0.10（2026-11-06）
+状态：接口口径以需求 v0.10 §3（C13/C14）与架构 v0.11 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
 
 历史：v0.7（2026-11-05）§3.14 增补老师标注与逐根回放（DSL v2 草案 `:::annotation`/`:::replay`、`spec_version=2` 批次增 `bar-replay-decision`；零新端点零新表，验收用例与错误码见 §3.14，契约细节以架构 §6.6.1/§6.6.5 为准）；v0.6 新增教材呈现层与个股实盘接口（§3.14，M10：节级图示写入、案例股清单、行情缓存与学员行情查询；DSL 语法冻结于架构 §6.6.1）；v0.5 课件 spec schema v1 冻结（断言词表/生成器白名单见架构 §6.5.5，§3.13 补 `409 failed` 字段）；v0.4 新增语料级生产与交互课件接口（§3.13，M9，生产 Agent 循环在外部 `dsh-plugin-trend-producer`，本文仅为云端契约）；v0.3 新增门户与 AI 运营接口（§3.11、§3.12）。
 
@@ -967,6 +967,10 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 //   :::
 //   :::clip assetId=asset_... from=150 to=186 caption="定义讲解" unitId=su_...
 //   :::
+// 段落级引用走正文内联锚：证据出处是 [[unit:su_...|平台定义]]（label ≤50 字，可空）；
+//   锚 unitId 形状非法 → 400；不在本课程 source units（经 media_assets.course_id 归属）
+//   → 400 unit_anchor_unknown。引用集口径 = 扁平 citations 字段 ∪ 正文 [[unit:]] 锚，
+//   取并集去重后计入引用数
 // 未知 directive / 未声明属性 / 非法 JSON → 400；clip 窗不落 source unit 或超
 //   60s / 每节 >3 → 400 clip_not_grounded；[[stock:sz000713|丰乐种业]] 不在
 //   本节案例股清单 → 400 stock_not_in_list（R2 落地；R1 只校验 code 格式）
@@ -1005,6 +1009,7 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 | 用例 | 期望 |
 |---|---|
 | DSL 解析与校验 | 合法 DSL 保存 `version+1`；未知 directive/属性、非法 JSON、clip 越界、stock 不在清单均 `400` 附错误定位 |
+| 段落级 unit 锚 | `[[unit:su_...|label]]` 锚在散文中生效；锚 unitId 不在本课程 → `400 unit_anchor_unknown`；引用集 = 扁平 citations ∪ 锚，去重计数 |
 | 图示写入（keyframe） | 抽帧落候选并选定；`sec` 不落 source unit `400 sec_not_grounded`；超配额 `409 figure_quota_exceeded` |
 | 图示写入（diagram） | 模板白名单外 `400`；同 `template+params` 重放 SVG 逐字节一致 |
 | 资产时间窗播放会话 | 按 `assetId + 时间窗` 签发签名 HLS 地址；窗非法（不成对、`from≥to`、超 3600s）`400`；素材未就绪拒绝签发 |

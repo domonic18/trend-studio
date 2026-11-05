@@ -3,6 +3,8 @@ import { test } from 'node:test'
 import {
   figureWriteInput, firstIssueDetail, sourceUnitsWriteInput, widgetWriteInput,
   caseStocksWriteInput, checkAttrs, parseBody, sectionArticleWriteInput,
+  parseArticleDsl, validateArticleDsl, sourceUnitsReadInput, approvalsWriteInput,
+  quotesSyncInput, quotesSyncOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -85,4 +87,60 @@ test('parseBody：text 界、json schema 拒绝、empty 非空拒绝', () => {
   assert.equal(parseBody('board', ['正文'], fail), '正文')
   const parsed = parseBody('bignum', ['{"items":[{"label":"a","value":"1"}]}'], fail)
   assert.deepEqual(parsed, { items: [{ label: 'a', value: '1' }] })
+})
+
+test('parseArticleDsl：抽出段落级 unit 锚', () => {
+  const parsed = parseArticleDsl('证据见 [[unit:su_0123456789abcdef|平台定义]]。', {
+    bad: throwsWith(), coded: throwsWith(),
+  })
+  assert.equal(parsed.unitAnchors.length, 1)
+  assert.equal(parsed.unitAnchors[0].unitId, 'su_0123456789abcdef')
+  assert.equal(parsed.unitAnchors[0].label, '平台定义')
+})
+
+test('validateArticleDsl：unit 锚不在课程 → unit_anchor_unknown', async () => {
+  const parsed = parseArticleDsl('证据见 [[unit:su_ffffffffffffffff|他课证据]]。', {
+    bad: throwsWith(), coded: throwsWith(),
+  })
+  let code = null
+  await validateArticleDsl(parsed, {
+    sectionFigureIds: new Set(),
+    units: new Map(),
+    courseUnitIds: new Set([UNIT]),
+    clipGrounded: () => Promise.resolve(true),
+    stockInSection: () => Promise.resolve(true),
+  }, { bad: throwsWith(), coded: (c) => { code = c } })
+  assert.equal(code, 'unit_anchor_unknown')
+})
+
+test('validateArticleDsl：unit 锚在课程内通过', async () => {
+  const parsed = parseArticleDsl('证据见 [[unit:su_0123456789abcdef|平台定义]]。', {
+    bad: throwsWith(), coded: throwsWith(),
+  })
+  await validateArticleDsl(parsed, {
+    sectionFigureIds: new Set(),
+    units: new Map(),
+    courseUnitIds: new Set([UNIT]),
+    clipGrounded: () => Promise.resolve(true),
+    stockInSection: () => Promise.resolve(true),
+  }, { bad: throwsWith(), coded: (c) => { throw new Error(c) } })
+})
+
+test('M3b schema：证据读取 / 审批 / 行情同步', () => {
+  assert.equal(sourceUnitsReadInput.safeParse({ unitIds: [UNIT] }).success, true)
+  assert.equal(sourceUnitsReadInput.safeParse({ unitIds: [] }).success, false)
+  assert.equal(sourceUnitsReadInput.safeParse({ unitIds: ['bad'] }).success, false)
+
+  assert.equal(approvalsWriteInput.safeParse({ courseId: 'c1', gate: 'final' }).success, true)
+  assert.equal(approvalsWriteInput.safeParse({ courseId: 'c1', gate: 'mid' }).success, false)
+
+  assert.equal(quotesSyncInput.safeParse({ courseId: 'c1' }).success, true)
+  assert.equal(quotesSyncOutput.safeParse({
+    job: {
+      jobId: 'job_0123456789abcdef', assetId: null, courseId: 'c1', kind: 'quotes_sync',
+      status: 'succeeded', stage: 'done', progress: 1, attempts: 1, maxAttempts: 2,
+      errorCode: null,
+    },
+    upserted: 12,
+  }).success, true)
 })

@@ -13,6 +13,7 @@ function ctx(overrides: Partial<DslValidateCtx> = {}): DslValidateCtx {
   return {
     sectionFigureIds: new Set([FIGURE]),
     units: new Map([[UNIT, { assetId: ASSET, startMs: 60_000, endMs: 180_000 }]]),
+    courseUnitIds: new Set([UNIT]),
     clipGrounded: async (assetId, fromMs, toMs) =>
       assetId === ASSET && fromMs >= 60_000 && toMs <= 180_000,
     stockInSection: async (exchange, code) => exchange === 'SZSE' && code === '000713',
@@ -152,6 +153,14 @@ test('校验：个股锚必须在本节清单内（R2）', async () => {
     (error: unknown) => error instanceof CodedHttpError && error.code === 'stock_not_in_list',
   )
   await validateArticleDsl(parseArticleDsl('锚 [[stock:sz000713|丰乐种业]] 在清单'), ctx())
+})
+
+test('校验：段落级 unit 锚必须在本课程内（M3b）', async () => {
+  await assert.rejects(
+    () => validateArticleDsl(parseArticleDsl('证据 [[unit:su_ffffffffffffffff|他课证据]]'), ctx()),
+    (error: unknown) => error instanceof CodedHttpError && error.code === 'unit_anchor_unknown',
+  )
+  await validateArticleDsl(parseArticleDsl(`证据 [[unit:${UNIT}|平台定义]]`), ctx())
 })
 
 test('校验：无 DSL 的存量纯 Markdown 通过（向后兼容）', async () => {

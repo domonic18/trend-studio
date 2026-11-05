@@ -37,6 +37,21 @@ export const sectionCrossUnit: SectionFixture = {
   expect: { verdict: 'reject', kind: 'unit_ref_unknown' },
 }
 
+/** 段落级锚指向课程外 unit：unit_anchor_unknown。 */
+export const sectionUnitAnchorUnknown: SectionFixture = {
+  name: 'section-unit-anchor-unknown',
+  description: '锚 [[unit:su_ffffffffffffffff|他课证据]] 不在本课程 source units → unit_anchor_unknown',
+  sectionId: SECTION_ID,
+  units: [baseUnit()],
+  figures: [baseFigure()],
+  caseStocks: baseCaseStocks(),
+  article: {
+    markdown: '证据出处是 [[unit:su_ffffffffffffffff|他课证据]]。',
+    citations: ['su_0123456789abcdef'],
+  },
+  expect: { verdict: 'reject', kind: 'unit_anchor_unknown' },
+}
+
 /** 个股锚不在本节案例股清单：stock_not_in_list。 */
 export const sectionStockNotInList: SectionFixture = {
   name: 'section-stock-not-in-list',
