@@ -24,7 +24,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
-    "test:only": "node --test test/*.test.mjs"
+    "test:only": "node --test test/*.test.mjs",
+    "pack": "node scripts/pack.mjs"
   },
   "dependencies": {
     "@trend/contracts": "workspace:*",
