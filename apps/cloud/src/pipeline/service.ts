@@ -18,6 +18,8 @@ import { parseArticleDsl } from '../production/dsl/parse.js'
 import { chapterIdFor, draftSegmentIdFor, figureIdFor, knowledgePointIdFor } from './ids.js'
 import { ActiveJobError, type JobQueue, type PipelineJob } from './jobs.js'
 import { SourceChecksumError, SourceTooLargeError, type MediaStore } from './media-store.js'
+import { syncCourseQuotes } from './quotes/sync.js'
+import { createTencentQuoteFetcher, type QuoteFetcher } from './quotes/tencent.js'
 import {
   ASSET_STATUSES,
   JOB_KINDS,
@@ -49,6 +51,8 @@ export interface PipelineServiceOptions {
   embeddingAvailable?: () => Promise<boolean>
   /** 图示入队时解析图片模型；未配置返回 undefined（503）。 */
   image?: () => Promise<{ priceMicros: number } | undefined>
+  /** 行情拉取器；测试注入假拉取器，生产走腾讯前复权日K。 */
+  quotes?: QuoteFetcher
 }
 
 export interface AssetDto {
@@ -271,6 +275,8 @@ export interface PipelineApi {
   /** 审批签批：对当前课程内容指纹签名（同课程同门禁幂等重批）。 */
   approveCourse(courseId: string, gate: ApprovalGate, approvedBy: string): Promise<ApprovalItem>
   listApprovals(courseId: string): Promise<{ approvals: ApprovalItem[] }>
+  /** 行情同步：拉课程案例股前复权日K 并幂等落库（同步执行，返回本次写入行数）。 */
+  syncQuotes(courseId: string): Promise<{ job: JobDto; upserted: number }>
   publishCourse(courseId: string): Promise<PublishResult>
   listJobs(filters: JobFilters): Promise<{ jobs: JobDto[]; total: number; offset: number; limit: number }>
   getJob(jobId: string): Promise<JobDetail>
@@ -1085,6 +1091,38 @@ export class PipelineService implements PipelineApi {
     const { rows: courseRows } = await this.pool.query('SELECT 1 FROM courses WHERE course_id = $1', [courseId])
     if (courseRows.length === 0) throw notFound('course not found')
     return { approvals: await listCourseApprovals(this.pool, courseId) }
+  }
+
+  /**
+   * 行情同步：课程案例股清单 → 腾讯前复权日K → 幂等 upsert。
+   *
+   * 同步执行（清单约 10 只、每只一次 HTTP），不入队，因此不与 worker 抢任务；
+   * 运行痕迹仍写 pipeline_jobs（kind='quotes_sync'，直接落 succeeded）。
+   */
+  async syncQuotes(rawCourseId: string): Promise<{ job: JobDto; upserted: number }> {
+    const courseId = parseContentId(rawCourseId, 'courseId')
+    const { rows: courseRows } = await this.pool.query<{ status: string }>(
+      'SELECT status FROM courses WHERE course_id = $1',
+      [courseId],
+    )
+    const course = courseRows[0]
+    if (course === undefined) throw notFound('course not found')
+    if (course.status === 'archived') throw conflict('course is archived')
+
+    const fetcher = this.options.quotes ?? createTencentQuoteFetcher()
+    const result = await syncCourseQuotes(this.pool, courseId, fetcher)
+    const job = await this.recordQuotesJob(courseId, result.stocks, result.upserted)
+    return { job, upserted: result.upserted }
+  }
+
+  /** 落一条已完成的行情同步任务（同步执行，不经队列）。 */
+  private async recordQuotesJob(courseId: string, stocks: number, upserted: number): Promise<JobDto> {
+    const job = await this.jobs.recordCompleted({
+      courseId,
+      kind: 'quotes_sync',
+      options: { stocks, upserted },
+    })
+    return toJob(job)
   }
 
   async publishCourse(rawCourseId: string): Promise<PublishResult> {

@@ -3,6 +3,7 @@ import { parseQuizQuestions, type QuizQuestion } from '../content/quiz.js'
 import { HttpError } from '../errors.js'
 import { codePointLength, stringField } from '../http/validation.js'
 import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
+import { readCourseQuotes, type CatalogQuotes, type QuoteQuery } from './quotes.js'
 
 const COURSE_ID = /^[A-Za-z0-9._-]{1,64}$/
 const CHAPTER_ID = /^[A-Za-z0-9._-]{1,64}$/
@@ -208,6 +209,14 @@ export class CatalogService {
       completedCount: row.completed_count,
     }))
     const payload = { courses }
+    ensureSize(payload)
+    return payload
+  }
+
+  /** 学员行情：只放行已发布课程已发布案例股清单内的代号（M3b B5）。 */
+  async getQuotes(rawCourseId: string, query: QuoteQuery): Promise<CatalogQuotes> {
+    const courseId = parseCourseId(rawCourseId)
+    const payload = await readCourseQuotes(this.pool, courseId, query)
     ensureSize(payload)
     return payload
   }

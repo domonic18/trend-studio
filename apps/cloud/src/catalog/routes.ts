@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AuthService, Principal } from '../auth/service.js'
 import type { AppConfig } from '../config.js'
-import { tooManyRequests } from '../errors.js'
+import { HttpError, tooManyRequests } from '../errors.js'
 import { requirePrincipal } from '../http/principal.js'
 import type { RateLimiter } from '../rate-limit.js'
+import { parseQuoteCodes, parseQuoteDate } from './quotes.js'
 import { CatalogService } from './service.js'
 
 export interface CatalogRouteDeps {
@@ -33,6 +34,23 @@ export function registerCatalogRoutes(app: FastifyInstance, deps: CatalogRouteDe
     const principal = await guard(request)
     const { courseId } = request.params as { courseId: string }
     return catalog.getCourse(courseId, principal.userId)
+  })
+
+  app.get('/v1/catalog/courses/:courseId/quotes', async request => {
+    await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    const query = (request.query ?? {}) as Record<string, unknown>
+    const codes = typeof query.codes === 'string' ? parseQuoteCodes(query.codes) : undefined
+    const from = typeof query.from === 'string' ? parseQuoteDate(query.from, 'from') : undefined
+    const to = typeof query.to === 'string' ? parseQuoteDate(query.to, 'to') : undefined
+    if (from !== undefined && to !== undefined && from > to) {
+      throw new HttpError(400, 'from must not be after to')
+    }
+    return catalog.getQuotes(courseId, {
+      ...(codes === undefined ? {} : { codes }),
+      ...(from === undefined ? {} : { from }),
+      ...(to === undefined ? {} : { to }),
+    })
   })
 
   app.get('/v1/catalog/courses/:courseId/chapters/:chapterId', async request => {

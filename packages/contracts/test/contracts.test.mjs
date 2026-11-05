@@ -4,7 +4,7 @@ import {
   figureWriteInput, firstIssueDetail, sourceUnitsWriteInput, widgetWriteInput,
   caseStocksWriteInput, checkAttrs, parseBody, sectionArticleWriteInput,
   parseArticleDsl, validateArticleDsl, sourceUnitsReadInput, approvalsWriteInput,
-  quotesSyncInput, quotesSyncOutput,
+  quotesSyncInput, quotesSyncOutput, quotesItem, quotesListOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -143,4 +143,21 @@ test('M3b schema：证据读取 / 审批 / 行情同步', () => {
     },
     upserted: 12,
   }).success, true)
+})
+
+test('M3b 行情条目 schema：口径字段与严格模式', () => {
+  const bar = {
+    code: '000713', tradeDate: '2026-11-04', open: 8.4, high: 8.8, low: 8.3,
+    close: 8.7, volume: 135500, amount: null, source: 'tencent-qfq',
+  }
+  assert.equal(quotesItem.safeParse(bar).success, true)
+  assert.equal(quotesListOutput.safeParse({ pending: false, quotes: [bar] }).success, true)
+  assert.equal(quotesListOutput.safeParse({ pending: true, quotes: [] }).success, true)
+  // 代号须 6 位数字、日期须 YYYY-MM-DD、成交量须非负整数
+  assert.equal(quotesItem.safeParse({ ...bar, code: '713' }).success, false)
+  assert.equal(quotesItem.safeParse({ ...bar, tradeDate: '20261104' }).success, false)
+  assert.equal(quotesItem.safeParse({ ...bar, volume: 1.5 }).success, false)
+  // 多余字段拒绝（strict）
+  assert.equal(quotesItem.safeParse({ ...bar, adj: 'qfq' }).success, false)
+  assert.equal(quotesListOutput.safeParse({ pending: false, quotes: [bar], extra: 1 }).success, false)
 })

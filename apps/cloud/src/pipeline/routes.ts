@@ -275,6 +275,12 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     return api.listApprovals(parseContentId(courseId, 'courseId'))
   })
 
+  app.post('/v1/admin/content/courses/:courseId/quotes-sync', async request => {
+    await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    return api.syncQuotes(parseContentId(courseId, 'courseId'))
+  })
+
   app.post('/v1/admin/content/media-assets/:assetId/ingest', async (request, reply) => {
     await guard(request)
     const { assetId } = request.params as { assetId: string }

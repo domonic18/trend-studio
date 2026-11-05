@@ -1197,7 +1197,7 @@ components:
 
     PipelineJobKind:
       type: string
-      enum: [ingest, generate, illustrate]
+      enum: [ingest, generate, illustrate, quotes_sync]
 
     PipelineJobStage:
       type: string
@@ -1717,6 +1717,62 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Approval'
+
+    Quote:
+      type: object
+      additionalProperties: false
+      required: [code, tradeDate, open, high, low, close, volume, amount, source]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        tradeDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: integer
+          minimum: 0
+          description: 成交量，单位手（1 手 = 100 股）
+        amount:
+          type: [number, 'null']
+          description: 成交额（元）；腾讯前复权日K 不含成交额，为 null
+        source:
+          type: string
+          maxLength: 32
+          description: 复权口径来源（tencent-qfq）
+
+    QuotesListResponse:
+      type: object
+      additionalProperties: false
+      required: [pending, quotes]
+      properties:
+        pending:
+          type: boolean
+          description: 课程有已发布案例股但一行行情都没有 → 尚未同步
+        quotes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Quote'
+
+    QuotesSyncResponse:
+      type: object
+      additionalProperties: false
+      required: [job, upserted]
+      properties:
+        job:
+          $ref: '#/components/schemas/PipelineJob'
+        upserted:
+          type: integer
+          minimum: 0
+          description: 本次写入（含幂等覆盖）的行情行数
 
     FigureStatus:
       type: string
@@ -3181,6 +3237,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogChapterArticle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses/{courseId}/quotes:
+    get:
+      summary: 课程案例股行情（学员端）
+      description: 只返回该课程已发布案例股清单内的行情；清单外代号被过滤。尚未同步时返回 pending=true 与空数组。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: codes
+          in: query
+          required: false
+          description: 逗号分隔的 6 位代号，最多 10 只；缺省为课程全部已发布案例股
+          schema:
+            type: string
+            maxLength: 69
+        - name: from
+          in: query
+          required: false
+          description: 起始交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: to
+          in: query
+          required: false
+          description: 结束交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        '200':
+          description: 行情序列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotesListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -5055,6 +5162,41 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/courses/{courseId}/quotes-sync:
+    post:
+      summary: 同步课程案例股行情（operator/admin）
+      description: 同步执行腾讯前复权日K 并幂等 upsert；同步任务直接落 succeeded 记录，不进队列。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 已同步
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotesSyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':

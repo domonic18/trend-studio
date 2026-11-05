@@ -14,6 +14,10 @@
       "types": "./lib/admin.d.ts",
       "default": "./lib/admin.js"
     },
+    "./catalog": {
+      "types": "./lib/catalog.d.ts",
+      "default": "./lib/catalog.js"
+    },
     "./dsl": {
       "types": "./lib/dsl.d.ts",
       "default": "./lib/dsl.js"

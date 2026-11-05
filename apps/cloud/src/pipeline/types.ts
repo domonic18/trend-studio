@@ -8,7 +8,7 @@ export const ASSET_STATUSES = [
 ] as const
 export type AssetStatus = (typeof ASSET_STATUSES)[number]
 
-export const JOB_KINDS = ['ingest', 'generate', 'illustrate'] as const
+export const JOB_KINDS = ['ingest', 'generate', 'illustrate', 'quotes_sync'] as const
 export type JobKind = (typeof JOB_KINDS)[number]
 
 export const JOB_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'canceled'] as const
