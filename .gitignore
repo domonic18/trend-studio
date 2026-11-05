@@ -2,9 +2,12 @@
 node_modules/
 dist/
 build/
-lib/
 coverage/
 .turbo/
+# 构建产物 lib 仅存在于包根（apps/<pkg>/lib、packages/<pkg>/lib）；
+# web 前端有 src/lib 源码目录，禁用无锚定 lib/
+/apps/*/lib/
+/packages/*/lib/
 
 # 环境与密钥
 .env
