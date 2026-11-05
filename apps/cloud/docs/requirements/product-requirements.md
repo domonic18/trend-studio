@@ -1,7 +1,7 @@
 # 趋势交易课程云端服务需求
 
-版本：v0.9（2026-11-05）
-状态：与插件 PRD v1.8 §6、插件架构 v1.8 §6/§9/§10/§12/§17 对齐；v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
+版本：v0.15（2026-11-06）
+状态：v0.15 M3b 契约阻断项批次 B6——C14 学员端节级学习契约落地（课程存在已发布节正文时 `contractVersion=3`，课程树附带节摘要；`GET /v1/catalog/courses/{courseId}/sections/{sectionId}` 下发正文 + 课件 spec + 图示签名地址 + 案例股清单；`POST /v1/catalog/sections/{sectionId}/playback` 签发播放会话，播放窗须完整落在该节已发布正文的 clip 窗内，越窗或素材不匹配 `409 playback_window_invalid`；学员端只认设备令牌；渲染组件包由 `apps/cloud/web/widgets` 外迁至 monorepo `packages/widgets`（`@trend/widgets`））；v0.14 M3b 契约阻断项批次 B5——C14 实盘层行情落地（`POST /v1/admin/content/courses/{courseId}/quotes-sync`，operator/admin 同步拉取腾讯前复权日 K，按 `(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录；`GET /v1/catalog/courses/{courseId}/quotes`，设备令牌通道，只放行已发布课程的已发布案例股，清单外代号按过滤处理（不 403），未同步返回 `{pending:true, quotes:[]}`；成交量单位手、成交额恒 null（腾讯源无该字段，不估算））；v0.13 M3b 契约阻断项批次 B4——C13 增审批版本绑定与发布硬门禁（`POST|GET /v1/admin/content/courses/{courseId}/approvals`，签批 = 对课程内容指纹 sha256 签名；无 final 审批发布 `409 approval_required`，内容变更后指纹不符 `409 approval_stale`；发布事务内案例股清单 draft→published 翻转）；v0.12 M3b 契约阻断项批次 B3——C13 增 source unit 完整证据读取端点（`POST .../source-units/read`，≤20 条全有或全无，不存在/素材未就绪 `409 unit_not_readable`），教材落库引用集 = 扁平 citations ∪ 正文 `[[unit:]]` 锚；v0.11 M3b 契约阻断项批次 B2——C14 增段落级引用锚 `[[unit:su_xxx|label]]`（引用集口径 = 扁平 citations ∪ 锚，去重计数；锚 unitId 不属本课程 `400 unit_anchor_unknown`）；v0.10 M3b 契约阻断项批次 B1——新增 `producer` 生产端专用角色与生产/发布分权（C8 角色边界、C13 生产接口口径、§2 生产插件凭据）；其余同 v0.9。v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
 
 ## 1. 背景与目标
 
@@ -31,7 +31,7 @@
 | 浏览器播放器 | 只拿签名 `playlistUrl`，直接向媒体域取流，不持 Bearer |
 | 学员账号 | 可在门户自助注册；也可由管理员创建并用一次性邀请码设置密码；设备授权页登录后绑定设备 |
 | 内容运营 / 管理员 | 后台账号（用户名 + 密码）登录控制台，按角色管理账号、课程、知识点、文章与索引；运营/管理员可查看 AI 用量与运行，任务绑定仅管理员 |
-| 生产插件（M9） | `dsh-plugin-trend-producer`（教员本机 dsh），以 operator/admin 会话调用生产 admin API 写入草稿并上报溯源；模型自配（含主备），密钥不经云端；无发布权限 |
+| 生产插件（M9） | `dsh-plugin-trend-producer`（教员本机 dsh），以 **producer 专用角色会话**（M3b 起，管理员经 `POST /v1/admin/users` 铸发）调用生产 admin API 写入草稿并上报溯源；模型自配（含主备），密钥不经云端；无发布与审批权限 |
 
 ## 3. 功能需求
 
@@ -100,11 +100,11 @@
 
 ### C8 账号与后台登录（M3.1，P0）
 
-- 后台账号由管理员创建；学员可在门户自助注册（见 C11），注册只创建 `student`。字段：`username`（3–32，小写字母开头，唯一）、`displayName`、`role`（`student/operator/admin`）、`status`（`active/disabled`）。
+- 后台账号由管理员创建；学员可在门户自助注册（见 C11），注册只创建 `student`。字段：`username`（3–32，小写字母开头，唯一）、`displayName`、`role`（`student/operator/admin/producer`）、`status`（`active/disabled`）。
 - 创建或重置时可直接设置初始密码，或生成一次性邀请码（默认 7 天有效，单次使用）；邀请码只返回一次，服务端只存哈希。
 - 密码 10–128 字符，使用带随机盐的 scrypt 存储；任何接口、日志与错误消息不得回显密码或哈希。
 - 后台登录 `POST /v1/auth/session`：`{ username, password }` → 会话令牌；默认 12 小时有效，只存哈希，支持注销与自助改密；改密、禁用或角色变更立即吊销该账号后台会话。
-- 角色边界：`admin` 可创建/修改账号与重置凭据；`operator` 可读用户列表并做内容运营；`student` 不可登录控制台、不可访问 `/v1/admin/*`。
+- 角色边界：`admin` 可创建/修改账号与重置凭据；`operator` 可读用户列表并做内容运营与发布；`producer`（M3b）为生产端专用——只可写内容生产命名空间（source units/概念/节/教材/课件/图示/案例股），不可发布、不可审批、不可管理账号与模型配置；`student` 不可登录控制台、不可访问 `/v1/admin/*`。
 - 首个管理员由启动配置 `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` 在库中无管理员时创建；密码至少 12 字符，不写日志。
 - 登录、邀请码兑换与设备批准按 IP 限流；账号禁用后其设备令牌立即不可用。
 
@@ -157,7 +157,7 @@
 
 - 目标形态：约 69 集录播（10 卷、≈35 小时、720p h264）→ 一门结构化图文课程：篇→章→节目录、节级 grounded 教材、图示与可交互课件。生产 Agent 循环（理解摘要/课程综合/逐节写作/主编评审）全部在外部 `dsh-plugin-trend-producer` 执行；云端只提供确定性底座（帧轨道/存储/检索/复检/溯源账本/发布门禁），职责边界见架构 v0.10 §6.5。
 - 帧轨道：ingest 阶段按场景检测 + 1 帧/15s 固定采样，去重后缓存；`GET /v1/admin/content/media-assets/{assetId}/frames?from&to` 返回短时签名帧 URL（仅管理端），供生产端 VLM 使用。
-- 多模态理解：生产端逐 chunk（5–10 分钟）取转写分组与采样帧，产出 source unit `{时间范围, 转写, 画面描述, 图表类型, 讲解要点, 关键帧引用}`；`POST /v1/admin/content/source-units` 批量写入（`(assetId, startMs)` 幂等）；`GET .../source-units` 支持词法+向量混合检索，复用既有召回栈。
+- 多模态理解：生产端逐 chunk（5–10 分钟）取转写分组与采样帧，产出 source unit `{时间范围, 转写, 画面描述, 图表类型, 讲解要点, 关键帧引用}`；`POST /v1/admin/content/source-units` 批量写入（`(assetId, startMs)` 幂等）；`GET .../source-units` 支持词法+向量混合检索，复用既有召回栈；`POST .../source-units/read` 按 `unitIds`（≤20）回读完整证据（转写原文、视觉描述、窗内关键帧签名 URL、播放会话），全有或全无——任一 unitId 不存在或素材未就绪 `409 unit_not_readable`。
 - 课程综合：以人工目录（篇→卷→课时文件名）为**先验骨架**，Agent 只做校验、概念归一与依赖标注，不发明目录；概念归一入 `concepts`（含别名）与 `concept_edges`（`prerequisite` 依赖序），`concepts.name` 为正文与课件术语校验基准；骨架、概念图谱与术语表须经人工批准（门禁①，在生产端 dsh 审批）后方可逐节生产。
 - 节级生产：`sections` 为教学单元（约对应 1 个课时，可拆分/合并）；节教材 1200–3000 字 grounded Markdown，事实段落必须携带 `citations`（source unit 引用），无出处断言校验拒绝；图示三路分工——`diagram`（LLM 出结构化 spec、服务端渲染器确定性出 SVG，标注文字必须正确）、`keyframe`（按 source unit 时间戳取源画面）、`generated`（文生图仅装饰，禁止承载教学信息）。**配额以 C14 与架构 §6.6.2 为准**（节级 `keyframe` ≤6/节、`diagram` ≤2/节；`generated` 不经节级图示端点，沿用 M8 限额每章 ≤3）。
 - 交互课件：白名单 8 类组件的 JSON spec——`kline-annotator`（K 线标注练习）、`pattern-quiz`（形态识别）、`step-reveal`（分步解盘）、`calc-trainer`（参数化计算）、`mcq-quiz`、`flashcards`、`checklist`、`timeline-explorer`（概念依赖浏览）；每节 1–3 个。spec 携带教学断言与 citations；图表数据由**确定性生成器**按 spec 声明合成（seed 可重放），服务端**断言证明器**逐条验证并把证明记录落 `validation`，缺任一证明拒绝入库 `409 assertion_unproven`；**禁止 LLM 生成可执行代码**，渲染由学员端/管理台确定性 React 渲染器按 `spec_version` 契约执行。
@@ -165,23 +165,28 @@
 - 溯源上报：`POST /v1/admin/content/provenance` 上报生产端模型调用（`taskKey/model/provider/tokens/latency/skillVersions/targetId/status`，评审类可带 `summary` 结构化摘要），写入 `ai_runs(source='producer')` 与 `ai_usage_events`，与云端任务同一账本筛选；任务键命名空间 `vision.describe、content.chunk_summary、content.concept_map、content.curriculum、content.section_draft、content.section_edit、content.figure_spec、content.widget_spec、content.rubric_review`；不收 prompt 与产物正文。生产端 token 为自报数据，账本按 `source` 区分口径。
 - 断点恢复：生产中间产物（source units、概念、节草稿、课件 spec）全部经 admin API 增量落库（云 DB 即 checkpoint）；生产中断按云 DB 缺失单元重入队，不依赖生产端本地状态。
 - 发布演进：学员契约升级 `contractVersion=3`——目录树含节层，节响应含教材、`figures` 映射与 `widgets`（spec 列表）；插件低于最低支持版本提示升级，不静默降级。publish 硬门禁扩展：每个课件的 `validation` 证明记录必须完整，缺失 `409`；其余发布语义（draft→显式 publish→reindex、缺图 `409 figure_unresolved`）不变。
-- 边界与门禁归属：生产接口仅 operator/admin 会话，学员令牌 `403`；门禁①（骨架）与门禁②（主编评审）在生产端 dsh 审批完成，云端不重复强制，云端只守 publish 硬门禁；服务端 spec 复检为确定性校验（无 LLM）；学员侧只消费已发布内容，不感知生产过程。
+- 审批版本绑定（M3b B4 定版）：发布前必须存在 `gate=final` 的签批记录——签批 = 对课程**内容指纹**（章节/节教材、课件 spec、图示、案例股、片段全部内容经规范 JSON 排序后 sha256）签名，内容指纹**只覆盖内容不覆盖行版本计数**（重存同一内容不失效审批）；无 final 签批发布 `409 approval_required`，签批后内容变更导致指纹不符 `409 approval_stale`（回 expected/actual 指纹前 16 位）；签批端点 `POST|GET /v1/admin/content/courses/{courseId}/approvals` 归 operator/admin（producer 不可自签），同课程同门禁幂等重批（覆盖旧记录）；发布事务内同步把节级案例股清单由 `draft` 翻为 `published`。
+- 边界与门禁归属：生产接口接受 operator/admin/producer 会话（M3b 起 producer 为生产端专用角色），学员令牌 `403`；门禁①（骨架）与门禁②（主编评审）在生产端 dsh 审批完成，云端不重复强制，云端只守 publish 硬门禁；服务端 spec 复检为确定性校验（无 LLM）；学员侧只消费已发布内容，不感知生产过程。**云端 final 签批（审批版本绑定）由 operator/admin 执行**——生产端只产内容，签批与发布留分离职责。
 
 ### C14 教材呈现层与个股实盘对照（M10，P0）
 
 - 定位：教材从「Markdown 文章 + Mermaid 图 + 8 类课件」升级为**编辑部式富文本长文**，由四层构成：叙事层（组件化版式）、图示层（参数化 SVG 模板）、媒体层（关键帧配图 + 时间窗片段）、实盘层（个股 K 线对照）。2026-11-05 三轮原型（V1 版式 / V2 媒体 / V3 实盘）经用户验收定版，本条为产品化落地方向。
 - 正文承载（已定 2026-11-05）：**Markdown 扩展 DSL**。正文仍是 Markdown + citations，新增容器块语法承载组件——**v1 为 7 个容器块**（板书引用卡、大数字卡、对比卡/表〔同一 directive 的两种模式〕、时间轴、警示卡、配图卡、片段卡）**+ 1 个个股内联锚** `[[stock:code|label]]`；安全 Markdown 子集校验同步扩展，禁止 HTML/脚本约束不变；**DSL 语法、组件清单与逐组件 schema 的唯一契约源为架构 §6.6.1**（v1 冻结于 2026-11-05，`dslVersion=1` 随节响应下发），服务端在 `PUT .../article` 时复检（引用不存在、片段窗越界等一律 `400`）。存量 6 节教材按新格式重写回灌，不保留旧格式双轨。
+- 段落级引用（M3b B2 定版）：事实段落除节级扁平 `citations` 外，还可用正文内联锚 `[[unit:su_xxx|label]]` 标出「哪一段引用哪条证据」；**引用集口径 = 扁平 citations ∪ 正文锚**（并集去重计数）；锚 unitId 不属本课程 `400 unit_anchor_unknown`。
 - 媒体层（已定 2026-11-05）：配图卡引用节级 `keyframe` figure（沿用 `figure:` 引用与签名 URL 机制），caption 携带 source unit 徽章可回溯；片段卡正文只记 `(assetId, startSec, endSec)` 时间窗，播放复用 C3 签名 HLS 会话（播放器按起止秒 seek 与停止），**不产预切片文件**；时间窗必须完整落在某 source unit 范围内（grounded 校验），单节片段 ≤3、单窗 ≤60s。
 - 实盘层（已定 2026-11-05）：
   - 节级**案例股清单**结构化字段：每股 `name / exchange(SZSE|SSE|BSE) + code(6 位数字) / 案例窗口(起止日) / 事件锚点[{date, label, unitId}] / 用途注记`；由生产端从 source units 画面理解与教材事实提取，云端复检（代号格式合法、窗口日期合法、事件锚点 unitId 可回溯、日期落在窗口内）。**代号双形态**：数据库与接口存 6 位数字形态，正文内联锚 `[[stock:code|label]]` 用带交易所前缀形态（前缀映射 `SZSE→sz`、`SSE→sh`、`BSE→bj` + 6 位数字），两者按此映射等价。
   - 行情缓存：课程侧自建轻量日线表（**不耦合 `ai-invest`**，§1 边界不变）——按全课案例股清单（约 10 只）拉取腾讯前复权日 K，历史一次性回填 + 交易日日更；仅存 OHLCV 原始值并标注复权口径；课程图示为录制时点复权，与当前复权的价差在渲染层声明，不改数据。
+    - **落库口径（M3b B5 定版）**：`volume` 单位为**手**（1 手 = 100 股，沿用腾讯原始口径）；`amount`（成交额）**恒为 null**——腾讯前复权日 K 报文不含该字段，源不可得不估算；`source` 固定 `tencent-qfq`；`(code, trade_date)` 唯一，重跑幂等覆盖同一行。
   - 渲染组件：K 线 + 成交量双面板（红涨绿跌）、M60 叠加、悬停读数、缩放平移、事件锚点点选定位；管理台与学员端共用组件契约；展示必须携带「不构成投资建议」与复权口径声明。
-  - 行情数据接口仅对已发布课程的案例股开放，学员不可查询清单外标的。
+  - 行情数据接口仅对已发布课程（`status='published'`）的**已发布**案例股开放（M3b B5：同步取清单内 draft + published，学员端只读 published）。
+    - **清单外代号按过滤处理**（M3b B5 定版，覆盖早期「403」表述）：请求携带清单外代号时静默剔除，不回 403、不泄露他课数据；单次请求 ≤10 只代号、每只 ≤320 根 bar；未同步过时返回 `{pending:true, quotes:[]}`（200，非 404），渲染层据此显示「等待行情同步」；时间窗内无数据**不算待同步**（`pending:false` + 空数组）。
 - 图示层：`diagram` 类改为**参数化 SVG 模板**（服务端确定性渲染器按 spec 渲染，模板白名单首批：密集 vs 发散对比双栏、横线筹码示意、时间轴、大数字卡内嵌图），模板按节需扩展并冻结版本（白名单 v1 已冻结，架构 §6.6.4）；Mermaid 不再作为教材图示通道（2026-11-05 原型否决）；文生图（`generated`）仍仅装饰、不承载教学信息。
 - 课件范围（已定 2026-11-05）：本期**换皮 + 新题型**——既有 8 类渲染器视觉升级为编辑部风格（spec、断言、评分口径不动）；白名单扩容首批新题型 `image-juxtaposition`（两图对比滑块，筹码/形态前后对照）、`branching-scenario`（决策树情境练习）与 `bar-replay-decision`（2026-11-05 采纳增补提案：真实案例股逐根回放 + 先判断后揭晓的检索练习闭环），spec schema 冻结新 `spec_version` 并配断言词表；**生成式 h5-page 逃生舱维持不做**（「禁止 LLM 生成可执行代码」约束不变）。
 - 老师标注与逐根回放（2026-11-05 采纳增补提案，DSL/课件 v2 草案批次）：原片里老师画过的线与说过的判断沉淀为结构化教学资产——①正文 DSL `:::annotation`（原话/原片时间码/术语/citation/跳回原片；定位用交易日期非 bar 索引；候选由生产端从 source units 抽取、门禁②人工确认）；②`bar-replay-decision` 课件（判断点暂停遮罩、提交锁定、揭晓老师结论，`bars` 不入 spec）；③正文 `:::replay` 入口按 code 内嵌（不携带 widgetId）。**隐私护栏**：学员作答只做本地反馈，不采集、不进 provenance 与 M2 事件。零新端点、零新表；契约见架构 v0.10 §6.6.1/§6.6.5 与 ADR C33/C34。
 - 评审门禁升级：rubric 的 `grounded` 维度扩义——配图帧引用、片段时间窗、案例股事件锚点、老师标注与判断点（quote/atMs/d/revealText）均为可回溯引用，缺失或与 source unit 对不上按 grounded 失败计；`quality-rubric` skill 0.3.0 → 0.4.0；存量 2 节 reject（总论 1、筹码分布 1）与全部 6 节按新格式重写并重新过门禁②。
 - 管理台先行：本条全部能力先在管理台节预览落地（不耦合学员端）；渲染组件以可移植方式实现（独立包边界，禁止依赖管理台私有运行时）；学员端启用时机与契约字段并入尚未发布的 `contractVersion=3`（节响应扩展：DSL 教材、figures、片段窗、案例股清单），不新开版本号。
+- 学员端节级契约（M3b B6 定版）：课程存在**已发布节正文**时 `contractVersion=3`，课程树附带节摘要 `sections[]`（节 ID/标题/有无正文/图示数/课件类型/案例股代号）；v2 老课程字段零变化（不返回 `sections`）。节详情 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}` 下发正文（markdown + dslVersion + version + publishedAt）、课件 spec 与断言、图示元数据（**含短时签名图片地址**）与案例股清单。播放会话 `POST /v1/catalog/sections/{sectionId}/playback`（body `assetId/fromSec/toSec`）的请求窗**必须完整落在该节已发布正文的某个 clip 块窗内**，越窗或素材不匹配一律 `409 playback_window_invalid`——防止拿会话号去放正文之外的素材。学员端只认设备令牌（后台会话令牌不可用）。
 
 ## 4. 非功能需求
 
@@ -261,6 +266,7 @@
 | AI | 权限 | operator 可读用量/运行；绑定写仅 admin；学员 `403` |
 | 语料 | 帧轨道与理解写入 | `frames` 返回短时签名帧 URL；source units `(assetId,startMs)` 幂等，重复写入返回既有 unitId |
 | 语料 | source units 检索 | 词法+向量混合召回出结果；空结果 `units=[]`；学员令牌 `403` |
+| 语料 | source units 证据读取 | `unitIds` ≤20 回读转写原文、视觉、关键帧签名 URL 与播放会话；混入不存在 unitId → `409 unit_not_readable` |
 | 语料 | 目录先验与概念归一 | 目录外章节/节不被创建；概念别名归一唯一，重复 name `409`；自环边 `400` |
 | 课件 | spec 复检与断言证明 | 全部断言有证明记录 `200`；缺任一证明 `409 assertion_unproven`；同 seed 重放数据一致 |
 | 课件 | 白名单与版本契约 | `type` 白名单外 `400`；不支持的 `spec_version` `400`；spec 无可执行代码落点 |
@@ -268,12 +274,16 @@
 | 溯源 | provenance 上报 | 写入 `ai_runs(source='producer')` 与用量；缺 `taskKey/model/status` 整体 `400`；后台可按 source 筛选；不含 prompt/正文 |
 | 发布 | `contractVersion=3` | 目录含节；节响应含教材/figures/widgets；插件低版本提示升级 |
 | 发布 | publish 校验扩展 | 课件 `validation` 缺失 `409`；figure 与断言引用完整才可发布；其余发布语义不变 |
+| 审批 | 未签批发布 | `409 approval_required`；producer 调签批端点 `403`；非法 `gate` `400` |
+| 审批 | 签批后内容变更再发布 | `409 approval_stale`（回 expected/actual 指纹前 16 位）；重签后同指纹照常发布 |
+| 审批 | 签批与案例股翻转 | 签批返回 `digest` 64 位十六进制与各节 `digestSections`；同门禁重批幂等；发布成功后节级案例股清单 `draft→published` |
 | 呈现 | DSL 容器块写入 | 合法正文 `version+1`；未知 directive/未声明属性/非法 JSON body 一律 `400` 附定位 |
 | 呈现 | DSL 引用完整性 | `figureId` 不属本节 `400 figure_ref_unknown`；`unitId` 不存在 `400 unit_ref_unknown`；片段窗越界/超时长/超数量 `400 clip_not_grounded` |
+| 呈现 | 段落级引用锚 | `[[unit:su_xxx|label]]` 锚生效；锚 unitId 不属本课程 `400 unit_anchor_unknown`；引用集 = 扁平 citations ∪ 锚，去重计数 |
 | 呈现 | 节级图示写入 | keyframe 抽帧落候选并选定；`sec` 不落 source unit `400 sec_not_grounded`；超配额 `409 figure_quota_exceeded`；diagram 模板白名单外 `400`，同 `template+params` 重放 SVG 逐字节一致 |
 | 呈现 | 片段卡播放 | 换签名会话后窗内起播、到点停止；资产未就绪拒绝签发 |
 | 呈现 | 发布门禁扩展 | DSL `:::figure` 引用缺失 `409 figure_unresolved`；片段窗非法 `409 clip_invalid`；补齐后照常发布 |
-| 呈现 | 案例股与行情 | 事件日期不落窗/`unitId` 不存在 `400`；行情仅同步清单内 code；学员查清单外标的 `403`；缓存未就绪 `503`（渲染层降级，不伪造数据） |
+| 呈现 | 案例股与行情 | 事件日期不落窗/`unitId` 不存在 `400`；行情仅同步清单内 code；同步重跑幂等（行数不变）；学员查清单外标的按**过滤**处理（不 403、不泄露他课数据）；未同步 `200 {pending:true, quotes:[]}`（渲染层降级，不伪造数据）；未发布课程 `404` |
 
 质量门槛：召回评估集 Top-5 ≥90%；接口契约测试覆盖上表全部用例；压测满足 P95 与并发目标。真实 MiniMax ASR、content LLM（`MiniMax-M3.1-Flash`，anthropic 协议）与 embedding（智谱 `embedding-3`，1024 维）均已完成链路验证（2026-11-01，33 分钟中文样片，详见运维手册 §11），发布 `indexed=true` 且检索为词法 + 向量混合召回。
 
@@ -295,7 +305,7 @@
 | M7 | 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换 | 门户深链可刷新；注册/登录/个人中心闭环；AI 调用可计量、主备可切换 |
 | M8 | 教材阅读层（章节教材替换知识点文章）、视频关键帧与 Seedream 图示、短时签名图片、旧课程重生成 | 1 门课程按章连续阅读；每章图文完整；图片签名与成本限额验收通过；已落地，插件 S12 已验收（真实 Ark 出图待图片模型 Key） |
 | M9 | 语料级生产：关键帧轨道、source units、概念图谱与节存储/检索、生产溯源上报、课件 spec 复检与断言证明、管理台渲染预览、`contractVersion=3`；配套 `dsh-plugin-trend-producer`（独立仓库，生产 Agent 循环 + Skill 工艺包） | 以"总论"卷（7 集 ≈3.5h）跑通阶段 0–4 全链路：骨架审批→逐节生产→三层校验收敛→课件断言证明→人工终审发布可检索；rubric 评估集盲评占优 M8 产物；溯源账本完整覆盖生产调用；rc 版 dsh 长任务稳定性通过试点验证 |
-| M10 | 教材呈现层：富文本 DSL 校验与组件渲染器、关键帧配图卡与 HLS 片段窗、参数化 SVG 模板图示、案例股清单与课程侧行情缓存、K 线对照组件、课件换皮 + 新题型（image-juxtaposition / branching-scenario）、rubric 0.4.0 | 管理台节预览以 V3 原型形态呈现全部 6 节；全部教材按 DSL 重写并通过门禁②（含 2 节 reject 回灌）；片段窗与事件锚点 grounded 校验生效；新题型 spec 冻结且断言证明通过；行情缓存覆盖全课案例股且日更稳定。**R1 呈现层已落地（DSL 校验 / figures 端点与 SVG 模板渲染器 / 资产时间窗播放会话与发布门禁 / `web/widgets` 组件包）；R2 实盘层、R3 质量收敛待启动** |
+| M10 | 教材呈现层：富文本 DSL 校验与组件渲染器、关键帧配图卡与 HLS 片段窗、参数化 SVG 模板图示、案例股清单与课程侧行情缓存、K 线对照组件、课件换皮 + 新题型（image-juxtaposition / branching-scenario）、rubric 0.4.0 | 管理台节预览以 V3 原型形态呈现全部 6 节；全部教材按 DSL 重写并通过门禁②（含 2 节 reject 回灌）；片段窗与事件锚点 grounded 校验生效；新题型 spec 冻结且断言证明通过；行情缓存覆盖全课案例股且日更稳定。**R1 呈现层已落地（DSL 校验 / figures 端点与 SVG 模板渲染器 / 资产时间窗播放会话与发布门禁 / `@trend/widgets` 组件包）；R2 实盘层**行情侧已落地**（M3b B5：腾讯前复权日 K 同步端点 + 学员行情查询端点 + `course_stock_quotes` 缓存表），**学员端节级契约已落地**（M3b B6：`contractVersion=3` 节摘要 + 节详情端点 + clip 窗播放会话 + 组件包外迁 monorepo `packages/widgets`），R2 余下（学员端 K 线对照组件、课件换皮与新题型）与 R3 质量收敛待启动** |
 
 ## 9. 待冻结事项
 
@@ -334,7 +344,7 @@
 | 生产溯源口径 | token 为生产端自报，云端按 `source='producer'` 区分，不做核验 | 成本账本口径与信任边界 |
 | 呈现层 DSL 与 SVG 模板 | 已定（2026-11-05）：Markdown 扩展容器块承载组件；`diagram` 走参数化 SVG 模板，Mermaid 退出；DSL v1 与模板白名单 v1 已冻结于架构 §6.6.1/§6.6.4 | 渲染器版本门禁与生产端工艺 |
 | 课件新题型 | 已定（2026-11-05）：白名单扩容首批 `image-juxtaposition`、`branching-scenario`、`bar-replay-decision`，随 `spec_version=2` 冻结（草案见架构 §6.6.5，断言词表随首个试点节定稿）；生成式 h5-page 逃生舱不做 | 课件契约与渲染器门禁 |
-| 个股行情源与口径 | 已定（2026-11-05）：课程侧轻量缓存（腾讯前复权日 K，案例股 ~10 只回填 + 日更，`quotes_sync` 任务，架构 §6.6.3），不耦合 ai-invest；复权价差在渲染层声明；单源无备用，连续失败渲染层降级 | 数据管道、存储与合规声明 |
+| 个股行情源与口径 | 已定（2026-11-05）：课程侧轻量缓存（腾讯前复权日 K，案例股 ~10 只回填 + 日更，`quotes_sync` 任务，架构 §6.6.3），不耦合 ai-invest；复权价差在渲染层声明；单源无备用，连续失败渲染层降级。M3b B5 已落地同步与学员查询端点（成交量单位手、成交额恒 null 不估算） | 数据管道、存储与合规声明 |
 | 视频片段通道 | 已定（2026-11-05）：HLS 时间窗直放（复用 C3 签名会话），不产预切片文件（架构 §6.6.2）；学员离线降级为关键帧封面，预切片兜底另议 | 存储成本与播放体验 |
 
 ## 10. 关联文档

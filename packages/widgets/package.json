@@ -1,0 +1,73 @@
+{
+  "name": "@trend/widgets",
+  "version": "0.1.0",
+  "description": "教材 DSL 渲染组件包：管理台预览与学员端共用渲染器（antd-free）",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./article": {
+      "types": "./lib/article.d.ts",
+      "default": "./lib/article.js"
+    },
+    "./blocks": {
+      "types": "./lib/blocks.d.ts",
+      "default": "./lib/blocks.js"
+    },
+    "./clip": {
+      "types": "./lib/clip.d.ts",
+      "default": "./lib/clip.js"
+    },
+    "./dsl": {
+      "types": "./lib/dsl.d.ts",
+      "default": "./lib/dsl.js"
+    },
+    "./engine": {
+      "types": "./lib/engine.d.ts",
+      "default": "./lib/engine.js"
+    },
+    "./learner": {
+      "types": "./lib/learner/index.d.ts",
+      "default": "./lib/learner/index.js"
+    },
+    "./spec-types": {
+      "types": "./lib/spec-types.d.ts",
+      "default": "./lib/spec-types.js"
+    },
+    "./styles": {
+      "types": "./lib/styles.d.ts",
+      "default": "./lib/styles.js"
+    },
+    "./types": {
+      "types": "./lib/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    "./widgets.css": "./lib/widgets.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "^5.9.0"
+  }
+}

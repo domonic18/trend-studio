@@ -19,6 +19,7 @@ import type {
 } from '../shared/contracts.js'
 import { CatalogPanel } from './catalog.js'
 import { ClassroomPanel } from './classroom.js'
+import { SectionView } from './section-view.js'
 import { LearnerContextBridge } from './context-bridge.js'
 import { learnerContextStore } from './learner-context.js'
 import { installSelectionDetector } from './selection.js'
@@ -29,6 +30,8 @@ import type {
   RemoteCatalogChapterResult,
   RemoteCatalogCourseResult,
   RemoteCatalogCoursesResult,
+  RemoteCatalogSectionResult,
+  RemoteCourseQuotesResult,
   RemoteDeviceAuthPollResult,
   RemoteDeviceAuthStartResult,
   RemoteEventsConsentResult,
@@ -38,6 +41,7 @@ import type {
   RemoteProgressResult,
   RemoteReportResult,
   RemoteSearchResult,
+  RemoteSectionPlaybackResult,
   RemoteSegmentResult,
   RemoteSignOutResult,
   RemoteVoiceTranscriptResult,
@@ -51,9 +55,11 @@ const TAB_ID = 'dsh-plugin-trend-coach'
 const CATALOG_ID = 'dsh-plugin-trend-coach-catalog'
 const PLAYER_ID = 'dsh-plugin-trend-coach-player'
 const CLASSROOM_ID = 'dsh-plugin-trend-coach-classroom'
+const SECTION_ID = 'dsh-plugin-trend-coach-section'
 const CATALOG_KIND = 'trend-coach-catalog'
 const PLAYER_KIND = 'trend-coach-player'
 const CLASSROOM_KIND = 'trend-coach-classroom'
+const SECTION_KIND = 'trend-coach-section'
 const CITATION_HOST = 'trend-coach.local'
 const SEGMENT_CODE = /^seg-[A-Za-z0-9._-]+$/
 const SEGMENT_CLIP_SEC = 60
@@ -142,11 +148,94 @@ const catalogChapterSchema = z.object({
   knowledgePoints: z.array(catalogKnowledgePointSchema),
 })
 
+const catalogSectionSummarySchema = z.object({
+  sectionId: z.string(),
+  title: z.string(),
+  position: z.number(),
+  hasArticle: z.boolean(),
+  figureCount: z.number(),
+  widgetTypes: z.array(z.string()),
+  caseStockCodes: z.array(z.string()),
+})
+
 const catalogCourseSchema = z.object({
   contractVersion: z.number(),
   courseId: z.string(),
   title: z.string(),
   chapters: z.array(catalogChapterSchema),
+  sections: z.array(catalogSectionSummarySchema).optional(),
+})
+
+const catalogSectionArticleSchema = z.object({
+  markdown: z.string(),
+  dslVersion: z.number(),
+  version: z.number(),
+  publishedAt: z.number(),
+})
+
+const catalogWidgetSchema = z.object({
+  widgetId: z.string(),
+  type: z.string(),
+  specVersion: z.number(),
+  version: z.number(),
+  spec: z.record(z.string(), z.unknown()),
+  assertions: z.record(z.string(), z.unknown()),
+})
+
+const catalogFigureSchema = z.object({
+  figureId: z.string(),
+  kind: z.string(),
+  caption: z.string(),
+  assetId: z.string().nullable(),
+  sourceSec: z.number().nullable(),
+  candidateId: z.string().nullable(),
+  url: z.string().nullable(),
+})
+
+const catalogCaseStockSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  exchange: z.enum(['SZSE', 'SSE', 'BSE']),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  events: z.array(z.unknown()),
+})
+
+const catalogSectionSchema = z.object({
+  sectionId: z.string(),
+  courseId: z.string(),
+  chapterId: z.string(),
+  title: z.string(),
+  position: z.number(),
+  article: z.union([catalogSectionArticleSchema, z.null()]),
+  widgets: z.array(catalogWidgetSchema),
+  figures: z.array(catalogFigureSchema),
+  caseStocks: z.array(catalogCaseStockSchema),
+})
+
+const catalogPlaybackSchema = z.object({
+  sessionId: z.string(),
+  playlistUrl: z.string(),
+  fromSec: z.number().nullable(),
+  toSec: z.number().nullable(),
+  expiresAt: z.number(),
+})
+
+const quoteItemSchema = z.object({
+  code: z.string(),
+  tradeDate: z.string(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  close: z.number(),
+  volume: z.number(),
+  amount: z.number().nullable(),
+  source: z.string(),
+})
+
+const quoteListSchema = z.object({
+  pending: z.boolean(),
+  quotes: z.array(quoteItemSchema),
 })
 
 const chapterArticleSchema = z.object({
@@ -329,6 +418,95 @@ const spec: TypertRemoteSpec = {
       result: codec(
         'dsh-plugin-trend-coach#trendCoach/catalogChapter:result',
         () => catalogChapterArticleSchema,
+      ),
+    },
+    'trendCoach/catalogSection': {
+      service: 'trendCoach',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'courseId',
+          wire: 'courseId',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/catalogSection:courseId', () => z.string()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/catalogSection:courseId', () => z.string()),
+        },
+        {
+          name: 'sectionId',
+          wire: 'sectionId',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/catalogSection:sectionId', () => z.string()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/catalogSection:sectionId', () => z.string()),
+        },
+      ],
+      cancellation: { parameter: 'signal' },
+      result: codec(
+        'dsh-plugin-trend-coach#trendCoach/catalogSection:result',
+        () => catalogSectionSchema,
+      ),
+    },
+    'trendCoach/sectionPlayback': {
+      service: 'trendCoach',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'sectionId',
+          wire: 'sectionId',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:sectionId', () => z.string()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:sectionId', () => z.string()),
+        },
+        {
+          name: 'assetId',
+          wire: 'assetId',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:assetId', () => z.string()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:assetId', () => z.string()),
+        },
+        {
+          name: 'fromSec',
+          wire: 'fromSec',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:fromSec', () => z.number()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:fromSec', () => z.number()),
+        },
+        {
+          name: 'toSec',
+          wire: 'toSec',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:toSec', () => z.number()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/sectionPlayback:toSec', () => z.number()),
+        },
+      ],
+      cancellation: { parameter: 'signal' },
+      result: codec(
+        'dsh-plugin-trend-coach#trendCoach/sectionPlayback:result',
+        () => catalogPlaybackSchema,
+      ),
+    },
+    'trendCoach/courseQuotes': {
+      service: 'trendCoach',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'courseId',
+          wire: 'courseId',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:courseId', () => z.string()),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:courseId', () => z.string()),
+        },
+        {
+          name: 'codes',
+          wire: 'codes',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:codes', () => z.array(z.string())),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:codes', () => z.array(z.string())),
+        },
+      ],
+      cancellation: { parameter: 'signal' },
+      result: codec(
+        'dsh-plugin-trend-coach#trendCoach/courseQuotes:result',
+        () => quoteListSchema,
       ),
     },
     'trendCoach/knowledgePoint': {
@@ -1298,6 +1476,14 @@ export function apply(ctx: Context): void {
     }
   }
 
+  const openSection = (params: { courseId: string; sectionId: string }) => {
+    try {
+      ctx.sidebarRight.openTab(SECTION_KIND, { params: { ...params } })
+    } catch (error) {
+      console.error('[trend-coach] open section tab failed', error)
+    }
+  }
+
   const openSegment = async (remote: TrendCoachRemote, params: PlayerParams): Promise<void> => {
     if (params.segmentId === undefined) {
       openPlayer({ ...params, error: '缺少引用片段' })
@@ -1392,6 +1578,8 @@ export function apply(ctx: Context): void {
             catalogCourse: (courseId: string) => scoped.remote.trendCoach.catalogCourse(courseId),
             catalogChapter: (courseId: string, chapterId: string) =>
               scoped.remote.trendCoach.catalogChapter(courseId, chapterId),
+            catalogSection: (courseId: string, sectionId: string) =>
+              scoped.remote.trendCoach.catalogSection(courseId, sectionId),
             knowledgePoint: (knowledgePointId: string) =>
               scoped.remote.trendCoach.knowledgePoint(knowledgePointId),
             openSegment: (target: { segmentId: string; knowledgePointId?: string; title?: string }) =>
@@ -1402,6 +1590,7 @@ export function apply(ctx: Context): void {
                 target.title ?? '',
               ),
             openClassroom: (target: { courseId: string; chapterId: string }) => openClassroom(target),
+            openSection: (target: { courseId: string; sectionId: string }) => openSection(target),
           }),
         }, CatalogPanel))
 
@@ -1413,6 +1602,19 @@ export function apply(ctx: Context): void {
               scoped.remote.trendCoach.catalogChapter(courseId, chapterId),
           }),
         }, ClassroomPanel))
+
+        scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: SECTION_ID,
+          inject: () => ({
+            catalogSection: (courseId: string, sectionId: string) =>
+              scoped.remote.trendCoach.catalogSection(courseId, sectionId),
+            sectionPlayback: (sectionId: string, assetId: string, fromSec: number, toSec: number) =>
+              scoped.remote.trendCoach.sectionPlayback(sectionId, assetId, fromSec, toSec),
+            courseQuotes: (courseId: string, codes: string[]) =>
+              scoped.remote.trendCoach.courseQuotes(courseId, codes),
+          }),
+        }, SectionView))
 
         scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
           name: 'sidebar.right.pane.tab',
@@ -1439,6 +1641,28 @@ export function apply(ctx: Context): void {
                 event.preventDefault()
                 event.stopPropagation()
                 void openCitation(scoped.remote.trendCoach, segmentId)
+              }
+              return
+            }
+
+            const unitAnchor = target.closest('.wg-unit-anchor')
+            if (unitAnchor instanceof HTMLElement) {
+              const unitId = unitAnchor.getAttribute('data-unit-id')
+              if (unitId !== null && unitId.length > 0) {
+                event.preventDefault()
+                event.stopPropagation()
+                document.dispatchEvent(new CustomEvent('trend-coach:unit-anchor', { detail: { unitId } }))
+              }
+              return
+            }
+
+            const stockAnchor = target.closest('.wg-stock-anchor')
+            if (stockAnchor instanceof HTMLElement) {
+              const code = stockAnchor.getAttribute('data-code')
+              if (code !== null && code.length > 0) {
+                event.preventDefault()
+                event.stopPropagation()
+                document.dispatchEvent(new CustomEvent('trend-coach:stock-anchor', { detail: { code } }))
               }
               return
             }
@@ -1530,5 +1754,17 @@ export function apply(ctx: Context): void {
       description: () => '按章节教材逐段讲解',
     }],
   }), 'trend-coach classroom tab type')
+
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: SECTION_ID,
+    kind: SECTION_KIND,
+    title: () => '课程节',
+    guide: [{
+      id: SECTION_ID,
+      order: 194,
+      title: () => '课程节',
+      description: () => '节级教材与案例股行情',
+    }],
+  }), 'trend-coach section tab type')
 
 }

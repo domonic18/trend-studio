@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AccountService } from '../accounts/service.js'
 import type { AppConfig } from '../config.js'
@@ -7,7 +5,9 @@ import { parseContentId, titleField } from '../content/service.js'
 import { badRequest, HttpError, notFound, tooManyRequests } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, optionalStringField } from '../http/validation.js'
+import { readFigureImageBytes } from '../media/figure-image.js'
 import { RateLimiter } from '../rate-limit.js'
+import type { ApprovalGate } from '@trend/contracts'
 import {
   parseAssetId,
   parseAssetStatus,
@@ -50,17 +50,23 @@ function queryText(query: Record<string, unknown>, key: string): string | undefi
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+function parseApprovalGate(value: unknown): ApprovalGate {
+  if (value === 'skeleton' || value === 'final') return value
+  throw badRequest('gate must be skeleton or final')
+}
+
 export async function registerPipelineRoutes(app: FastifyInstance, deps: PipelineRouteDeps): Promise<void> {
   const { api, accounts, config, limiter } = deps
   const uploadLimit = config.pipeline?.maxUploadBytes ?? 1024 * 1024
   const staff = (request: FastifyRequest): Promise<{ userId: string }> =>
     requireSession(request, accounts, ['operator', 'admin'])
 
-  const guard = async (request: FastifyRequest): Promise<void> => {
+  const guard = async (request: FastifyRequest): Promise<{ userId: string }> => {
     const principal = await staff(request)
     if (!limiter.take(`pipeline:${principal.userId}`, config.rateLimitPipelinePerMinute)) {
       throw tooManyRequests()
     }
+    return principal
   }
 
   app.get('/v1/admin/content/media-assets', async request => {
@@ -225,30 +231,39 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     const { relPath } = await api.candidateFile(parseCandidateId(candidateId))
     const root = config.figureLocalDir
     if (root === undefined) throw new HttpError(503, 'figure storage not configured')
-    const base = resolve(root)
-    const target = resolve(base, relPath)
-    if (target !== base && !target.startsWith(`${base}${sep}`)) {
-      throw new HttpError(500, 'candidate path invalid')
-    }
-    let bytes: Buffer
-    try {
-      bytes = await readFile(target)
-    } catch {
-      throw notFound('candidate image not found')
-    }
+    const image = await readFigureImageBytes(root, relPath)
+    if (image === undefined) throw notFound('candidate image not found')
     reply.header('cache-control', 'private, max-age=300')
-    const mime = target.endsWith('.svg')
-      ? 'image/svg+xml'
-      : target.endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg'
-    return reply.type(mime).send(bytes)
+    return reply.type(image.mime).send(image.bytes)
   })
 
   app.post('/v1/admin/content/courses/:courseId/publish', async request => {
     await guard(request)
     const { courseId } = request.params as { courseId: string }
     return api.publishCourse(parseContentId(courseId, 'courseId'))
+  })
+
+  // M3b 审批版本绑定：签批 = 对内容指纹签名；发布时重算比对，内容变了必须重签。
+  app.post('/v1/admin/content/courses/:courseId/approvals', async request => {
+    const principal = await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    const body = asObject(request.body ?? {})
+    const gate = parseApprovalGate(body.gate)
+    return {
+      approval: await api.approveCourse(parseContentId(courseId, 'courseId'), gate, principal.userId),
+    }
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/approvals', async request => {
+    await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    return api.listApprovals(parseContentId(courseId, 'courseId'))
+  })
+
+  app.post('/v1/admin/content/courses/:courseId/quotes-sync', async request => {
+    await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    return api.syncQuotes(parseContentId(courseId, 'courseId'))
   })
 
   app.post('/v1/admin/content/media-assets/:assetId/ingest', async (request, reply) => {

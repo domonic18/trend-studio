@@ -21,19 +21,29 @@ export interface StockAnchor {
   line: number
 }
 
+export interface UnitAnchor {
+  unitId: string
+  /** 可空；为空时渲染端回退到 unitId 截短显示。 */
+  label: string
+  line: number
+}
+
 export interface DslParseResult {
   blocks: DslBlock[]
   anchors: StockAnchor[]
+  unitAnchors: UnitAnchor[]
 }
 
 const OPEN_RE = /^:::([a-z][a-z0-9-]*)(.*)$/
 const CLOSE_RE = /^:::\s*$/
 const ATTR_RE = /([A-Za-z][A-Za-z0-9_-]*)=(?:"([^"]*)"|([^\s"=]+))/g
-const ANCHOR_RE = /\[\[stock:([^\]|]*)(?:\|([^\]]*))?\]\]/g
+const STOCK_ANCHOR_RE = /\[\[stock:([^\]|]*)(?:\|([^\]]*))?\]\]/g
+const UNIT_ANCHOR_RE = /\[\[unit:([^\]|]*)(?:\|([^\]]*))?\]\]/g
 
 export function parseArticleDsl(markdown: string, sink: DslErrorSink): DslParseResult {
   const blocks: DslBlock[] = []
   const anchors: StockAnchor[] = []
+  const unitAnchors: UnitAnchor[] = []
   const lines = markdown.split('\n')
   let open: { block: DslBlock } | undefined
 
@@ -61,12 +71,15 @@ export function parseArticleDsl(markdown: string, sink: DslErrorSink): DslParseR
       open.block.bodyLines.push(line)
       continue
     }
-    collectAnchors(line, index + 1, anchors, sink)
+    collectInlineAnchors(line, index + 1, 'stock', STOCK_ANCHOR_RE, anchors, sink,
+      (code, label, line): StockAnchor => ({ code, label, line }))
+    collectInlineAnchors(line, index + 1, 'unit', UNIT_ANCHOR_RE, unitAnchors, sink,
+      (unitId, label, line): UnitAnchor => ({ unitId, label, line }))
   }
   if (open !== undefined) {
     sink.bad(`dsl: container '${open.block.directive}' opened at line ${open.block.line} is not closed`)
   }
-  return { blocks, anchors }
+  return { blocks, anchors, unitAnchors }
 }
 
 function parseAttrs(raw: string, lineNo: number, sink: DslErrorSink): Record<string, string> {
@@ -86,16 +99,25 @@ function parseAttrs(raw: string, lineNo: number, sink: DslErrorSink): Record<str
   return attrs
 }
 
-function collectAnchors(line: string, lineNo: number, anchors: StockAnchor[], sink: DslErrorSink): void {
-  const opens = (line.match(/\[\[stock:/g) ?? []).length
+function collectInlineAnchors<T extends { line: number }>(
+  line: string,
+  lineNo: number,
+  name: 'stock' | 'unit',
+  re: RegExp,
+  out: T[],
+  sink: DslErrorSink,
+  make: (id: string, label: string, line: number) => T,
+): void {
+  const marker = `[[${name}:`
+  const opens = line.split(marker).length - 1
   if (opens === 0) return
-  ANCHOR_RE.lastIndex = 0
-  const found: StockAnchor[] = []
+  re.lastIndex = 0
+  const found: T[] = []
   let match: RegExpExecArray | null
-  while ((match = ANCHOR_RE.exec(line)) !== null) {
-    found.push({ code: match[1] ?? '', label: match[2] ?? '', line: lineNo })
+  while ((match = re.exec(line)) !== null) {
+    found.push(make(match[1] ?? '', match[2] ?? '', lineNo))
   }
-  ANCHOR_RE.lastIndex = 0
-  if (found.length !== opens) sink.bad(`dsl: malformed stock anchor at line ${lineNo}`)
-  anchors.push(...found)
+  re.lastIndex = 0
+  if (found.length !== opens) sink.bad(`dsl: malformed ${name} anchor at line ${lineNo}`)
+  out.push(...found)
 }

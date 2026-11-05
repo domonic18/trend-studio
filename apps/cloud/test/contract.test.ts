@@ -6,12 +6,14 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import type { FastifyInstance } from 'fastify'
 import { parse as parseYaml } from 'yaml'
+import { catalogSectionOutput, quotesListOutput } from '@trend/contracts/catalog'
 import { buildApp } from '../src/app.js'
 import { AsrError, type AsrProvider } from '../src/asr/provider.js'
 import type { Grant } from '../src/auth/service.js'
 import { loadConfig } from '../src/config.js'
 import { createPool } from '../src/db.js'
 import { runMigrations } from '../src/migrate.js'
+import type { QuoteFetcher } from '../src/pipeline/quotes/tencent.js'
 import { signPlaybackToken } from '../src/playback/sign.js'
 import { seedDatabase } from '../src/seed.js'
 import { wavBase64 } from './asr-fixtures.js'
@@ -81,6 +83,15 @@ const fakeAsr: AsrProvider = {
     if (durationMs === 3000) throw new AsrError('invalid_response')
     return '趋势反转的初步信号有哪些？'
   },
+}
+
+/** 行情拉取替身：按 symbol 返回固定日K，避免测试打外网。 */
+const fakeQuoteFetcher: QuoteFetcher = async (symbol: string) => {
+  if (symbol !== 'sz000713') throw new Error(`unexpected symbol ${symbol}`)
+  return [
+    { tradeDate: '2026-11-03', open: 8.1, high: 8.5, low: 8.0, close: 8.4, volume: 120_000 },
+    { tradeDate: '2026-11-04', open: 8.4, high: 8.8, low: 8.3, close: 8.7, volume: 135_500 },
+  ]
 }
 
 function adminHeaders(): Record<string, string> {
@@ -192,6 +203,7 @@ before(async () => {
     config,
     pool,
     asr: fakeAsr,
+    quotes: fakeQuoteFetcher,
     onRoute: (method, url) => routes.push(`${method} ${url}`),
   })
   await app.ready()
@@ -3516,6 +3528,7 @@ test('M10 呈现层：发布门禁复检节正文 figure/clip 引用', async () 
   assert.equal(article.statusCode, 200, article.body)
 
   const publishUrl = `/v1/admin/content/courses/${courseId}/publish`
+  const approvalsUrl = `/v1/admin/content/courses/${courseId}/approvals`
 
   // figure 被取消选定（引用失效）→ 409 figure_unresolved
   await pool.query('UPDATE figures SET selected_candidate_id = NULL WHERE figure_id = $1', [figureId])
@@ -3527,6 +3540,13 @@ test('M10 呈现层：发布门禁复检节正文 figure/clip 引用', async () 
 
   // figure 恢复，clip 窗不再落 source unit → 409 clip_invalid
   await pool.query('UPDATE figures SET selected_candidate_id = c.candidate_id FROM figure_candidates c WHERE figures.figure_id = $1 AND c.figure_id = $1', [figureId])
+  const approved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(approved.statusCode, 200, approved.body)
   await pool.query('UPDATE source_units SET start_ms = 50000 WHERE unit_id = $1', [unitId])
   const clipInvalid = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
   assert.equal(clipInvalid.statusCode, 409, clipInvalid.body)
@@ -3928,3 +3948,766 @@ test('M10 R2：节级案例股清单 upsert + DSL 个股锚成员校验', async 
   assert.equal(articleBad.json().error?.code, 'stock_not_in_list')
 })
 
+
+test('M3b 分权：producer 可写内容生产、不可发布与管理账号', async () => {
+  const PRODUCER = 'm3b-producer'
+  const PRODUCER_PASSWORD = 'producer-pass-123'
+  const created = await adminCreateUser({
+    username: PRODUCER,
+    displayName: 'M3b 生产端',
+    role: 'producer',
+    password: PRODUCER_PASSWORD,
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
+
+  const login = await loginSession(PRODUCER, PRODUCER_PASSWORD)
+  assert.equal(login.statusCode, 200, JSON.stringify(login.body))
+  assert.equal(login.body.user.role, 'producer')
+  const producerHeaders = { authorization: `Bearer ${login.body.token}` }
+
+  const courseId = 'T-M3B-GOV'
+  const chapterId = 'CH3B'
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 分权测试课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '分权章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  // producer 可写内容生产命名空间：source units → 节 → 教材
+  const assetId = await insertAsset(courseId, 'M3b 分权素材')
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: producerHeaders,
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 120_000, transcriptText: '分权验证转写', summary: '分权单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: producerHeaders,
+    payload: {
+      courseId,
+      chapterId,
+      title: '第一节 分权',
+      position: 1,
+      sourceAssetIds: [assetId],
+    },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: producerHeaders,
+    payload: { markdown: 'producer 写入的教材正文。', citations: [unitId] },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  // producer 不可发布（pipeline 命名空间仍 operator/admin）
+  const publish = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/publish`,
+    headers: producerHeaders,
+  })
+  assert.equal(publish.statusCode, 403)
+
+  // producer 不可管理账号 / 不可读模型配置
+  const createUser = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/users',
+    headers: producerHeaders,
+    payload: { username: 'm3b-intruder', displayName: '越权', role: 'operator' },
+  })
+  assert.equal(createUser.statusCode, 403)
+
+  const modelConfigs = await app.inject({
+    method: 'GET',
+    url: '/v1/admin/model-configs/llm',
+    headers: producerHeaders,
+  })
+  assert.equal(modelConfigs.statusCode, 403)
+
+  // operator 仍可写内容生产（基线不回归）
+  const operatorLogin = await loginSession('operator-role-01', 'operator-password-123')
+  assert.equal(operatorLogin.statusCode, 200, JSON.stringify(operatorLogin.body))
+  const operatorArticle = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: { authorization: `Bearer ${operatorLogin.body.token}` },
+    payload: { markdown: 'operator 写入的教材正文第二版。', citations: [unitId] },
+  })
+  assert.equal(operatorArticle.statusCode, 200, operatorArticle.body)
+})
+
+test('M3b：source unit 证据读取（全有或全无）与段落级锚引用并集', async () => {
+  const courseId = 'T-M9-PROD'
+  const assetId = await insertAsset(courseId, '证据读取素材')
+  await pool.query("UPDATE media_assets SET status = 'ready' WHERE asset_id = $1", [assetId])
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{
+        assetId,
+        startMs: 60_000,
+        endMs: 180_000,
+        transcriptText: '起飞平台是趋势延续的中继形态，量能要放到 20 日均量两倍以上。',
+        visual: { description: '日 K 缩量平台后放量长阳', chartType: 'kline' },
+        summary: '起飞平台定义与量能判据',
+      }],
+    },
+  })
+  assert.equal(created.statusCode, 200, created.body)
+  const unitId = created.json().saved[0].unitId as string
+
+  const read = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: [unitId] },
+  })
+  assert.equal(read.statusCode, 200, read.body)
+  const evidence = read.json() as {
+    units: {
+      unitId: string
+      assetId: string
+      startMs: number
+      endMs: number
+      transcriptText: string
+      visual: Record<string, unknown>
+      keyframes: { sec: number; url: string }[]
+      playback: { playlistUrl: string; fromSec: number; toSec: number; expiresAt: number }
+    }[]
+  }
+  assert.equal(evidence.units.length, 1)
+  const unit = evidence.units[0]
+  assert.equal(unit?.unitId, unitId)
+  assert.equal(unit?.assetId, assetId)
+  assert.equal(unit?.startMs, 60_000)
+  assert.equal(unit?.endMs, 180_000)
+  assert.ok(unit?.transcriptText.includes('起飞平台'))
+  assert.equal(unit?.visual.description, '日 K 缩量平台后放量长阳')
+  assert.ok(Array.isArray(unit?.keyframes))
+  assert.ok(unit?.playback.playlistUrl.includes('token='))
+  assert.equal(unit?.playback.fromSec, 60)
+  assert.equal(unit?.playback.toSec, 180)
+
+  // 全有或全无：混入不存在的 unitId → 409 unit_not_readable
+  const mixed = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: [unitId, 'su_ffffffffffffffff'] },
+  })
+  assert.equal(mixed.statusCode, 409, mixed.body)
+  assert.equal((mixed.json() as { error: { code: string } }).error.code, 'unit_not_readable')
+
+  // 非法 unitId 形状 → 400
+  const malformed = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: ['not-a-unit'] },
+  })
+  assert.equal(malformed.statusCode, 400)
+
+  // 段落级锚：合法锚并入引用集；课程外锚 → 400 unit_anchor_unknown
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId: 'CH9', title: '证据锚节', position: 9, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = section.json().section.sectionId as string
+
+  const withAnchor = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: `证据出处是 [[unit:${unitId}|起飞平台定义]]。`, citations: [unitId] },
+  })
+  assert.equal(withAnchor.statusCode, 200, withAnchor.body)
+  const preview = await app.inject({
+    method: 'GET',
+    url: `/v1/admin/content/sections/${sectionId}/preview`,
+    headers: adminHeaders(),
+  })
+  assert.equal(preview.statusCode, 200, preview.body)
+  const citations = (preview.json() as { article: { citations: string[] } }).article.citations
+  assert.deepEqual(citations, [unitId])
+
+  const unknownAnchor = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '证据出处是 [[unit:su_ffffffffffffffff|他课证据]]。', citations: [unitId] },
+  })
+  assert.equal(unknownAnchor.statusCode, 400, unknownAnchor.body)
+  assert.equal((unknownAnchor.json() as { error: { code: string } }).error.code, 'unit_anchor_unknown')
+})
+
+test('M3b：审批版本绑定（未审批拒绝发布 / 内容变更失效 / 签批后发布并翻转案例股）', async () => {
+  const courseId = 'T-M3B-APPROVAL'
+  const chapterId = 'CHAPR'
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 审批测试课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '审批章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  const assetId = await insertAsset(courseId, '审批素材')
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 300_000, transcriptText: '审批用例转写', summary: '审批单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId, title: '审批节', position: 1, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '审批前的教材正文。', citations: [unitId] },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  const stocks = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/case-stocks`,
+    headers: adminHeaders(),
+    payload: {
+      stocks: [{
+        name: '丰乐种业',
+        exchange: 'SZSE',
+        code: '000713',
+        windowStart: '2019-01-02',
+        windowEnd: '2020-02-28',
+        events: [{ date: '2019-05-17', label: '课程筹码峰 8.68', unitId }],
+      }],
+    },
+  })
+  assert.equal(stocks.statusCode, 200, stocks.body)
+
+  const publishUrl = `/v1/admin/content/courses/${courseId}/publish`
+  const approvalsUrl = `/v1/admin/content/courses/${courseId}/approvals`
+
+  // 1. 未签批 → 409 approval_required
+  const unapproved = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(unapproved.statusCode, 409, unapproved.body)
+  assert.equal((unapproved.json() as { error: { code: string } }).error.code, 'approval_required')
+
+  // 2. producer 无签批权限 → 403
+  const PRODUCER = 'm3b-approver'
+  const PRODUCER_PASSWORD = 'approver-pass-123'
+  const created = await adminCreateUser({
+    username: PRODUCER,
+    displayName: 'M3b 签批越权',
+    role: 'producer',
+    password: PRODUCER_PASSWORD,
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
+  const producerLogin = await loginSession(PRODUCER, PRODUCER_PASSWORD)
+  assert.equal(producerLogin.statusCode, 200, JSON.stringify(producerLogin.body))
+  const producerHeaders = { authorization: `Bearer ${producerLogin.body.token}` }
+  const producerApprove = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: producerHeaders,
+    payload: { gate: 'final' },
+  })
+  assert.equal(producerApprove.statusCode, 403, producerApprove.body)
+
+  // 3. 非法门禁 → 400
+  const badGate = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'whatever' },
+  })
+  assert.equal(badGate.statusCode, 400, badGate.body)
+
+  // 4. 签批：digest 为 64 位十六进制，digestSections 覆盖本节
+  const approved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(approved.statusCode, 200, approved.body)
+  const approval = (approved.json() as { approval: { approvalId: string; digest: string; digestSections: Record<string, string>; approvedBy: string } }).approval
+  assert.match(approval.approvalId, /^apr_[0-9a-f]{16}$/)
+  assert.match(approval.digest, /^[0-9a-f]{64}$/)
+  assert.equal(typeof approval.digestSections[sectionId], 'string')
+  assert.ok(approval.approvedBy.length > 0)
+
+  // 5. 幂等重批：内容未变 → digest 相同
+  const reapproved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(reapproved.statusCode, 200, reapproved.body)
+  assert.equal((reapproved.json() as { approval: { digest: string } }).approval.digest, approval.digest)
+
+  // 6. 审批记录可查
+  const listed = await app.inject({ method: 'GET', url: approvalsUrl, headers: adminHeaders() })
+  assert.equal(listed.statusCode, 200, listed.body)
+  const approvals = (listed.json() as { approvals: { gate: string; digest: string }[] }).approvals
+  assert.equal(approvals.length, 1)
+  assert.equal(approvals[0]?.gate, 'final')
+  assert.equal(approvals[0]?.digest, approval.digest)
+
+  // 7. 签批后改动教材 → 409 approval_stale
+  const changed = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '签批之后被改写的教材正文。', citations: [unitId] },
+  })
+  assert.equal(changed.statusCode, 200, changed.body)
+  const stale = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(stale.statusCode, 409, stale.body)
+  const staleError = (stale.json() as { error: { code: string; expected: string; actual: string } }).error
+  assert.equal(staleError.code, 'approval_stale')
+  assert.equal(staleError.expected.length, 16)
+  assert.equal(staleError.actual.length, 16)
+  assert.notEqual(staleError.expected, staleError.actual)
+
+  // 8. 重新签批后发布成功，案例股随发布翻转
+  await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  const published = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(published.statusCode, 200, published.body)
+  const counts = (published.json() as { counts: { caseStocks: number } }).counts
+  assert.equal(counts.caseStocks, 1)
+  const stockRows = await pool.query<{ status: string }>(
+    'SELECT status FROM section_case_stocks WHERE section_id = $1',
+    [sectionId],
+  )
+  assert.equal(stockRows.rows[0]?.status, 'published')
+})
+
+test('M3b：行情层（同步幂等 / 学员端只读清单内标的 / 未同步等待态）', async () => {
+  const courseId = 'T-M3B-QUOTES'
+  const chapterId = 'CHQT'
+  const syncUrl = `/v1/admin/content/courses/${courseId}/quotes-sync`
+  const catalogUrl = `/v1/catalog/courses/${courseId}/quotes`
+
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 行情测试课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '行情章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  const assetId = await insertAsset(courseId, '行情素材')
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 300_000, transcriptText: '行情用例转写', summary: '行情单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId, title: '行情节', position: 1, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '案例股行情用于课程复盘。', citations: [unitId] },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  const stocks = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/case-stocks`,
+    headers: adminHeaders(),
+    payload: {
+      stocks: [{
+        name: '丰乐种业',
+        exchange: 'SZSE',
+        code: '000713',
+        windowStart: '2019-01-02',
+        windowEnd: '2020-02-28',
+        events: [{ date: '2019-05-17', label: '课程筹码峰 8.68', unitId }],
+      }],
+    },
+  })
+  assert.equal(stocks.statusCode, 200, stocks.body)
+
+  await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/approvals`,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  const published = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/publish`,
+    headers: adminHeaders(),
+  })
+  assert.equal(published.statusCode, 200, published.body)
+
+  const learner = authHeaders(mainGrant)
+
+  // 1. 尚未同步 → pending=true 且空数组（不是 404）
+  const pending = await app.inject({ method: 'GET', url: catalogUrl, headers: learner })
+  assert.equal(pending.statusCode, 200, pending.body)
+  assert.deepEqual(pending.json(), { pending: true, quotes: [] })
+
+  // 2. 同步：同步执行，落 succeeded 记录
+  const synced = await app.inject({ method: 'POST', url: syncUrl, headers: adminHeaders() })
+  assert.equal(synced.statusCode, 200, synced.body)
+  const syncBody = synced.json() as { job: { kind: string; status: string }; upserted: number }
+  assert.equal(syncBody.job.kind, 'quotes_sync')
+  assert.equal(syncBody.job.status, 'succeeded')
+  assert.equal(syncBody.upserted, 2)
+
+  // 3. 幂等重跑：行数不变
+  const resynced = await app.inject({ method: 'POST', url: syncUrl, headers: adminHeaders() })
+  assert.equal(resynced.statusCode, 200, resynced.body)
+  assert.equal((resynced.json() as { upserted: number }).upserted, 2)
+  const counted = await pool.query<{ count: number }>(
+    'SELECT count(*)::int AS count FROM course_stock_quotes WHERE code = $1',
+    ['000713'],
+  )
+  assert.equal(counted.rows[0]?.count, 2)
+
+  // 4. 学员端读行情：按交易日升序，成交额为 null（源不可得）
+  const listed = await app.inject({ method: 'GET', url: catalogUrl, headers: learner })
+  assert.equal(listed.statusCode, 200, listed.body)
+  const quotes = (listed.json() as { pending: boolean; quotes: Record<string, unknown>[] })
+  assert.equal(quotes.pending, false)
+  assert.equal(quotes.quotes.length, 2)
+  assert.equal(quotes.quotes[0]?.tradeDate, '2026-11-03')
+  assert.equal(quotes.quotes[1]?.tradeDate, '2026-11-04')
+  assert.equal(quotes.quotes[0]?.code, '000713')
+  assert.equal(quotes.quotes[1]?.close, 8.7)
+  assert.equal(quotes.quotes[0]?.amount, null)
+  assert.equal(quotes.quotes[0]?.source, 'tencent-qfq')
+  // 响应形状须符合 @trend/contracts 学员端契约
+  assert.equal(quotesListOutput.safeParse(listed.json()).success, true)
+
+  // 5. 清单外代号被过滤（不回 403，也不泄露他课数据）
+  const filtered = await app.inject({
+    method: 'GET',
+    url: `${catalogUrl}?codes=000713,000001`,
+    headers: learner,
+  })
+  assert.equal(filtered.statusCode, 200, filtered.body)
+  const filteredQuotes = (filtered.json() as { quotes: { code: string }[] }).quotes
+  assert.ok(filteredQuotes.length > 0)
+  assert.ok(filteredQuotes.every(quote => quote.code === '000713'))
+
+  // 6. 非法代号 → 400
+  const badCodes = await app.inject({ method: 'GET', url: `${catalogUrl}?codes=abc`, headers: learner })
+  assert.equal(badCodes.statusCode, 400, badCodes.body)
+
+  // 7. 时间窗内无数据 ≠ 待同步（pending 只表示压根没同步过）
+  const emptyWindow = await app.inject({
+    method: 'GET',
+    url: `${catalogUrl}?from=2026-12-01`,
+    headers: learner,
+  })
+  assert.equal(emptyWindow.statusCode, 200, emptyWindow.body)
+  assert.deepEqual(emptyWindow.json(), { pending: false, quotes: [] })
+
+  // 8. producer 无同步权限 → 403
+  const PRODUCER = 'm3b-quoter'
+  const PRODUCER_PASSWORD = 'quoter-pass-123'
+  const created = await adminCreateUser({
+    username: PRODUCER,
+    displayName: 'M3b 行情越权',
+    role: 'producer',
+    password: PRODUCER_PASSWORD,
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
+  const producerLogin = await loginSession(PRODUCER, PRODUCER_PASSWORD)
+  assert.equal(producerLogin.statusCode, 200, JSON.stringify(producerLogin.body))
+  const producerSync = await app.inject({
+    method: 'POST',
+    url: syncUrl,
+    headers: { authorization: `Bearer ${producerLogin.body.token}` },
+  })
+  assert.equal(producerSync.statusCode, 403, producerSync.body)
+
+  // 9. 未发布课程 → 404
+  const draftCourse = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId: 'T-M3B-QUOTES-DRAFT', title: '未发布行情课' },
+  })
+  assert.ok(draftCourse.statusCode === 201 || draftCourse.statusCode === 409, draftCourse.body)
+  const draftQuotes = await app.inject({
+    method: 'GET',
+    url: '/v1/catalog/courses/T-M3B-QUOTES-DRAFT/quotes',
+    headers: learner,
+  })
+  assert.equal(draftQuotes.statusCode, 404, draftQuotes.body)
+})
+
+test('M3b：v3 学习契约（节级下发 / 图示签名地址 / 播放窗门禁 / v2 并存）', async () => {
+  const courseId = 'T-M3B-SECTIONS'
+  const chapterId = 'CHS'
+
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 节级契约课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '节级章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  const assetId = await insertAsset(courseId, '节级素材')
+  await pool.query("UPDATE media_assets SET status = 'ready' WHERE asset_id = $1", [assetId])
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 300_000, transcriptText: '节级用例转写', summary: '节级单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId, title: '节级节', position: 1, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const figure = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/sections/${sectionId}/figures`,
+    headers: adminHeaders(),
+    payload: {
+      kind: 'diagram',
+      template: 'timeline',
+      params: {
+        events: [
+          { date: '2019-05-17', title: '峰位确认' },
+          { date: '2019-06-03', title: '缩量回踩' },
+          { date: '2019-07-11', title: '趋势延续' },
+        ],
+      },
+      caption: '节级图示',
+    },
+  })
+  assert.equal(figure.statusCode, 201, figure.body)
+  const figureId = (figure.json() as { figureId: string }).figureId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: {
+      markdown: `节级正文配图与片段。\n\n:::figure figureId=${figureId} caption="配图"\n:::\n\n:::clip assetId=${assetId} from=10 to=40 caption="片段" unitId=${unitId}\n:::`,
+      citations: [unitId],
+    },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  const stocks = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/case-stocks`,
+    headers: adminHeaders(),
+    payload: {
+      stocks: [{
+        name: '丰乐种业',
+        exchange: 'SZSE',
+        code: '000713',
+        windowStart: '2019-01-02',
+        windowEnd: '2020-02-28',
+        events: [{ date: '2019-05-17', label: '筹码峰', unitId }],
+      }],
+    },
+  })
+  assert.equal(stocks.statusCode, 200, stocks.body)
+
+  await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/approvals`,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  const published = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/publish`,
+    headers: adminHeaders(),
+  })
+  assert.equal(published.statusCode, 200, published.body)
+
+  const learner = authHeaders(mainGrant)
+
+  // 1. v3 课程树：contractVersion=3 且附带节摘要
+  const tree = await app.inject({ method: 'GET', url: `/v1/catalog/courses/${courseId}`, headers: learner })
+  assert.equal(tree.statusCode, 200, tree.body)
+  const treeBody = tree.json() as {
+    contractVersion: number
+    sections?: Array<{ sectionId: string; hasArticle: boolean; caseStockCodes: string[] }>
+  }
+  assert.equal(treeBody.contractVersion, 3)
+  assert.equal(treeBody.sections?.length, 1)
+  assert.equal(treeBody.sections?.[0]?.sectionId, sectionId)
+  assert.equal(treeBody.sections?.[0]?.hasArticle, true)
+  assert.deepEqual(treeBody.sections?.[0]?.caseStockCodes, ['000713'])
+
+  // 2. v2 老课程并存：仍是 2 且无 sections 字段
+  const legacy = await app.inject({ method: 'GET', url: '/v1/catalog/courses/TC-101', headers: learner })
+  assert.equal(legacy.statusCode, 200, legacy.body)
+  const legacyBody = legacy.json() as { contractVersion: number; sections?: unknown }
+  assert.equal(legacyBody.contractVersion, 2)
+  assert.equal('sections' in legacyBody, false)
+
+  // 3. 节详情：正文 + 案例股 + 图示签名地址
+  const detail = await app.inject({
+    method: 'GET',
+    url: `/v1/catalog/courses/${courseId}/sections/${sectionId}`,
+    headers: learner,
+  })
+  assert.equal(detail.statusCode, 200, detail.body)
+  const detailBody = detail.json()
+  assert.equal(catalogSectionOutput.safeParse(detailBody).success, true)
+  const sectionBody = detailBody as {
+    article: { markdown: string } | null
+    figures: Array<{ figureId: string; url: string | null }>
+    caseStocks: Array<{ code: string }>
+  }
+  assert.ok(sectionBody.article?.markdown.includes(':::clip'))
+  assert.equal(sectionBody.figures.length, 1)
+  assert.equal(sectionBody.figures[0]?.figureId, figureId)
+  assert.match(sectionBody.figures[0]?.url ?? '', /\/figures\/.*sig=/)
+  assert.equal(sectionBody.caseStocks[0]?.code, '000713')
+
+  // 4. 学员端只认设备令牌：后台会话令牌不可用
+  const consoleDenied = await app.inject({
+    method: 'GET',
+    url: `/v1/catalog/courses/${courseId}/sections/${sectionId}`,
+    headers: adminHeaders(),
+  })
+  assert.equal(consoleDenied.statusCode, 401, consoleDenied.body)
+
+  // 5. 播放窗落在 clip 窗内 → 200
+  const playback = await app.inject({
+    method: 'POST',
+    url: `/v1/catalog/sections/${sectionId}/playback`,
+    headers: learner,
+    payload: { assetId, fromSec: 12, toSec: 30 },
+  })
+  assert.equal(playback.statusCode, 200, playback.body)
+  const playbackBody = playback.json() as { sessionId: string; playlistUrl: string; fromSec: number; toSec: number }
+  assert.equal(playbackBody.fromSec, 12)
+  assert.equal(playbackBody.toSec, 30)
+  assert.match(playbackBody.playlistUrl, /\?token=/)
+
+  // 6. 越窗 → 409 playback_window_invalid
+  const outside = await app.inject({
+    method: 'POST',
+    url: `/v1/catalog/sections/${sectionId}/playback`,
+    headers: learner,
+    payload: { assetId, fromSec: 50, toSec: 60 },
+  })
+  assert.equal(outside.statusCode, 409, outside.body)
+  assert.equal((outside.json() as { error: { code: string } }).error.code, 'playback_window_invalid')
+
+  // 7. 素材不匹配 → 同一错误码
+  const otherAsset = await insertAsset(courseId, '另一素材')
+  await pool.query("UPDATE media_assets SET status = 'ready' WHERE asset_id = $1", [otherAsset])
+  const mismatched = await app.inject({
+    method: 'POST',
+    url: `/v1/catalog/sections/${sectionId}/playback`,
+    headers: learner,
+    payload: { assetId: otherAsset, fromSec: 12, toSec: 30 },
+  })
+  assert.equal(mismatched.statusCode, 409, mismatched.body)
+  assert.equal((mismatched.json() as { error: { code: string } }).error.code, 'playback_window_invalid')
+
+  // 8. 未发布节 → 404（课程已发布但该节仍是草稿）
+  const draftSectionId = `sec_${randomBytes(8).toString('hex')}`
+  await pool.query(
+    `INSERT INTO sections (section_id, course_id, chapter_id, title, position, status)
+     VALUES ($1, $2, $3, '草稿节', 2, 'draft')`,
+    [draftSectionId, courseId, chapterId],
+  )
+  const draftDetail = await app.inject({
+    method: 'GET',
+    url: `/v1/catalog/courses/${courseId}/sections/${draftSectionId}`,
+    headers: learner,
+  })
+  assert.equal(draftDetail.statusCode, 404, draftDetail.body)
+})

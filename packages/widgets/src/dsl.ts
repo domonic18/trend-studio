@@ -60,9 +60,18 @@ function parseAttrs(raw: string): Record<string, string> {
   return attrs
 }
 
-/** [[stock:code|label]] 预替换为 react-markdown 可渲染的 stock-anchor: 链接。 */
+/**
+ * 内联锚预替换为 react-markdown 可渲染的链接：
+ * - `[[stock:code|label]]` → `stock-anchor:code`（个股徽章）
+ * - `[[unit:su_xxx|label]]` → `unit-anchor:su_xxx`（证据徽章；label 为空时回退到 unitId 截短）
+ */
 export function rewriteStockAnchors(text: string): string {
-  return text.replace(/\[\[stock:([^\]|]*)\|([^\]]*)\]\]/g, (_all, code: string, label: string) => {
-    return `[${label}](stock-anchor:${code})`
-  })
+  return text
+    .replace(/\[\[stock:([^\]|]*)\|([^\]]*)\]\]/g, (_all, code: string, label: string) => {
+      return `[${label}](stock-anchor:${code})`
+    })
+    .replace(/\[\[unit:([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_all, unitId: string, label?: string) => {
+      const text = label !== undefined && label !== '' ? label : unitId.slice(0, 8)
+      return `[${text}](unit-anchor:${unitId})`
+    })
 }

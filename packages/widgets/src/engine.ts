@@ -7,7 +7,7 @@ import type {
   WidgetAssertions,
   WidgetSpec,
   WidgetType,
-} from './types'
+} from './spec-types.js'
 
 export interface Candle {
   open: number

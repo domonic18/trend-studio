@@ -15,6 +15,7 @@ export const FIGURE_ID_REF = /^fig_[A-Za-z0-9._-]{1,60}$/
 
 export const CONCEPT_EDGE_ID = /^ced_[0-9a-f]{16}$/
 export const CASE_STOCK_REF_ID = /^cst_[0-9a-f]{16}$/
+export const APPROVAL_ID = /^apr_[0-9a-f]{16}$/
 
 /** DSL 内联案例股锚（交易所前缀 + 6 位数字）。 */
 export const STOCK_CODE = /^(sz|sh|bj)\d{6}$/

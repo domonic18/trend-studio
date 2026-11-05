@@ -321,6 +321,7 @@ components:
         contractVersion:
           type: integer
           minimum: 1
+          description: 2=章级目录；3=节级学习契约（课程存在已发布节正文时附带 sections）。
         courseId:
           type: string
           pattern: '^[A-Za-z0-9._-]{1,64}$'
@@ -333,6 +334,211 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/CatalogChapter'
+        sections:
+          type: array
+          description: v3 才有；v2 老课程不返回此字段。
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/CatalogSectionSummary'
+
+    CatalogSectionSummary:
+      type: object
+      additionalProperties: false
+      required: [sectionId, title, position, hasArticle, figureCount, widgetTypes, caseStockCodes]
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+        hasArticle:
+          type: boolean
+        figureCount:
+          type: integer
+          minimum: 0
+          maximum: 20
+        widgetTypes:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 32
+        caseStockCodes:
+          type: array
+          items:
+            type: string
+            pattern: '^[0-9]{6}$'
+
+    CatalogSection:
+      type: object
+      additionalProperties: false
+      required: [sectionId, courseId, chapterId, title, position, article, widgets, figures, caseStocks]
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        chapterId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogSectionArticle'
+            - type: 'null'
+        widgets:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogWidget'
+        figures:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogFigure'
+        caseStocks:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogCaseStock'
+
+    CatalogSectionArticle:
+      type: object
+      additionalProperties: false
+      required: [markdown, dslVersion, version, publishedAt]
+      properties:
+        markdown:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        dslVersion:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          minimum: 0
+        publishedAt:
+          type: integer
+          description: 毫秒时间戳
+
+    CatalogWidget:
+      type: object
+      additionalProperties: false
+      required: [widgetId, type, specVersion, version, spec, assertions]
+      properties:
+        widgetId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        type:
+          type: string
+          minLength: 1
+          maxLength: 32
+        specVersion:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          minimum: 0
+        spec:
+          type: object
+          additionalProperties: true
+        assertions:
+          type: object
+          additionalProperties: true
+
+    CatalogFigure:
+      type: object
+      additionalProperties: false
+      required: [figureId, kind, caption, assetId, sourceSec, candidateId, url]
+      properties:
+        figureId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        kind:
+          type: string
+          minLength: 1
+          maxLength: 16
+        caption:
+          type: string
+          minLength: 1
+          maxLength: 200
+        assetId:
+          type: string
+          nullable: true
+        sourceSec:
+          type: integer
+          nullable: true
+        candidateId:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+          description: 短时签名图片地址；未选定候选时为 null。
+
+    CatalogCaseStock:
+      type: object
+      additionalProperties: false
+      required: [code, name, exchange, windowStart, windowEnd, events]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        exchange:
+          type: string
+          enum: [SZSE, SSE, BSE]
+        windowStart:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        windowEnd:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    CatalogPlayback:
+      type: object
+      additionalProperties: false
+      required: [sessionId, playlistUrl, fromSec, toSec, expiresAt]
+      properties:
+        sessionId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        playlistUrl:
+          type: string
+          minLength: 1
+        fromSec:
+          type: integer
+          nullable: true
+        toSec:
+          type: integer
+          nullable: true
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳
 
     ChapterArticle:
       type: object
@@ -523,7 +729,8 @@ components:
 
     UserRole:
       type: string
-      enum: [student, operator, admin]
+      enum: [student, operator, admin, producer]
+      description: producer 为生产端专用角色（M3b）：可写内容生产命名空间，不可发布、不可审批、不可管理账号与模型配置。
     UserStatus:
       type: string
       enum: [active, disabled]
@@ -1196,7 +1403,7 @@ components:
 
     PipelineJobKind:
       type: string
-      enum: [ingest, generate, illustrate]
+      enum: [ingest, generate, illustrate, quotes_sync]
 
     PipelineJobStage:
       type: string
@@ -1646,7 +1853,7 @@ components:
         counts:
           type: object
           additionalProperties: false
-          required: [chapters, knowledgePoints, chapterArticles, figures, segments, sections, widgets]
+          required: [chapters, knowledgePoints, chapterArticles, figures, segments, sections, widgets, caseStocks]
           properties:
             chapters:
               type: integer
@@ -1669,6 +1876,109 @@ components:
             widgets:
               type: integer
               minimum: 0
+            caseStocks:
+              type: integer
+              minimum: 0
+
+    ApprovalWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [gate]
+      properties:
+        gate:
+          type: string
+          enum: [skeleton, final]
+
+    Approval:
+      type: object
+      additionalProperties: false
+      required: [approvalId, courseId, gate, digest, digestSections, approvedBy, approvedAt]
+      properties:
+        approvalId:
+          type: string
+          pattern: '^apr_[0-9a-f]{16}$'
+        courseId:
+          type: string
+        gate:
+          type: string
+          enum: [skeleton, final]
+        digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        digestSections:
+          type: object
+          additionalProperties:
+            type: string
+        approvedBy:
+          type: string
+        approvedAt:
+          type: string
+
+    ApprovalsListResponse:
+      type: object
+      additionalProperties: false
+      required: [approvals]
+      properties:
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Approval'
+
+    Quote:
+      type: object
+      additionalProperties: false
+      required: [code, tradeDate, open, high, low, close, volume, amount, source]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        tradeDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: integer
+          minimum: 0
+          description: 成交量，单位手（1 手 = 100 股）
+        amount:
+          type: [number, 'null']
+          description: 成交额（元）；腾讯前复权日K 不含成交额，为 null
+        source:
+          type: string
+          maxLength: 32
+          description: 复权口径来源（tencent-qfq）
+
+    QuotesListResponse:
+      type: object
+      additionalProperties: false
+      required: [pending, quotes]
+      properties:
+        pending:
+          type: boolean
+          description: 课程有已发布案例股但一行行情都没有 → 尚未同步
+        quotes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Quote'
+
+    QuotesSyncResponse:
+      type: object
+      additionalProperties: false
+      required: [job, upserted]
+      properties:
+        job:
+          $ref: '#/components/schemas/PipelineJob'
+        upserted:
+          type: integer
+          minimum: 0
+          description: 本次写入（含幂等覆盖）的行情行数
 
     FigureStatus:
       type: string
@@ -2106,6 +2416,80 @@ components:
             $ref: '#/components/schemas/SourceUnitSearchItem'
         nextCursor:
           type: [string, 'null']
+
+    SourceUnitEvidenceItem:
+      type: object
+      required: [unitId, assetId, startMs, endMs, transcriptText, visual, keyframes, playback]
+      additionalProperties: false
+      properties:
+        unitId:
+          type: string
+          pattern: '^su_[0-9a-f]{16}$'
+        assetId:
+          type: string
+          pattern: '^asset_[0-9a-f]{16}$'
+        startMs:
+          type: integer
+          minimum: 0
+        endMs:
+          type: integer
+          minimum: 0
+        transcriptText:
+          type: string
+          maxLength: 8000
+        visual:
+          type: object
+          additionalProperties: true
+        keyframes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceUnitKeyframe'
+        playback:
+          $ref: '#/components/schemas/SourceUnitPlayback'
+
+    SourceUnitKeyframe:
+      type: object
+      required: [sec, url, width, height]
+      additionalProperties: false
+      properties:
+        sec:
+          type: integer
+          minimum: 0
+        url:
+          type: string
+        width:
+          type: integer
+          minimum: 0
+        height:
+          type: integer
+          minimum: 0
+
+    SourceUnitPlayback:
+      type: object
+      required: [playlistUrl, fromSec, toSec, expiresAt]
+      additionalProperties: false
+      properties:
+        playlistUrl:
+          type: string
+        fromSec:
+          type: integer
+          minimum: 0
+        toSec:
+          type: integer
+          minimum: 0
+        expiresAt:
+          type: integer
+          minimum: 0
+
+    SourceUnitsReadResponse:
+      type: object
+      required: [units]
+      additionalProperties: false
+      properties:
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceUnitEvidenceItem'
 
     ConceptCreated:
       type: object
@@ -3067,6 +3451,145 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses/{courseId}/quotes:
+    get:
+      summary: 课程案例股行情（学员端）
+      description: 只返回该课程已发布案例股清单内的行情；清单外代号被过滤。尚未同步时返回 pending=true 与空数组。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: codes
+          in: query
+          required: false
+          description: 逗号分隔的 6 位代号，最多 10 只；缺省为课程全部已发布案例股
+          schema:
+            type: string
+            maxLength: 69
+        - name: from
+          in: query
+          required: false
+          description: 起始交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: to
+          in: query
+          required: false
+          description: 结束交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        '200':
+          description: 行情序列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotesListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses/{courseId}/sections/{sectionId}:
+    get:
+      summary: 节级学习契约（正文 + 课件 + 图示 + 案例股）
+      description: 只返回已发布课程已发布节的内容；图示带短时签名地址。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogSection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/sections/{sectionId}/playback:
+    post:
+      summary: 学员播放会话（节内 clip 窗）
+      description: 请求窗必须完整落在该节已发布正文的某个 clip 块窗内，否则 409 playback_window_invalid。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [assetId, fromSec, toSec]
+              properties:
+                assetId:
+                  type: string
+                  pattern: '^asset_[0-9a-f]{16}$'
+                fromSec:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                toSec:
+                  type: integer
+                  minimum: 1
+                  maximum: 86400
+      responses:
+        '200':
+          description: 播放会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPlayback'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /v1/catalog/knowledge-points/{knowledgePointId}:
     get:
@@ -4864,6 +5387,115 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /v1/admin/content/courses/{courseId}/approvals:
+    post:
+      summary: 审批签批：对当前课程内容指纹签名（operator/admin）
+      description: 同课程同门禁幂等重批；发布前必须有 final 门禁且内容指纹未变。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalWriteRequest'
+      responses:
+        '200':
+          description: 已签批
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [approval]
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      summary: 查询课程审批记录（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 审批记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/courses/{courseId}/quotes-sync:
+    post:
+      summary: 同步课程案例股行情（operator/admin）
+      description: 同步执行腾讯前复权日K 并幂等 upsert；同步任务直接落 succeeded 记录，不进队列。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 已同步
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotesSyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v1/admin/content/courses/{courseId}/illustrate:
     post:
       summary: 为章节教材生成图示（operator/admin）
@@ -6002,7 +6634,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/frames:
     get:
-      summary: 关键帧轨道（operator/admin，M9）
+      summary: 关键帧轨道（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6048,7 +6680,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/playback-sessions:
     post:
-      summary: asset+时间窗播放会话（operator/admin，M10 片段卡预览）
+      summary: asset+时间窗播放会话（operator/admin/producer，M10 片段卡预览）
       description: 不要求课程 published（草稿预览用）；TTL 与学员会话一致由服务端回收。
       security:
         - sessionAuth: []
@@ -6097,7 +6729,7 @@ paths:
 
   /v1/admin/content/source-units:
     get:
-      summary: source units 混合检索/列表（operator/admin，M9）
+      summary: source units 混合检索/列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6150,7 +6782,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     post:
-      summary: 批量写入理解产物（operator/admin，M9）
+      summary: 批量写入理解产物（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6216,9 +6848,48 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /v1/admin/content/source-units/read:
+    post:
+      summary: source unit 完整证据读取（转写原文 + 视觉 + 关键帧 + 播放会话）（operator/admin/producer，M3b）
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [unitIds]
+              additionalProperties: false
+              properties:
+                unitIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: string
+                    pattern: '^su_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 全部可读才返回；任一 unitId 不存在或素材未就绪 → 409 unit_not_readable（全有或全无）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUnitsReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
   /v1/admin/content/source-units/reindex:
     post:
-      summary: 补向量：为 embedding 为 NULL 的 units 批量生成 summary 向量（operator/admin，M9）
+      summary: 补向量：为 embedding 为 NULL 的 units 批量生成 summary 向量（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6255,7 +6926,7 @@ paths:
 
   /v1/admin/content/concepts:
     get:
-      summary: 课程术语清单（operator/admin，M9）
+      summary: 课程术语清单（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6281,7 +6952,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 术语归一写入（operator/admin，M9）
+      summary: 术语归一写入（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6331,7 +7002,7 @@ paths:
 
   /v1/admin/content/concept-edges:
     post:
-      summary: 概念依赖边（operator/admin，M9）
+      summary: 概念依赖边（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6375,7 +7046,7 @@ paths:
 
   /v1/admin/content/sections:
     get:
-      summary: 节列表（operator/admin，M9）
+      summary: 节列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6407,7 +7078,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 节草稿 upsert（operator/admin，M9）
+      summary: 节草稿 upsert（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6473,7 +7144,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/article:
     put:
-      summary: 节教材草稿（operator/admin，M9）
+      summary: 节教材草稿（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6528,7 +7199,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/widgets:
     get:
-      summary: 课件 spec 元数据列表（operator/admin，M9）
+      summary: 课件 spec 元数据列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6555,7 +7226,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
     post:
-      summary: 课件 spec 草稿提交与服务端断言证明（operator/admin，M9）
+      summary: 课件 spec 草稿提交与服务端断言证明（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6634,7 +7305,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/figures:
     get:
-      summary: 节级图示清单（operator/admin，M10）
+      summary: 节级图示清单（operator/admin/producer，M10）
       security:
         - sessionAuth: []
       parameters:
@@ -6660,7 +7331,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     post:
-      summary: 节级图示写入（operator/admin，M10；keyframe 抽帧或 diagram 模板 SVG，自动选定）
+      summary: 节级图示写入（operator/admin/producer，M10；keyframe 抽帧或 diagram 模板 SVG，自动选定）
       security:
         - sessionAuth: []
       parameters:
@@ -6708,7 +7379,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/case-stocks:
     get:
-      summary: 节级案例股清单（operator/admin，M10 R2）
+      summary: 节级案例股清单（operator/admin/producer，M10 R2）
       security:
         - sessionAuth: []
       parameters:
@@ -6736,7 +7407,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 节级案例股清单批量 upsert（operator/admin，M10 R2）
+      summary: 节级案例股清单批量 upsert（operator/admin/producer，M10 R2）
       security:
         - sessionAuth: []
       parameters:
@@ -6812,7 +7483,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/widgets/{widgetId}:
     delete:
-      summary: 管理端纠错删除课件（operator/admin，M9）
+      summary: 管理端纠错删除课件（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6844,7 +7515,7 @@ paths:
 
   /v1/admin/content/provenance:
     post:
-      summary: 生产溯源上报（operator/admin，M9）
+      summary: 生产溯源上报（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:

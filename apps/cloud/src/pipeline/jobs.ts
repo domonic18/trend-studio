@@ -107,6 +107,29 @@ export class JobQueue {
     }
   }
 
+  /**
+   * 记录一条同步执行完的任务（不经队列，直接落 succeeded）。
+   * 用于「请求内即完成、无需 worker 参与」的任务（如行情同步）——留痕但不与 worker 抢任务。
+   */
+  async recordCompleted(input: {
+    courseId: string
+    kind: JobKind
+    options?: Record<string, unknown>
+  }): Promise<PipelineJob> {
+    const jobId = `job_${randomBytes(8).toString('hex')}`
+    const { rows } = await this.pool.query<JobRow>(
+      `INSERT INTO pipeline_jobs
+         (job_id, asset_id, course_id, kind, status, stage, progress, attempts, max_attempts,
+          cancel_requested, error_code, options, started_at, finished_at)
+       VALUES ($1, NULL, $2, $3, 'succeeded', 'done', 100, 1, 1, false, NULL, $4::jsonb, now(), now())
+       RETURNING ${COLUMNS}`,
+      [jobId, input.courseId, input.kind, JSON.stringify(input.options ?? {})],
+    )
+    const row = rows[0]
+    if (row === undefined) throw new Error('job insert returned no row')
+    return mapJob(row)
+  }
+
   /** 单条 UPDATE + SKIP LOCKED 认领，避免两个 worker 抢到同一任务。 */
   async claim(workerId: string): Promise<PipelineJob | null> {
     const { rows } = await this.pool.query<JobRow>(

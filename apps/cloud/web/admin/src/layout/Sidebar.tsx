@@ -24,6 +24,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: '管理员',
   operator: '运营',
   student: '学员',
+  producer: '生产端',
 }
 
 function selectedKey(pathname: string): string {

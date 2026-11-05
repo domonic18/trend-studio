@@ -46,6 +46,7 @@ import { registerPipelineRoutes } from './pipeline/routes.js'
 import { createPipelineRuntime, type PipelineRuntime } from './pipeline/runtime.js'
 import { createLocalMediaProcessor } from './pipeline/media-processor.js'
 import { createLocalMediaStore } from './pipeline/media-store.js'
+import type { QuoteFetcher } from './pipeline/quotes/tencent.js'
 import { createFigureStore } from './illustration/store.js'
 import { registerPortalRoutes } from './portal/routes.js'
 import { ProductionService } from './production/service.js'
@@ -62,6 +63,8 @@ export interface BuildAppOptions {
   onRoute?: (method: string, url: string) => void
   /** 测试用：注入已装配的管线运行时（可带假处理器/假 ASR）。 */
   pipeline?: PipelineRuntime
+  /** 测试用：假的行情拉取器（默认走腾讯前复权日K）。 */
+  quotes?: QuoteFetcher
   /** 测试用：与注入的管线运行时共用同一注册表。 */
   metrics?: Metrics
   /** 仅生产入口启动 worker；测试默认不启动，避免后台轮询干扰断言。 */
@@ -76,6 +79,7 @@ export async function buildApp({
   models: injectedModels,
   pipeline: injectedPipeline,
   metrics: injectedMetrics,
+  quotes: injectedQuotes,
   startPipeline = false,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -194,6 +198,7 @@ export async function buildApp({
   const catalog = new CatalogService(
     pool,
     relPath => signFigureUrl(config.mediaSigningSecret, config.mediaBaseUrl, relPath, config.figureSigningTtlSec),
+    playback,
   )
   const progress = new ProgressService(pool)
   const content = new ContentService(pool, embedding)
@@ -210,6 +215,7 @@ export async function buildApp({
     models,
     ai: aiRouter,
     reindex: (courseId: string) => content.reindex(courseId),
+    ...(injectedQuotes === undefined ? {} : { quotes: injectedQuotes }),
   })
 
   registerAuthRoutes(app, { auth, accounts, config, limiter })

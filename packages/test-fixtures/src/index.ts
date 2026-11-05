@@ -1,5 +1,5 @@
 export * from './types.js'
 export { sectionFull } from './section-full.js'
-export { sectionMissingFigure, sectionCrossUnit, sectionStockNotInList } from './section-negatives.js'
+export { sectionMissingFigure, sectionCrossUnit, sectionStockNotInList, sectionUnitAnchorUnknown } from './section-negatives.js'
 export { clipSpanTooLong, clipFromGteTo, clipNotGrounded } from './section-invalid-media.js'
 export { widgetWrongVersion, figureInvalidSec, figureInvalidSecInput } from './section-wrong-version.js'

@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 import {
-  ASSET_ID, CASE_STOCK_REF_ID, CONCEPT_EDGE_ID, CONCEPT_ID, DATE_STR, FIGURE_ID_STRICT,
+  APPROVAL_ID, ASSET_ID, CASE_STOCK_REF_ID, CONCEPT_EDGE_ID, CONCEPT_ID, DATE_STR, FIGURE_ID_STRICT,
   SECTION_ID, SOURCE_UNIT_ID, STOCK_CODE_PLAIN, TRANSCRIPT_ID, WIDGET_ID,
 } from './ids.js'
 import { FIGURE_TEMPLATE_NAMES, PROVENANCE_TASK_KEYS, WIDGET_TYPES } from './enums.js'
@@ -72,6 +72,68 @@ export const framesInput = z.object({
   assetId,
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().positive().optional(),
+}).strict()
+
+/** M3b：source unit 完整证据读取——生产端据此复看转写原文、视觉描述与窗内关键帧。 */
+export const sourceUnitsReadInput = z.object({
+  unitIds: z.array(sourceUnitId).min(1).max(20),
+}).strict()
+
+const unitKeyframe = z.object({
+  sec: z.number().int().nonnegative(),
+  url: z.string().max(2000),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
+}).strict()
+
+const unitPlayback = z.object({
+  playlistUrl: z.string().max(2000),
+  fromSec: z.number().int().nonnegative(),
+  toSec: z.number().int().nonnegative(),
+  expiresAt: z.number().int().nonnegative(),
+}).strict()
+
+export const sourceUnitReadItem = z.object({
+  unitId: sourceUnitId,
+  assetId,
+  startMs: z.number().int().nonnegative(),
+  endMs: z.number().int().positive(),
+  transcriptText: z.string(),
+  visual: z.record(z.string(), z.json()),
+  keyframes: z.array(unitKeyframe),
+  playback: unitPlayback,
+}).strict()
+
+export const sourceUnitsReadOutput = z.object({
+  units: z.array(sourceUnitReadItem).min(1),
+}).strict()
+
+/** M3b：审批版本绑定——门禁签批时由服务端算内容指纹，发布时重算比对。 */
+export const APPROVAL_GATES = ['skeleton', 'final'] as const
+export type ApprovalGate = (typeof APPROVAL_GATES)[number]
+
+export const approvalsWriteInput = z.object({
+  courseId: z.string().min(1).max(64),
+  gate: z.enum(APPROVAL_GATES),
+}).strict()
+
+export const approvalItem = z.object({
+  approvalId: z.string().regex(APPROVAL_ID),
+  courseId: z.string().min(1).max(64),
+  gate: z.enum(APPROVAL_GATES),
+  digest: z.string().length(64),
+  digestSections: z.record(z.string(), z.json()),
+  approvedBy: z.string().min(1).max(64),
+  approvedAt: z.string().min(1),
+}).strict()
+
+export const approvalsListOutput = z.object({
+  approvals: z.array(approvalItem),
+}).strict()
+
+/** M3b：腾讯前复权日K 同步（课程案例股清单驱动，幂等 upsert）。 */
+export const quotesSyncInput = z.object({
+  courseId: z.string().min(1).max(64),
 }).strict()
 
 export const keyframeFrame = z.object({
@@ -156,6 +218,7 @@ export const sectionWriteOutput = z.object({ section: sectionDto }).strict()
 export const sectionArticleWriteInput = z.object({
   sectionId,
   markdown: z.string().min(1).max(20_000),
+  /** 扁平引用集；段落级引用走正文内联锚 `[[unit:su_xxx|label]]`，两者取并集去重后计入引用数。 */
   citations: z.array(sourceUnitId).min(1).max(100),
 }).strict()
 
@@ -311,7 +374,7 @@ export const pipelineJob = z.object({
   jobId: z.string(),
   assetId: z.string().nullable(),
   courseId: z.string(),
-  kind: z.enum(['ingest', 'generate', 'illustrate']),
+  kind: z.enum(['ingest', 'generate', 'illustrate', 'quotes_sync']),
   status: z.enum(['queued', 'running', 'succeeded', 'failed', 'canceled']),
   stage: z.string(),
   progress: z.number(),
@@ -331,6 +394,12 @@ export const pipelineStatusOutput = z.object({
   total: z.number().int(),
   offset: z.number().int().optional(),
   limit: z.number().int().optional(),
+}).strict()
+
+/** M3b B5：行情同步触发结果——job 快照 + 本次 upsert 行数。 */
+export const quotesSyncOutput = z.object({
+  job: pipelineJob,
+  upserted: z.number().int().nonnegative(),
 }).strict()
 
 export const transcriptOutput = z.object({
@@ -375,3 +444,7 @@ export type SourceUnitInput = z.infer<typeof sourceUnitInput>
 export type WidgetWriteInput = z.infer<typeof widgetWriteInput>
 export type ProvenanceEntry = z.infer<typeof provenanceEntry>
 export type TranscriptOutput = z.infer<typeof transcriptOutput>
+export type SourceUnitsReadOutput = z.infer<typeof sourceUnitsReadOutput>
+export type ApprovalsListOutput = z.infer<typeof approvalsListOutput>
+export type QuotesSyncOutput = z.infer<typeof quotesSyncOutput>
+export type ApprovalItem = z.infer<typeof approvalItem>

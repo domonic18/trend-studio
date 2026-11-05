@@ -146,6 +146,97 @@ test('GET 检索：query 参数带 assetId 与 q（URLSearchParams 编码）', a
   assert.equal(result.nextCursor, null)
 })
 
+test('readSourceUnits：POST 路径与载荷正确，回执含完整证据体', async () => {
+  const auth = fakeAuth([
+    {
+      match: (path, init) => path === '/v1/admin/content/source-units/read' && init.method === 'POST',
+      reply: {
+        status: 200,
+        payload: {
+          units: [{
+            unitId: 'su_0123456789abcdef',
+            assetId: 'asset_0123456789abcdef',
+            startMs: 0,
+            endMs: 420000,
+            transcriptText: '均线方向向上',
+            visual: { description: 'K线图' },
+            keyframes: [{ sec: 12, url: 'https://media.example.com/kf.jpg?sig=1', width: 1280, height: 720 }],
+            playback: {
+              playlistUrl: 'https://media.example.com/hls/index.m3u8?sig=1',
+              fromSec: 0,
+              toSec: 420,
+              expiresAt: 1_761_000_000_000,
+            },
+          }],
+        },
+      },
+    },
+  ])
+  const client = new TrendCloudClient(auth)
+  const result = await client.readSourceUnits({ unitIds: ['su_0123456789abcdef'] })
+  assert.equal(result.units[0].transcriptText, '均线方向向上')
+  assert.equal(result.units[0].keyframes[0].url, 'https://media.example.com/kf.jpg?sig=1')
+  assert.equal(result.units[0].playback.fromSec, 0)
+  assert.deepEqual(auth.calls[0].body, { unitIds: ['su_0123456789abcdef'] })
+})
+
+test('readSourceUnits：409 unit_not_readable 附业务码，工具错误可回灌', async () => {
+  const auth = fakeAuth([
+    {
+      match: path => path.includes('/source-units/read'),
+      reply: {
+        status: 409,
+        payload: {
+          error: {
+            code: 'unit_not_readable',
+            message: 'one or more source units are not readable',
+            unitIds: ['su_0123456789abcdef'],
+          },
+        },
+      },
+    },
+  ])
+  const error = await new TrendCloudClient(auth)
+    .readSourceUnits({ unitIds: ['su_0123456789abcdef'] })
+    .then(() => null, error => error)
+  assert.ok(error instanceof UpstreamError)
+  assert.equal(error.status, 409)
+  assert.equal(error.businessCode, 'unit_not_readable')
+  assert.match(toToolError(error, '读取理解产物证据').message, /\[conflict\]/)
+})
+
+test('readSourceUnits：出参缺关键帧地址时整体失败不静默', async () => {
+  const auth = fakeAuth([
+    {
+      match: path => path.includes('/source-units/read'),
+      reply: {
+        status: 200,
+        payload: {
+          units: [{
+            unitId: 'su_0123456789abcdef',
+            assetId: 'asset_0123456789abcdef',
+            startMs: 0,
+            endMs: 420000,
+            transcriptText: '均线方向向上',
+            visual: {},
+            keyframes: [{ sec: 12, width: 1280, height: 720 }],
+            playback: {
+              playlistUrl: 'https://media.example.com/hls/index.m3u8',
+              fromSec: 0,
+              toSec: 420,
+              expiresAt: 1_761_000_000_000,
+            },
+          }],
+        },
+      },
+    },
+  ])
+  const error = await new TrendCloudClient(auth)
+    .readSourceUnits({ unitIds: ['su_0123456789abcdef'] })
+    .then(() => null, error => error)
+  assert.ok(error instanceof InvalidResponseError)
+})
+
 test('溯源上报：POST /provenance 回 202 形状', async () => {
   const auth = fakeAuth([
     {

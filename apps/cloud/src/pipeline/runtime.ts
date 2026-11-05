@@ -18,6 +18,7 @@ import type { LlmClient } from './llm.js'
 import { createLocalMediaProcessor, type MediaProcessor } from './media-processor.js'
 import { createLocalMediaStore, type MediaStore } from './media-store.js'
 import { PipelineService, type PipelineApi } from './service.js'
+import type { QuoteFetcher } from './quotes/tencent.js'
 import {
   PipelineWorker,
   type GenerationHook,
@@ -50,6 +51,8 @@ export interface PipelineRuntimeInput {
   image?: ResolvedImage | null
   /** 与 app 共用同一路由器，冷却状态与用量账本只有一份。 */
   ai?: AiRouter
+  /** 测试注入：假的行情拉取器；生产走腾讯前复权日K。 */
+  quotes?: QuoteFetcher
   reindex?: (courseId: string) => Promise<{ embedded: number }>
 }
 
@@ -75,6 +78,9 @@ export function createDisabledPipelineApi(): PipelineApi {
     regenerateFigure: fail,
     deleteFigure: fail,
     candidateFile: fail,
+    approveCourse: fail,
+    listApprovals: fail,
+    syncQuotes: fail,
     publishCourse: fail,
     listJobs: fail,
     getJob: fail,
@@ -171,6 +177,7 @@ export async function createPipelineRuntime(input: PipelineRuntimeInput): Promis
       return resolved === undefined ? undefined : { priceMicros: resolved.priceMicros }
     },
     ...(input.reindex === undefined ? {} : { reindex: input.reindex }),
+    ...(input.quotes === undefined ? {} : { quotes: input.quotes }),
   })
   const worker = new PipelineWorker({
     pool: input.pool,

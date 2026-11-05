@@ -9,9 +9,8 @@ export default defineConfig({
   base: '/admin/',
   plugins: [react()],
   resolve: {
-    alias: {
-      '@widgets': fileURLToPath(new URL('../widgets', import.meta.url)),
-    },
+    // 渲染组件包与学员端共用，react 实例必须唯一，否则 hooks 失效。
+    dedupe: ['react', 'react-dom'],
   },
   build: {
     outDir: fileURLToPath(new URL('../../dist/admin', import.meta.url)),
@@ -33,7 +32,7 @@ export default defineConfig({
   server: {
     port: 5173,
     fs: {
-      // widgets 组件包位于仓库根 web/widgets，超出 admin 子树，需要放开到仓库根。
+      // 渲染组件包（packages/widgets）在仓库根，超出 admin 子树，需要放开到仓库根。
       allow: [fileURLToPath(new URL('../..', import.meta.url))],
     },
     proxy: {

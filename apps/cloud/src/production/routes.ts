@@ -1,4 +1,4 @@
-/** /v1/admin/content 语料级生产接口（M9）：operator/admin 会话，学员令牌 403。 */
+/** /v1/admin/content 语料级生产接口（M9/M10/M3b）：operator/admin/producer 会话；发布与审批仍在 pipeline 命名空间（operator/admin）。 */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AccountService } from '../accounts/service.js'
@@ -39,7 +39,7 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
   const { service, accounts, config, limiter, playback } = deps
 
   const guard = async (request: FastifyRequest) => {
-    const principal = await requireSession(request, accounts, ['operator', 'admin'])
+    const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
     if (!limiter.take(`production:${principal.userId}`, config.rateLimitContentPerMinute)) {
       throw tooManyRequests()
     }
@@ -108,6 +108,42 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
       ...(cursor === undefined ? {} : { cursor }),
       limit: queryInt(query, 'limit', 20, 1, 50),
     }))
+  })
+
+  app.post('/v1/admin/content/source-units/read', async (request, reply) => {
+    const principal = await guard(request)
+    const body = asObject(request.body ?? {})
+    const evidence = await service.readSourceUnits(body.unitIds)
+    const units = []
+    for (const unit of evidence.units) {
+      const fromSec = Math.floor(unit.startMs / 1000)
+      const toSec = Math.min(Math.ceil(unit.endMs / 1000), fromSec + 3600)
+      const session = await playback.createAssetSession(principal, unit.assetId, { fromSec, toSec })
+      units.push({
+        unitId: unit.unitId,
+        assetId: unit.assetId,
+        startMs: unit.startMs,
+        endMs: unit.endMs,
+        transcriptText: unit.transcriptText,
+        visual: unit.visual,
+        keyframes: unit.keyframes.map(frame => ({
+          ...frame,
+          url: signKeyframeUrl(
+            config.mediaSigningSecret,
+            config.mediaBaseUrl,
+            `${unit.assetId}/keyframes/${frame.sec}.jpg`,
+            config.keyframeSigningTtlSec,
+          ),
+        })),
+        playback: {
+          playlistUrl: session.playlistUrl,
+          fromSec: session.fromSec ?? fromSec,
+          toSec: session.toSec ?? toSec,
+          expiresAt: session.expiresAt,
+        },
+      })
+    }
+    return reply.send({ units })
   })
 
   app.post('/v1/admin/content/source-units/reindex', async (request, reply) => {

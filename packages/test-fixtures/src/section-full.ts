@@ -1,9 +1,9 @@
 import { baseCaseStocks, baseFigure, baseUnit, SECTION_ID, type SectionFixture } from './types.js'
 
-/** 完整合法节：7 类 DSL 容器块 + 个股锚 + figure 旧图片引用 + 案例股 + 引用，全链应通过。 */
+/** 完整合法节：7 类 DSL 容器块 + 个股锚 + 段落级 unit 锚 + figure 旧图片引用 + 案例股 + 引用，全链应通过。 */
 export const sectionFull: SectionFixture = {
   name: 'section-full',
-  description: '七类 DSL 块齐全的合法节快照：board/bignum/cmp/timeline/warn/figure/clip + stock 锚',
+  description: '七类 DSL 块齐全的合法节快照：board/bignum/cmp/timeline/warn/figure/clip + stock 锚 + unit 锚',
   sectionId: SECTION_ID,
   units: [baseUnit()],
   figures: [baseFigure()],
@@ -11,6 +11,8 @@ export const sectionFull: SectionFixture = {
   article: {
     markdown: [
       '趋势线触及三次以上才有效。[[stock:sz000713|丰乐种业]] 是本节案例。',
+      '',
+      '平台定义与量能判据出自 [[unit:su_0123456789abcdef|起飞平台定义]] 这一段原话。',
       '',
       ':::board unitId=su_0123456789abcdef',
       '老师原话：突破当天的量能要放到 20 日均量的两倍以上，平台才算有效。',

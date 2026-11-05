@@ -12,7 +12,7 @@ import {
 import {
   clipFromGteTo, clipNotGrounded, clipSpanTooLong, figureInvalidSecInput,
   sectionCrossUnit, sectionFull, sectionMissingFigure, sectionStockNotInList,
-  widgetWrongVersion,
+  sectionUnitAnchorUnknown, widgetWrongVersion,
 } from '../lib/index.js'
 
 class Rejected extends Error {
@@ -52,6 +52,7 @@ async function judge(fixture) {
     await validateArticleDsl(parsed, {
       sectionFigureIds: new Set(fixture.figures.map(f => f.figureId)),
       units,
+      courseUnitIds: new Set(units.keys()),
       clipGrounded: (assetId, fromMs, toMs) => Promise.resolve(
         [...units.values()].some(unit =>
           unit.assetId === assetId && fromMs >= unit.startMs && toMs <= unit.endMs)),
@@ -81,6 +82,10 @@ test('跨节引用：unit_ref_unknown', async () => {
 
 test('个股锚不在清单：stock_not_in_list', async () => {
   assert.equal(await judge(sectionStockNotInList), 'stock_not_in_list')
+})
+
+test('段落级 unit 锚不在课程：unit_anchor_unknown', async () => {
+  assert.equal(await judge(sectionUnitAnchorUnknown), 'unit_anchor_unknown')
 })
 
 test('非法媒体：窗超长 / from≥to / 未 grounded 均 clip_not_grounded', async () => {

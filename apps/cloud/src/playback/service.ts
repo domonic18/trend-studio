@@ -1,7 +1,6 @@
 import type { Pool } from 'pg'
 import type { AppConfig } from '../config.js'
 import type { AuthService, Principal } from '../auth/service.js'
-import type { SessionPrincipal } from '../accounts/service.js'
 import { randomToken } from '../auth/tokens.js'
 import { badRequest, HttpError, tooManyRequests } from '../errors.js'
 import { parseSegmentId } from '../kb/service.js'
@@ -78,9 +77,12 @@ export class PlaybackService {
     }
   }
 
-  /** admin 预览通道：按 asset + 可选时间窗签发会话；不做 published/course 归属约束（草稿预览用），TTL 兜底回收。 */
+  /**
+   * 按 asset + 可选时间窗签发会话；调用方负责归属校验（admin 预览不限归属，学员端校验节正文 clip 窗）。
+   * principal 只需 userId：学员端是设备令牌主体，没有会话角色。
+   */
   async createAssetSession(
-    principal: SessionPrincipal,
+    principal: { userId: string; deviceId?: string },
     assetId: string,
     window: AssetPlaybackWindow,
   ): Promise<AssetPlaybackSessionOut> {
@@ -105,9 +107,17 @@ export class PlaybackService {
     const sessionId = `ps_${randomToken(8)}`
     const expiresAt = Date.now() + this.config.playbackSessionTtlSec * 1000
     await this.pool.query(
-      `INSERT INTO playback_sessions (session_id, user_id, asset_id, window_from_sec, window_to_sec, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [sessionId, principal.userId, assetId, fromSec ?? null, toSec ?? null, new Date(expiresAt)],
+      `INSERT INTO playback_sessions (session_id, user_id, device_id, asset_id, window_from_sec, window_to_sec, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        sessionId,
+        principal.userId,
+        principal.deviceId ?? null,
+        assetId,
+        fromSec ?? null,
+        toSec ?? null,
+        new Date(expiresAt),
+      ],
     )
     return {
       sessionId,

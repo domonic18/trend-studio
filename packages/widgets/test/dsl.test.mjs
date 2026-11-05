@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { rewriteStockAnchors, splitArticle } from '../web/widgets/dsl.js'
+import { rewriteStockAnchors, splitArticle } from '../lib/dsl.js'
 
 test('前端 DSL 切分：markdown 游程与容器块交替', () => {
   const markdown = [
