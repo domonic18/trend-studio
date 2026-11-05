@@ -31,6 +31,8 @@ import {
   sectionWriteOutput,
   sourceUnitsSearchInput,
   sourceUnitsSearchOutput,
+  sourceUnitsReadInput,
+  sourceUnitsReadOutput,
   sourceUnitsWriteInput,
   sourceUnitsWriteOutput,
   widgetWriteInput,
@@ -48,6 +50,7 @@ import {
   type SectionsListOutput,
   type SectionWriteOutput,
   type SourceUnitsSearchOutput,
+  type SourceUnitsReadOutput,
   type SourceUnitsWriteOutput,
   type TranscriptOutput,
   type WidgetWriteOutput,
@@ -150,6 +153,16 @@ export class TrendCloudClient {
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     const payload = await this.get(`${CONTENT_BASE}/source-units?${params.toString()}`, signal)
     return parseOutput(sourceUnitsSearchOutput, payload, 'sourceUnitsSearch')
+  }
+
+  /**
+   * 证据读取：按 unitId 批量取转写原文、视觉描述、窗内关键帧与播放会话。
+   * 全有或全无——任一 unitId 不可读即 409 unit_not_readable。
+   */
+  async readSourceUnits(input: unknown, signal?: AbortSignal): Promise<SourceUnitsReadOutput> {
+    const body = parseInput(sourceUnitsReadInput, input, 'sourceUnitsRead')
+    const payload = await this.post(`${CONTENT_BASE}/source-units/read`, body, signal)
+    return parseOutput(sourceUnitsReadOutput, payload, 'sourceUnitsRead')
   }
 
   async writeConcept(input: unknown, signal?: AbortSignal): Promise<ConceptWriteOutput> {
