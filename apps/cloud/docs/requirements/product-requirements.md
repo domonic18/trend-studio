@@ -1,7 +1,7 @@
 # 趋势交易课程云端服务需求
 
-版本：v0.9（2026-11-05）
-状态：与插件 PRD v1.8 §6、插件架构 v1.8 §6/§9/§10/§12/§17 对齐；v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
+版本：v0.10（2026-11-06）
+状态：v0.10 M3b 契约阻断项批次 B1——新增 `producer` 生产端专用角色与生产/发布分权（C8 角色边界、C13 生产接口口径、§2 生产插件凭据）；其余同 v0.9。v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
 
 ## 1. 背景与目标
 
@@ -31,7 +31,7 @@
 | 浏览器播放器 | 只拿签名 `playlistUrl`，直接向媒体域取流，不持 Bearer |
 | 学员账号 | 可在门户自助注册；也可由管理员创建并用一次性邀请码设置密码；设备授权页登录后绑定设备 |
 | 内容运营 / 管理员 | 后台账号（用户名 + 密码）登录控制台，按角色管理账号、课程、知识点、文章与索引；运营/管理员可查看 AI 用量与运行，任务绑定仅管理员 |
-| 生产插件（M9） | `dsh-plugin-trend-producer`（教员本机 dsh），以 operator/admin 会话调用生产 admin API 写入草稿并上报溯源；模型自配（含主备），密钥不经云端；无发布权限 |
+| 生产插件（M9） | `dsh-plugin-trend-producer`（教员本机 dsh），以 **producer 专用角色会话**（M3b 起，管理员经 `POST /v1/admin/users` 铸发）调用生产 admin API 写入草稿并上报溯源；模型自配（含主备），密钥不经云端；无发布与审批权限 |
 
 ## 3. 功能需求
 
@@ -100,11 +100,11 @@
 
 ### C8 账号与后台登录（M3.1，P0）
 
-- 后台账号由管理员创建；学员可在门户自助注册（见 C11），注册只创建 `student`。字段：`username`（3–32，小写字母开头，唯一）、`displayName`、`role`（`student/operator/admin`）、`status`（`active/disabled`）。
+- 后台账号由管理员创建；学员可在门户自助注册（见 C11），注册只创建 `student`。字段：`username`（3–32，小写字母开头，唯一）、`displayName`、`role`（`student/operator/admin/producer`）、`status`（`active/disabled`）。
 - 创建或重置时可直接设置初始密码，或生成一次性邀请码（默认 7 天有效，单次使用）；邀请码只返回一次，服务端只存哈希。
 - 密码 10–128 字符，使用带随机盐的 scrypt 存储；任何接口、日志与错误消息不得回显密码或哈希。
 - 后台登录 `POST /v1/auth/session`：`{ username, password }` → 会话令牌；默认 12 小时有效，只存哈希，支持注销与自助改密；改密、禁用或角色变更立即吊销该账号后台会话。
-- 角色边界：`admin` 可创建/修改账号与重置凭据；`operator` 可读用户列表并做内容运营；`student` 不可登录控制台、不可访问 `/v1/admin/*`。
+- 角色边界：`admin` 可创建/修改账号与重置凭据；`operator` 可读用户列表并做内容运营与发布；`producer`（M3b）为生产端专用——只可写内容生产命名空间（source units/概念/节/教材/课件/图示/案例股），不可发布、不可审批、不可管理账号与模型配置；`student` 不可登录控制台、不可访问 `/v1/admin/*`。
 - 首个管理员由启动配置 `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` 在库中无管理员时创建；密码至少 12 字符，不写日志。
 - 登录、邀请码兑换与设备批准按 IP 限流；账号禁用后其设备令牌立即不可用。
 
@@ -165,7 +165,7 @@
 - 溯源上报：`POST /v1/admin/content/provenance` 上报生产端模型调用（`taskKey/model/provider/tokens/latency/skillVersions/targetId/status`，评审类可带 `summary` 结构化摘要），写入 `ai_runs(source='producer')` 与 `ai_usage_events`，与云端任务同一账本筛选；任务键命名空间 `vision.describe、content.chunk_summary、content.concept_map、content.curriculum、content.section_draft、content.section_edit、content.figure_spec、content.widget_spec、content.rubric_review`；不收 prompt 与产物正文。生产端 token 为自报数据，账本按 `source` 区分口径。
 - 断点恢复：生产中间产物（source units、概念、节草稿、课件 spec）全部经 admin API 增量落库（云 DB 即 checkpoint）；生产中断按云 DB 缺失单元重入队，不依赖生产端本地状态。
 - 发布演进：学员契约升级 `contractVersion=3`——目录树含节层，节响应含教材、`figures` 映射与 `widgets`（spec 列表）；插件低于最低支持版本提示升级，不静默降级。publish 硬门禁扩展：每个课件的 `validation` 证明记录必须完整，缺失 `409`；其余发布语义（draft→显式 publish→reindex、缺图 `409 figure_unresolved`）不变。
-- 边界与门禁归属：生产接口仅 operator/admin 会话，学员令牌 `403`；门禁①（骨架）与门禁②（主编评审）在生产端 dsh 审批完成，云端不重复强制，云端只守 publish 硬门禁；服务端 spec 复检为确定性校验（无 LLM）；学员侧只消费已发布内容，不感知生产过程。
+- 边界与门禁归属：生产接口接受 operator/admin/producer 会话（M3b 起 producer 为生产端专用角色），学员令牌 `403`；门禁①（骨架）与门禁②（主编评审）在生产端 dsh 审批完成，云端不重复强制，云端只守 publish 硬门禁；服务端 spec 复检为确定性校验（无 LLM）；学员侧只消费已发布内容，不感知生产过程。
 
 ### C14 教材呈现层与个股实盘对照（M10，P0）
 

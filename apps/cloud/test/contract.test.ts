@@ -3928,3 +3928,108 @@ test('M10 R2：节级案例股清单 upsert + DSL 个股锚成员校验', async 
   assert.equal(articleBad.json().error?.code, 'stock_not_in_list')
 })
 
+
+test('M3b 分权：producer 可写内容生产、不可发布与管理账号', async () => {
+  const PRODUCER = 'm3b-producer'
+  const PRODUCER_PASSWORD = 'producer-pass-123'
+  const created = await adminCreateUser({
+    username: PRODUCER,
+    displayName: 'M3b 生产端',
+    role: 'producer',
+    password: PRODUCER_PASSWORD,
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
+
+  const login = await loginSession(PRODUCER, PRODUCER_PASSWORD)
+  assert.equal(login.statusCode, 200, JSON.stringify(login.body))
+  assert.equal(login.body.user.role, 'producer')
+  const producerHeaders = { authorization: `Bearer ${login.body.token}` }
+
+  const courseId = 'T-M3B-GOV'
+  const chapterId = 'CH3B'
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 分权测试课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '分权章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  // producer 可写内容生产命名空间：source units → 节 → 教材
+  const assetId = await insertAsset(courseId, 'M3b 分权素材')
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: producerHeaders,
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 120_000, transcriptText: '分权验证转写', summary: '分权单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: producerHeaders,
+    payload: {
+      courseId,
+      chapterId,
+      title: '第一节 分权',
+      position: 1,
+      sourceAssetIds: [assetId],
+    },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: producerHeaders,
+    payload: { markdown: 'producer 写入的教材正文。', citations: [unitId] },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  // producer 不可发布（pipeline 命名空间仍 operator/admin）
+  const publish = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/publish`,
+    headers: producerHeaders,
+  })
+  assert.equal(publish.statusCode, 403)
+
+  // producer 不可管理账号 / 不可读模型配置
+  const createUser = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/users',
+    headers: producerHeaders,
+    payload: { username: 'm3b-intruder', displayName: '越权', role: 'operator' },
+  })
+  assert.equal(createUser.statusCode, 403)
+
+  const modelConfigs = await app.inject({
+    method: 'GET',
+    url: '/v1/admin/model-configs/llm',
+    headers: producerHeaders,
+  })
+  assert.equal(modelConfigs.statusCode, 403)
+
+  // operator 仍可写内容生产（基线不回归）
+  const operatorLogin = await loginSession('operator-role-01', 'operator-password-123')
+  assert.equal(operatorLogin.statusCode, 200, JSON.stringify(operatorLogin.body))
+  const operatorArticle = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: { authorization: `Bearer ${operatorLogin.body.token}` },
+    payload: { markdown: 'operator 写入的教材正文第二版。', citations: [unitId] },
+  })
+  assert.equal(operatorArticle.statusCode, 200, operatorArticle.body)
+})

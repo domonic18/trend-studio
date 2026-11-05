@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.10）
+# 趋势课程云端服务 · 架构设计（v0.11）
 
-版本：v0.10（2026-11-05；文档体系梳理：M10 R1 呈现层落地状态回写、§7 小节编号去重（模型配置由重复的「7.1」改为 7.6）、案例股代号双形态统一（DB 6 位数字 + exchange ↔ 正文带前缀形态）、§6.5.4 图示配额改为指向 §6.6.2、跨仓版本引用校正）
+版本：v0.11（2026-11-06；M3b 契约阻断项批次 B1：新增 `producer` 角色与生产/发布分权——生产命名空间 `/v1/admin/content/*` 接受 operator/admin/producer，发布/审批/账号/模型配置仍限 operator/admin；迁移 015 含 content_approvals 与 course_stock_quotes 表结构）
+v0.10（2026-11-05；文档体系梳理：M10 R1 呈现层落地状态回写、§7 小节编号去重（模型配置由重复的「7.1」改为 7.6）、案例股代号双形态统一（DB 6 位数字 + exchange ↔ 正文带前缀形态）、§6.5.4 图示配额改为指向 §6.6.2、跨仓版本引用校正）
 v0.9（2026-11-05；采纳「老师标注详情 + 逐根回放判断闭环」增补提案（来源 producer 调研线 `docs/research/m10-replay-annotation-proposal.md`，评审修正 3 处）：DSL v2 草案增 `:::annotation`/`:::replay`（按 code 解析，不带 widgetId）、`spec_version=2` 批次增 `bar-replay-decision`（3 条新断言、bars 不入 spec）、渲染组件输入扩 `annotations[]`、ADR C33/C34；隐私护栏：学员作答不采集。实现挂 R2 后半/R3 试点，R1 范围不变）
 v0.8（2026-11-05；补充 M10 教材呈现层与个股实盘对照目标架构 §6.6：富文本 DSL v1 冻结、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板取代 Mermaid、案例股清单与课程侧行情缓存、课件新题型草案；依据 2026-11-05 原型 V1–V3 用户验收与需求 v0.8 C14）
 状态：**v0.7 为生产架构重构的目标设计稿（M9），v0.8 起追加呈现层目标架构（M10）**。核心变化：课程生产从"单素材转写→单发 prompt 生成"升级为"语料级多模态理解→概念综合→Agent 逐节 grounded 生产→交互课件"；M10 将节教材升级为编辑部式富文本长文（叙事/图示/媒体/实盘四层）。生产大脑外置于 **dsh 生产插件**（`dsh-plugin-trend-producer`，独立仓库），云端保持确定性校验器、存储与发布门禁职责，不内嵌 Agent 循环。学员面接口与既有契约不变。需求 v0.9（C13/C14）与对接清单 v0.8（§3.13/§3.14）已同步本文接口口径；课件 8 类组件 spec schema v1 已冻结（§6.5.5，2026-11-04）；富文本 DSL v1 与 SVG 模板白名单 v1 冻结（§6.6，2026-11-05）；v0.6 新增 M7 公开门户与自助账号、AI 用量账本与任务级模型路由（`/v1/portal/*`、`/v1/admin/ai/*`）；v0.5 补充 M6 公测加固（限流矩阵、内存上限、压测与恢复演练、合规基线）；v0.4 新增 M1 视频→课程管线（本地存储、DB 任务队列、长音频转写、LLM 草稿与人工发布）；v0.3 同步 M3.1/M3.2/M3.3 落地状态；v0.2 新增 M4.2 语音转写（MiniMax ASR）。
@@ -97,7 +98,7 @@ flowchart LR
   PORTAL --> DB
   PIPE --> AIOPS
   AIOPS --> DB
-  PROD -->|operator/admin 会话 + admin API + 溯源上报| API
+  PROD -->|producer 会话（M3b 起） + admin API + 溯源上报| API
   PROD -.->|VLM 帧理解（生产端自配模型）| FRAMES[云端抽帧产物]
 ```
 
@@ -464,6 +465,8 @@ queued ──claim──> running ──success──> succeeded
 | `GET /v1/admin/content/sections/{id}/preview` | 管理台渲染预览（教材+图示+课件试玩） |
 | `POST /v1/admin/content/provenance` | 溯源上报（任务/模型/token/skill_versions，落 AI 账本） |
 
+M3b 分权：上表与 M10 端点表（§6.5.1/§6.6）的 `/v1/admin/content/*` 生产端点均接受 **operator/admin/producer** 会话；发布（publish）、审批（approvals，M3b B4 落地）、账号管理与模型配置仍限 operator/admin。生产插件凭据使用 `producer` 角色专用令牌，不再复用 operator 令牌。
+
 M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、资产时间窗播放会话，契约见 §6.6.2/§6.6.3 与对接清单 §3.14）：
 
 | 方法与路径 | 用途 | 实现状态 |
@@ -764,12 +767,12 @@ sequenceDiagram
 
 ### 7.2 账号与后台会话（M3.1）
 
-- 后台账号由管理员创建：`username`（小写、唯一）、`displayName`、`role`（student/operator/admin）、可选初始密码或一次性邀请码；学员也可通过门户自助注册（§7.7），只创建 `student`。
+- 后台账号由管理员创建：`username`（小写、唯一）、`displayName`、`role`（student/operator/admin/producer）、可选初始密码或一次性邀请码；学员也可通过门户自助注册（§7.7），只创建 `student`。
 - 密码用随机盐 scrypt 存储（N=16384、r=8、p=1、64 字节），比较使用常量时间；登录失败、邀请码错误与禁用账号统一返回 `401`。
 - 后台会话 `POST /v1/auth/session` 只对 operator/admin 开放；令牌 12 小时默认、只存 SHA-256 哈希；注销、改密、禁用与角色变更即吊销。
 - 邀请码默认 7 天、单次使用；相同账号新建邀请码会使未使用旧码失效；服务端只存哈希，明文只在创建响应出现一次。
 - 首个管理员由启动配置创建（`BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`），仅当库中不存在 active admin 时生效。
-- 角色边界：学员令牌只能访问业务接口；`/v1/admin/*` 读接口要求 operator/admin，账号写接口仅 admin；禁止管理员禁用或降级自己，禁止移除最后一个 active admin。
+- 角色边界：学员令牌只能访问业务接口；`/v1/admin/*` 读接口要求 operator/admin，账号写接口仅 admin；`producer` 为 M3b 新增的生产端专用角色——只放行内容生产命名空间（§6.5/§6.6 的 admin content 端点），不可发布、不可审批、不可管理账号与模型配置；禁止管理员禁用或降级自己，禁止移除最后一个 active admin。
 
 ### 7.3 鉴权中间件
 

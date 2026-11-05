@@ -5,7 +5,7 @@ import { withTransaction } from '../db.js'
 import { conflict, forbidden, notFound, unauthorized } from '../errors.js'
 import { hashPassword, verifyPassword } from './password.js'
 
-export const USER_ROLES = ['student', 'operator', 'admin'] as const
+export const USER_ROLES = ['student', 'operator', 'admin', 'producer'] as const
 export type UserRole = (typeof USER_ROLES)[number]
 
 export const USER_STATUSES = ['active', 'disabled'] as const

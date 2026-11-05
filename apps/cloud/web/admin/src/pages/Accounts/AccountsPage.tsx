@@ -26,6 +26,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: 'student', label: '学员' },
   { value: 'operator', label: '运营' },
   { value: 'admin', label: '管理员' },
+  { value: 'producer', label: '生产端' },
 ]
 
 interface CreateUserValues {

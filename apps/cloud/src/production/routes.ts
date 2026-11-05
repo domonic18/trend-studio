@@ -1,4 +1,4 @@
-/** /v1/admin/content 语料级生产接口（M9）：operator/admin 会话，学员令牌 403。 */
+/** /v1/admin/content 语料级生产接口（M9/M10/M3b）：operator/admin/producer 会话；发布与审批仍在 pipeline 命名空间（operator/admin）。 */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AccountService } from '../accounts/service.js'
@@ -39,7 +39,7 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
   const { service, accounts, config, limiter, playback } = deps
 
   const guard = async (request: FastifyRequest) => {
-    const principal = await requireSession(request, accounts, ['operator', 'admin'])
+    const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
     if (!limiter.take(`production:${principal.userId}`, config.rateLimitContentPerMinute)) {
       throw tooManyRequests()
     }

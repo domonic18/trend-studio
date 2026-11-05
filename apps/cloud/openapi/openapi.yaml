@@ -523,7 +523,8 @@ components:
 
     UserRole:
       type: string
-      enum: [student, operator, admin]
+      enum: [student, operator, admin, producer]
+      description: producer 为生产端专用角色（M3b）：可写内容生产命名空间，不可发布、不可审批、不可管理账号与模型配置。
     UserStatus:
       type: string
       enum: [active, disabled]
@@ -6002,7 +6003,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/frames:
     get:
-      summary: 关键帧轨道（operator/admin，M9）
+      summary: 关键帧轨道（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6048,7 +6049,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/playback-sessions:
     post:
-      summary: asset+时间窗播放会话（operator/admin，M10 片段卡预览）
+      summary: asset+时间窗播放会话（operator/admin/producer，M10 片段卡预览）
       description: 不要求课程 published（草稿预览用）；TTL 与学员会话一致由服务端回收。
       security:
         - sessionAuth: []
@@ -6097,7 +6098,7 @@ paths:
 
   /v1/admin/content/source-units:
     get:
-      summary: source units 混合检索/列表（operator/admin，M9）
+      summary: source units 混合检索/列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6150,7 +6151,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     post:
-      summary: 批量写入理解产物（operator/admin，M9）
+      summary: 批量写入理解产物（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6218,7 +6219,7 @@ paths:
 
   /v1/admin/content/source-units/reindex:
     post:
-      summary: 补向量：为 embedding 为 NULL 的 units 批量生成 summary 向量（operator/admin，M9）
+      summary: 补向量：为 embedding 为 NULL 的 units 批量生成 summary 向量（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6255,7 +6256,7 @@ paths:
 
   /v1/admin/content/concepts:
     get:
-      summary: 课程术语清单（operator/admin，M9）
+      summary: 课程术语清单（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6281,7 +6282,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 术语归一写入（operator/admin，M9）
+      summary: 术语归一写入（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6331,7 +6332,7 @@ paths:
 
   /v1/admin/content/concept-edges:
     post:
-      summary: 概念依赖边（operator/admin，M9）
+      summary: 概念依赖边（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6375,7 +6376,7 @@ paths:
 
   /v1/admin/content/sections:
     get:
-      summary: 节列表（operator/admin，M9）
+      summary: 节列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6407,7 +6408,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 节草稿 upsert（operator/admin，M9）
+      summary: 节草稿 upsert（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
@@ -6473,7 +6474,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/article:
     put:
-      summary: 节教材草稿（operator/admin，M9）
+      summary: 节教材草稿（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6528,7 +6529,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/widgets:
     get:
-      summary: 课件 spec 元数据列表（operator/admin，M9）
+      summary: 课件 spec 元数据列表（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6555,7 +6556,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
     post:
-      summary: 课件 spec 草稿提交与服务端断言证明（operator/admin，M9）
+      summary: 课件 spec 草稿提交与服务端断言证明（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6634,7 +6635,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/figures:
     get:
-      summary: 节级图示清单（operator/admin，M10）
+      summary: 节级图示清单（operator/admin/producer，M10）
       security:
         - sessionAuth: []
       parameters:
@@ -6660,7 +6661,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     post:
-      summary: 节级图示写入（operator/admin，M10；keyframe 抽帧或 diagram 模板 SVG，自动选定）
+      summary: 节级图示写入（operator/admin/producer，M10；keyframe 抽帧或 diagram 模板 SVG，自动选定）
       security:
         - sessionAuth: []
       parameters:
@@ -6708,7 +6709,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/case-stocks:
     get:
-      summary: 节级案例股清单（operator/admin，M10 R2）
+      summary: 节级案例股清单（operator/admin/producer，M10 R2）
       security:
         - sessionAuth: []
       parameters:
@@ -6736,7 +6737,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
     put:
-      summary: 节级案例股清单批量 upsert（operator/admin，M10 R2）
+      summary: 节级案例股清单批量 upsert（operator/admin/producer，M10 R2）
       security:
         - sessionAuth: []
       parameters:
@@ -6812,7 +6813,7 @@ paths:
 
   /v1/admin/content/sections/{sectionId}/widgets/{widgetId}:
     delete:
-      summary: 管理端纠错删除课件（operator/admin，M9）
+      summary: 管理端纠错删除课件（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       parameters:
@@ -6844,7 +6845,7 @@ paths:
 
   /v1/admin/content/provenance:
     post:
-      summary: 生产溯源上报（operator/admin，M9）
+      summary: 生产溯源上报（operator/admin/producer，M9）
       security:
         - sessionAuth: []
       requestBody:
