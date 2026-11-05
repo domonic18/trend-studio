@@ -9,6 +9,7 @@ export const WIDGET_TYPES = [
   'flashcards',
   'checklist',
   'timeline-explorer',
+  'bar-replay-decision',
 ] as const
 
 export const FIGURE_TEMPLATE_NAMES = [
@@ -30,5 +31,28 @@ export const PROVENANCE_TASK_KEYS = [
   'content.rubric_review',
 ] as const
 
-export const DSL_DIRECTIVES = ['board', 'bignum', 'cmp', 'timeline', 'warn', 'figure', 'clip'] as const
+export const DSL_DIRECTIVES = [
+  'board', 'bignum', 'cmp', 'timeline', 'warn', 'figure', 'clip',
+  'annotation', 'replay',
+] as const
 export type DslDirectiveName = (typeof DSL_DIRECTIVES)[number]
+
+/** 组件版本（架构 §6.6.1 组件扩容）：v1 七块=1，v2 两块=2。正文版本取用到的组件版本最大值。 */
+export const DSL_DIRECTIVE_VERSIONS: Record<DslDirectiveName, 1 | 2> = {
+  board: 1,
+  bignum: 1,
+  cmp: 1,
+  timeline: 1,
+  warn: 1,
+  figure: 1,
+  clip: 1,
+  annotation: 2,
+  replay: 2,
+}
+
+/** 老师标注三类（structure=结构 / invalidation=失效 / rhythm=节奏）。 */
+export const ANNOTATION_KINDS = ['structure', 'invalidation', 'rhythm'] as const
+export type AnnotationKind = (typeof ANNOTATION_KINDS)[number]
+
+/** 课程级 K 线叠加常量（架构 §6.6.5）：仅 M60，新增需同步渲染器。 */
+export const COURSE_OVERLAYS = ['M60'] as const

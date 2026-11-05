@@ -310,7 +310,7 @@ test('sectionPreview：GET 节预览，回读教材正文与课件 spec', async 
             status: 'draft',
             conceptRefs: ['cpt_0123456789abcdef'],
           },
-          article: { markdown, citations: ['su_0123456789abcdef'], version: 2, status: 'draft' },
+          article: { markdown, citations: ['su_0123456789abcdef'], version: 2, status: 'draft', dslVersion: 1 },
           widgets: [
             {
               widgetId: 'wgt_0123456789abcdef',

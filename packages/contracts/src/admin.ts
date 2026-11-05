@@ -6,9 +6,11 @@
 import { z } from 'zod'
 import {
   APPROVAL_ID, ASSET_ID, CASE_STOCK_REF_ID, CONCEPT_EDGE_ID, CONCEPT_ID, DATE_STR, FIGURE_ID_STRICT,
-  SECTION_ID, SOURCE_UNIT_ID, STOCK_CODE_PLAIN, TRANSCRIPT_ID, WIDGET_ID,
+  SECTION_ID, SOURCE_UNIT_ID, STOCK_CODE, STOCK_CODE_PLAIN, TRANSCRIPT_ID, WIDGET_ID,
 } from './ids.js'
-import { FIGURE_TEMPLATE_NAMES, PROVENANCE_TASK_KEYS, WIDGET_TYPES } from './enums.js'
+import {
+  ANNOTATION_KINDS, COURSE_OVERLAYS, FIGURE_TEMPLATE_NAMES, PROVENANCE_TASK_KEYS, WIDGET_TYPES,
+} from './enums.js'
 
 const assetId = z.string().regex(ASSET_ID, 'assetId 格式不合法')
 const sourceUnitId = z.string().regex(SOURCE_UNIT_ID, 'unitId 格式不合法')
@@ -231,11 +233,46 @@ export const sectionArticleWriteOutput = z.object({
 export const widgetWriteInput = z.object({
   sectionId,
   type: z.enum(WIDGET_TYPES),
-  specVersion: z.literal(1),
+  specVersion: z.union([z.literal(1), z.literal(2)]),
   spec: z.record(z.string(), z.unknown()),
   assertions: z.record(z.string(), z.unknown()),
   citations: z.array(sourceUnitId).min(1).max(20),
 }).strict()
+
+/** M10 v2：bar-replay-decision 课件 spec（架构 §6.6.5）。bars 不入 spec——由宿主按 §6.6.3 取得。 */
+export const barReplayDecisionSpec = z.strictObject({
+  code: z.string().regex(STOCK_CODE, 'code 格式不合法'),
+  window: z.strictObject({
+    from: z.string().regex(DATE_STR, 'window.from 格式不合法'),
+    to: z.string().regex(DATE_STR, 'window.to 格式不合法'),
+  }),
+  overlays: z.array(z.enum(COURSE_OVERLAYS)).max(1).optional(),
+  annotations: z.array(z.strictObject({
+    unitId: sourceUnitId,
+    atMs: z.number().int().nonnegative().max(86_400_000),
+    kind: z.enum(ANNOTATION_KINDS),
+    d: z.string().regex(DATE_STR, 'annotation.d 格式不合法'),
+    label: z.string().trim().min(1).max(50),
+  })).max(12).optional(),
+  decisions: z.array(z.strictObject({
+    atDate: z.string().regex(DATE_STR, 'decision.atDate 格式不合法'),
+    question: z.string().trim().min(1).max(500),
+    options: z.array(z.strictObject({ label: z.string().trim().min(1).max(200) })).min(2).max(4),
+    correct: z.number().int().min(0).max(3),
+    revealText: z.string().trim().min(1).max(2000),
+    unitId: sourceUnitId,
+    atMs: z.number().int().nonnegative().max(86_400_000),
+  })).min(1).max(8),
+  citations: z.array(sourceUnitId).min(1).max(20),
+}).strict()
+
+/** bar-replay-decision 必带断言（架构 §6.6.5）：三条新证明 + 复用 answerUnique。 */
+export const BAR_REPLAY_DECISION_ASSERTIONS = [
+  'decisionPointsGrounded',
+  'revealMonotonic',
+  'annotationTermsGrounded',
+  'answerUnique',
+] as const
 
 export const widgetWriteOutput = z.object({
   widgetId: z.string().regex(WIDGET_ID),
@@ -261,6 +298,8 @@ export const sectionPreviewOutput = z.object({
     citations: z.array(z.string()),
     version: z.number().int().positive(),
     status: z.enum(['draft', 'published', 'archived']),
+    /** 正文实际用到的 DSL 组件版本（v1=1，含 annotation/replay=2）。 */
+    dslVersion: z.number().int().nonnegative(),
   }).strict().nullable(),
   widgets: z.array(z.object({
     widgetId: z.string().regex(WIDGET_ID),

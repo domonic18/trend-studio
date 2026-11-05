@@ -4,6 +4,7 @@
  */
 
 import { DSL_DIRECTIVES } from './enums.js'
+import { dslVersionOf } from './dsl.js'
 import type { DslErrorSink } from './errors-sink.js'
 
 export interface DslBlock {
@@ -80,6 +81,12 @@ export function parseArticleDsl(markdown: string, sink: DslErrorSink): DslParseR
     sink.bad(`dsl: container '${open.block.directive}' opened at line ${open.block.line} is not closed`)
   }
   return { blocks, anchors, unitAnchors }
+}
+
+/** 正文实际用到的 DSL 组件版本（纯 v1 正文=1，含 annotation/replay=2）。 */
+export function markdownDslVersion(markdown: string, sink: DslErrorSink): number {
+  const parsed = parseArticleDsl(markdown, sink)
+  return dslVersionOf(parsed.blocks.map(block => block.directive))
 }
 
 function parseAttrs(raw: string, lineNo: number, sink: DslErrorSink): Record<string, string> {

@@ -6,7 +6,7 @@
  */
 
 import type { Pool } from 'pg'
-import { DSL_VERSION, parseArticleDsl, type DslBlock, type DslErrorSink } from '@trend/contracts'
+import { markdownDslVersion, parseArticleDsl, type DslBlock, type DslErrorSink } from '@trend/contracts'
 import type {
   CatalogCaseStockOutput,
   CatalogFigureOutput,
@@ -28,6 +28,9 @@ const storedArticleSink: DslErrorSink = {
     throw new HttpError(500, `stored section article invalid: ${message}`)
   },
   coded: (_code, message) => {
+    throw new HttpError(500, `stored section article invalid: ${message}`)
+  },
+  conflict: (_code, message) => {
     throw new HttpError(500, `stored section article invalid: ${message}`)
   },
 }
@@ -179,7 +182,7 @@ export async function readSection(
     ? null
     : {
       markdown: articleRow.markdown,
-      dslVersion: DSL_VERSION,
+      dslVersion: markdownDslVersion(articleRow.markdown, storedArticleSink),
       version: articleRow.version,
       publishedAt: articleRow.published_at.getTime(),
     }

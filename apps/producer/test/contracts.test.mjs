@@ -54,7 +54,7 @@ test('pipeline 状态：assetId 与 courseId 至少一项', () => {
   assert.equal(pipelineStatusInput.parse({ assetId: 'asset_0123456789abcdef' }).assetId, 'asset_0123456789abcdef')
 })
 
-test('课件提交：specVersion 固定 1，type 白名单，citations ≥1', () => {
+test('课件提交：specVersion 取 1/2，type 白名单，citations ≥1', () => {
   const base = {
     sectionId: 'sec_0123456789abcdef',
     specVersion: 1,
@@ -63,8 +63,9 @@ test('课件提交：specVersion 固定 1，type 白名单，citations ≥1', ()
     citations: ['su_0123456789abcdef'],
   }
   assert.equal(widgetWriteInput.parse({ ...base, type: 'kline-annotator' }).type, 'kline-annotator')
+  assert.equal(widgetWriteInput.parse({ ...base, type: 'kline-annotator', specVersion: 2 }).specVersion, 2)
   assert.throws(() => widgetWriteInput.parse({ ...base, type: 'free-code-canvas' }))
-  assert.throws(() => widgetWriteInput.parse({ ...base, type: 'kline-annotator', specVersion: 2 }))
+  assert.throws(() => widgetWriteInput.parse({ ...base, type: 'kline-annotator', specVersion: 3 }))
   assert.throws(() => widgetWriteInput.parse({ ...base, type: 'kline-annotator', citations: [] }))
 })
 

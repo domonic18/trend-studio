@@ -8,12 +8,13 @@ import { isProducerTaskKey, type ProducerTaskKey } from '../ai/tasks.js'
 import type { AiUsageService } from '../ai/usage.js'
 import { assertSafeMarkdown, parseContentId } from '../content/service.js'
 import { badRequest, codedConflict, conflict, notFound, serviceUnavailable } from '../errors.js'
+import { markdownDslVersion } from '@trend/contracts'
 import { toVectorLiteral, type EmbeddingResolver } from '../kb/embedding.js'
 import { stringField } from '../http/validation.js'
 import type { FigureStore } from '../illustration/store.js'
 import { validateArticleDsl, type DslUnitRef } from './dsl/validate.js'
-import { DSL_VERSION } from './dsl/schemas.js'
 import { parseArticleDsl, type DslParseResult } from './dsl/parse.js'
+import { cloudDslSink } from './dsl/sink.js'
 import {
   createSectionFigure as writeSectionFigure,
   listSectionFigures as querySectionFigures,
@@ -465,7 +466,7 @@ export class ProductionService {
             citations: articleRow.citations as string[],
             version: articleRow.version,
             status: articleRow.status,
-            dslVersion: DSL_VERSION,
+            dslVersion: markdownDslVersion(articleRow.markdown, cloudDslSink),
           },
       widgets: widgetRows.map(row => ({
         widgetId: row.widget_id,

@@ -3,4 +3,6 @@
 export interface DslErrorSink {
   bad(message: string): never
   coded(code: string, message: string, details?: Record<string, unknown>): never
+  /** 配额类冲突（409）：超出每节上限（annotation/replay 配额）。 */
+  conflict(code: string, message: string, details?: Record<string, unknown>): never
 }

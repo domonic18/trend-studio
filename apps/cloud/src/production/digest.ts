@@ -6,9 +6,23 @@
 
 import { createHash } from 'node:crypto'
 import type { Pool } from 'pg'
-import { DSL_VERSION } from './dsl/schemas.js'
+import { markdownDslVersion, type DslErrorSink } from '@trend/contracts'
+import { HttpError } from '../errors.js'
 
 export const DIGEST_VERSION = 1
+
+/** 指纹阶段的正文解析失败 = 已存内容损坏（500），不是请求错误。 */
+const digestSink: DslErrorSink = {
+  bad: message => {
+    throw new HttpError(500, `stored section article invalid: ${message}`)
+  },
+  coded: (_code, message) => {
+    throw new HttpError(500, `stored section article invalid: ${message}`)
+  },
+  conflict: (_code, message) => {
+    throw new HttpError(500, `stored section article invalid: ${message}`)
+  },
+}
 
 export interface ChapterArticleDigest {
   markdown: string
@@ -237,7 +251,7 @@ async function loadSections(pool: Pool, courseId: string): Promise<SectionDigest
     const section = bySection.get(row.section_id)
     if (section === undefined) continue
     section.article = {
-      dslVersion: DSL_VERSION,
+      dslVersion: markdownDslVersion(row.markdown, digestSink),
       markdown: row.markdown,
       citations: sortedDistinct(row.citations),
     }

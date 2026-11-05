@@ -1,13 +1,14 @@
 /**
- * 富文本 DSL v1 组件 schema（架构 §6.6.1 冻结）：属性白名单 + 结构化 body zod 逐组件校验。
+ * 富文本 DSL 组件 schema（架构 §6.6.1 冻结）：属性白名单 + 结构化 body zod 逐组件校验。
  * 校验失败经注入的 fail 抛出（消息文本是跨端契约的一部分，禁止改写）。
  */
 
 import { z } from 'zod'
-import { ASSET_ID, FIGURE_ID_REF, SOURCE_UNIT_ID, STOCK_CODE } from './ids.js'
-import { DSL_DIRECTIVES, type DslDirectiveName } from './enums.js'
+import { ASSET_ID, DATE_STR, FIGURE_ID_REF, SOURCE_UNIT_ID, STOCK_CODE } from './ids.js'
+import { ANNOTATION_KINDS, DSL_DIRECTIVE_VERSIONS, type DslDirectiveName } from './enums.js'
 
-export const DSL_VERSION = 1
+/** 服务端最高支持的正文版本（v1 正文零改动，服务端同时接受 1/2）。 */
+export const DSL_VERSION = 2
 
 export type BodyKind = 'text' | 'json' | 'empty'
 
@@ -92,6 +93,39 @@ export const COMPONENT_SPECS: Record<DslDirectiveName, ComponentSpec> = {
     ],
     body: 'empty',
   },
+  annotation: {
+    attrs: [
+      unitIdAttr,
+      { key: 'assetId', required: true, pattern: ASSET_ID },
+      { key: 'code', required: true, pattern: STOCK_CODE },
+      { key: 'kind', required: true, enum: ANNOTATION_KINDS },
+      { key: 'atMs', required: true, min: 0, max: 86_400_000 },
+    ],
+    body: 'json',
+    bodySchema: z.strictObject({
+      d: z.string().regex(DATE_STR, 'd must be YYYY-MM-DD'),
+      label: z.string().trim().min(1).max(50),
+      quote: z.string().trim().min(1).max(500),
+      glossary: z.array(z.string().trim().min(1).max(200)).max(8),
+    }),
+  },
+  replay: {
+    attrs: [
+      { key: 'code', required: true, pattern: STOCK_CODE },
+      { key: 'caption', required: true, codePointMax: 200 },
+    ],
+    body: 'empty',
+  },
+}
+
+/** 正文版本 = 用到的组件版本最大值（纯 v1 正文仍为 1，渲染器按版本门禁）。 */
+export function dslVersionOf(directives: readonly string[]): number {
+  let version = 1
+  for (const directive of directives) {
+    const component = DSL_DIRECTIVE_VERSIONS[directive as DslDirectiveName]
+    if (component !== undefined && component > version) version = component
+  }
+  return version
 }
 
 function cmpSide(): z.ZodType {
