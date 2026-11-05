@@ -1,6 +1,6 @@
 # dsh-plugin-trend-coach（apps/coach）
 
-monorepo（`~/Code/trend`）的伴学插件应用。趋势交易课程伴学插件：在 dsh 里向课程知识库提问，回答带视频出处，点一下就能定位到课程片段。
+monorepo（`~/Code/trend-studio`）的伴学插件应用。趋势交易课程伴学插件：在 dsh 里向课程知识库提问，回答带视频出处，点一下就能定位到课程片段。
 
 学员本地运行 dsh 客户端并使用自己的模型 Key（BYOK）；插件只负责课程检索、引用与播放，不做模型推理。
 
