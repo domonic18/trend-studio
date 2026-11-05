@@ -336,6 +336,8 @@ export class ProductionService {
     await this.assertCourseDraft(section.course_id)
     if (citations.length > 0) await this.assertCount('source_units', 'unit_id', citations, 'citations contain unknown source unit')
     await this.validateArticleGrounding(sectionId, section.course_id, parsed)
+    // 引用集口径：扁平 citations 字段 ∪ 正文 [[unit:]] 锚，去重后落库。
+    const unionCitations = [...new Set([...citations, ...parsed.unitAnchors.map(anchor => anchor.unitId)])]
     const { rows } = await this.pool.query<{ version: number; status: string }>(
       `INSERT INTO section_articles (section_id, markdown, citations, version, status)
        VALUES ($1, $2, $3::jsonb, 1, 'draft')
@@ -343,7 +345,7 @@ export class ProductionService {
          SET markdown = $2, citations = $3::jsonb, version = section_articles.version + 1,
              status = 'draft', updated_at = now()
        RETURNING version, status`,
-      [sectionId, markdown, JSON.stringify(citations)],
+      [sectionId, markdown, JSON.stringify(unionCitations)],
     )
     const articleRow = rows[0]
     if (articleRow === undefined) throw new Error('article upsert returned no row')
@@ -588,6 +590,67 @@ export class ProductionService {
       conceptRefs: unit.conceptRefs === undefined ? [] : jsonArray(unit.conceptRefs, 'unit.conceptRefs', 30),
       producedBy: producedBy as Record<string, unknown>,
     }
+  }
+
+  /**
+   * M3b：source unit 完整证据读取——转写原文、视觉描述与窗内关键帧。
+   * 全有或全无：任一 unitId 不存在或其素材未就绪 → 409 unit_not_readable。
+   */
+  async readSourceUnits(rawUnitIds: unknown): Promise<{
+    units: {
+      unitId: string
+      assetId: string
+      startMs: number
+      endMs: number
+      transcriptText: string
+      visual: Record<string, unknown>
+      keyframes: { sec: number; width: number; height: number }[]
+    }[]
+  }> {
+    const unitIds = idArray(rawUnitIds, 'unitIds', SOURCE_UNIT_ID, 20)
+    if (unitIds.length < 1) throw badRequest('unitIds must contain 1–20 items')
+    const { rows } = await this.pool.query<{
+      unit_id: string
+      asset_id: string
+      start_ms: string | bigint
+      end_ms: string | bigint
+      transcript_text: string
+      visual: unknown
+    }>(
+      `SELECT su.unit_id, su.asset_id, su.start_ms, su.end_ms, su.transcript_text, su.visual
+         FROM source_units su
+         JOIN media_assets ma ON ma.asset_id = su.asset_id
+        WHERE su.unit_id = ANY($1::text[])
+          AND ma.status = 'ready' AND ma.hls_path IS NOT NULL`,
+      [unitIds],
+    )
+    if (rows.length !== unitIds.length) {
+      throw codedConflict('unit_not_readable', 'one or more source units are not readable', {
+        unitIds,
+        missing: unitIds.filter((unitId) => !rows.some((row) => row.unit_id === unitId)),
+      })
+    }
+    const byId = new Map(rows.map((row) => [row.unit_id, row]))
+    const units = []
+    for (const unitId of unitIds) {
+      const row = byId.get(unitId)
+      if (row === undefined) throw codedConflict('unit_not_readable', 'source unit not readable', { unitIds })
+      const startMs = Number(row.start_ms)
+      const endMs = Number(row.end_ms)
+      const keyframes = this.deps.keyframeRoot === undefined
+        ? []
+        : await this.listKeyframes(row.asset_id, startMs, endMs)
+      units.push({
+        unitId: row.unit_id,
+        assetId: row.asset_id,
+        startMs,
+        endMs,
+        transcriptText: row.transcript_text,
+        visual: (row.visual ?? {}) as Record<string, unknown>,
+        keyframes,
+      })
+    }
+    return { units }
   }
 
   /**

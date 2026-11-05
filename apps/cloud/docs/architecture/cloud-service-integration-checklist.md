@@ -1,8 +1,8 @@
 # 云端服务对接清单
 
 本文用于启动**独立的云端服务仓库**，供 `dsh-plugin-trend-coach` 插件对接。
-版本：v0.10（2026-11-06）
-状态：接口口径以需求 v0.10 §3（C13/C14）与架构 v0.11 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
+版本：v0.11（2026-11-06）
+状态：接口口径以需求 v0.11 §3（C13/C14）与架构 v0.12 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.11 M3b 批次 B3——§3.13 增 `POST /source-units/read` 完整证据读取（转写原文 + 视觉 + 关键帧签名 URL + 播放会话；全有或全无，409 unit_not_readable）；v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
 
 历史：v0.7（2026-11-05）§3.14 增补老师标注与逐根回放（DSL v2 草案 `:::annotation`/`:::replay`、`spec_version=2` 批次增 `bar-replay-decision`；零新端点零新表，验收用例与错误码见 §3.14，契约细节以架构 §6.6.1/§6.6.5 为准）；v0.6 新增教材呈现层与个股实盘接口（§3.14，M10：节级图示写入、案例股清单、行情缓存与学员行情查询；DSL 语法冻结于架构 §6.6.1）；v0.5 课件 spec schema v1 冻结（断言词表/生成器白名单见架构 §6.5.5，§3.13 补 `409 failed` 字段）；v0.4 新增语料级生产与交互课件接口（§3.13，M9，生产 Agent 循环在外部 `dsh-plugin-trend-producer`，本文仅为云端契约）；v0.3 新增门户与 AI 运营接口（§3.11、§3.12）。
 
@@ -816,6 +816,7 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 | GET | `/media-assets/{assetId}/frames?from&to` | 关键帧轨道：短时签名帧 URL（默认 10 分钟），供生产端 VLM；仅管理端 |
 | POST | `/source-units` | 批量写入理解产物（≤100/批）；`(assetId, startMs)` 幂等 |
 | GET | `/source-units?assetId&q&conceptId&cursor&limit` | 混合检索（词法+向量，复用既有召回栈）；`limit` 1–50（默认 20） |
+| POST | `/source-units/read` | 完整证据读取（转写原文 + 视觉 + 窗内关键帧签名 URL + 播放会话）；`unitIds` 1–20；全有或全无 |
 | POST | `/source-units/reindex` | 补向量：为 `embedding IS NULL` 的 units 批量生成 summary 向量；`limit` 1–500（默认 200）；未配置 embedding `409` |
 | GET | `/concepts?courseId` | 课程术语清单（含 conceptId/别名/定义，供 conceptRefs 回填）；未知课程空列表 |
 | PUT | `/concepts`、`POST /concept-edges` | 术语归一与依赖边 |
@@ -844,6 +845,17 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
               "summary": "...", "score": 0.82 }],
   "nextCursor": "..." | null }
 
+// POST /v1/admin/content/source-units/read（unitIds 1–20）
+{ "unitIds": ["su_...", "su_..."] }
+→ 200 { "units": [{ "unitId": "su_...", "assetId": "as_...", "startMs": 60000,
+                    "endMs": 180000, "transcriptText": "...",
+                    "visual": { "description": "...", "chartType": "kline" },
+                    "keyframes": [{ "sec": 70, "url": "https://.../keyframes/70.jpg?token=...",
+                                    "width": 1280, "height": 720 }],
+                    "playback": { "playlistUrl": "https://...?token=...",
+                                  "fromSec": 60, "toSec": 180, "expiresAt": 1762300000000 } }] }
+// 全有或全无：任一 unitId 不存在或其素材未就绪 → 409 unit_not_readable（附全部 unitIds）
+
 // POST /v1/admin/content/source-units/reindex（body 可省略）
 { "limit": 200 }
 → 200 { "embedded": 198, "failed": 2, "remaining": 24 }
@@ -867,6 +879,8 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 { "markdown": "...", "citations": ["su_...", "su_..."] }
 → 200 { "sectionId": "sec_...", "version": 3, "status": "draft" }
 // citations 指向不存在的 unitId：400；仅 draft 课程可写，否则 409
+// 正文 `[[unit:su_...|label]]` 锚并入落库引用集（与 citations 并集去重）；
+// 锚 unitId 不属本课程 → 400 unit_anchor_unknown
 
 // POST /v1/admin/content/sections/{sectionId}/widgets
 { "type": "kline-annotator", "specVersion": 1,

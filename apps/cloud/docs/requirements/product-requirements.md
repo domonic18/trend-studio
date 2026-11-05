@@ -1,7 +1,7 @@
 # 趋势交易课程云端服务需求
 
-版本：v0.11（2026-11-06）
-状态：v0.11 M3b 契约阻断项批次 B2——C14 增段落级引用锚 `[[unit:su_xxx|label]]`（引用集 = 扁平 citations ∪ 锚，去重计数；锚 unitId 不属本课程 `400 unit_anchor_unknown`）；v0.10 M3b 契约阻断项批次 B1——新增 `producer` 生产端专用角色与生产/发布分权（C8 角色边界、C13 生产接口口径、§2 生产插件凭据）；其余同 v0.9。v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
+版本：v0.12（2026-11-06）
+状态：v0.12 M3b 契约阻断项批次 B3——C13 增 source unit 完整证据读取端点（`POST .../source-units/read`，≤20 条全有或全无，不存在/素材未就绪 `409 unit_not_readable`），教材落库引用集 = 扁平 citations ∪ 正文 `[[unit:]]` 锚；v0.11 M3b 契约阻断项批次 B2——C14 增段落级引用锚 `[[unit:su_xxx|label]]`（引用集口径 = 扁平 citations ∪ 锚，去重计数；锚 unitId 不属本课程 `400 unit_anchor_unknown`）；v0.10 M3b 契约阻断项批次 B1——新增 `producer` 生产端专用角色与生产/发布分权（C8 角色边界、C13 生产接口口径、§2 生产插件凭据）；其余同 v0.9。v0.9 文档体系梳理——统一节级图示配额口径（图示配额以 C14 与架构 §6.6.2 为准）、纠正视觉理解模型的能力归属（生产端自配，云端只做抽帧）、补 M10 验收用例并更新 M10 实施状态；v0.8 新增 M10 教材呈现层与个股实盘对照（C14：Markdown 扩展 DSL、关键帧配图卡与 HLS 时间窗片段卡、参数化 SVG 模板图示取代 Mermaid、节级案例股清单与课程侧行情缓存、课件换皮与新题型白名单扩容、grounded 扩义到媒体与个股锚点——依据 2026-11-05 呈现形式原型 V1–V3 用户验收定版；同日增补采纳「老师标注 + 逐根回放判断闭环」：DSL v2 草案 `:::annotation`/`:::replay` 与新题型 `bar-replay-decision`，见 C14）；v0.7 新增 M9 语料级课程生产（C13：多模态理解 source units、概念图谱、节级教材与交互课件白名单组件、生产溯源上报；生产 Agent 循环外置 `dsh-plugin-trend-producer`，云端保持确定性校验与发布门禁）；v0.6 新增 M8 教材阅读层（章节教材、关键帧与文生图图示、短时签名图片、旧课程重生成）；v0.5 新增公开门户与开放注册（C11）、AI 用量与任务级模型路由（C12）；v0.4 补充 M6 公测加固（限流覆盖、压测、恢复演练、合规清单）；v0.3 将 C6 细化为 M1 视频→课程全链路（上传/转码、长音频转写、切分、文章草稿、人工发布）；v0.2 新增 M4.2 语音转写（MiniMax ASR）；接口细节见 [对接清单](../architecture/cloud-service-integration-checklist.md)。
 
 ## 1. 背景与目标
 
@@ -157,7 +157,7 @@
 
 - 目标形态：约 69 集录播（10 卷、≈35 小时、720p h264）→ 一门结构化图文课程：篇→章→节目录、节级 grounded 教材、图示与可交互课件。生产 Agent 循环（理解摘要/课程综合/逐节写作/主编评审）全部在外部 `dsh-plugin-trend-producer` 执行；云端只提供确定性底座（帧轨道/存储/检索/复检/溯源账本/发布门禁），职责边界见架构 v0.10 §6.5。
 - 帧轨道：ingest 阶段按场景检测 + 1 帧/15s 固定采样，去重后缓存；`GET /v1/admin/content/media-assets/{assetId}/frames?from&to` 返回短时签名帧 URL（仅管理端），供生产端 VLM 使用。
-- 多模态理解：生产端逐 chunk（5–10 分钟）取转写分组与采样帧，产出 source unit `{时间范围, 转写, 画面描述, 图表类型, 讲解要点, 关键帧引用}`；`POST /v1/admin/content/source-units` 批量写入（`(assetId, startMs)` 幂等）；`GET .../source-units` 支持词法+向量混合检索，复用既有召回栈。
+- 多模态理解：生产端逐 chunk（5–10 分钟）取转写分组与采样帧，产出 source unit `{时间范围, 转写, 画面描述, 图表类型, 讲解要点, 关键帧引用}`；`POST /v1/admin/content/source-units` 批量写入（`(assetId, startMs)` 幂等）；`GET .../source-units` 支持词法+向量混合检索，复用既有召回栈；`POST .../source-units/read` 按 `unitIds`（≤20）回读完整证据（转写原文、视觉描述、窗内关键帧签名 URL、播放会话），全有或全无——任一 unitId 不存在或素材未就绪 `409 unit_not_readable`。
 - 课程综合：以人工目录（篇→卷→课时文件名）为**先验骨架**，Agent 只做校验、概念归一与依赖标注，不发明目录；概念归一入 `concepts`（含别名）与 `concept_edges`（`prerequisite` 依赖序），`concepts.name` 为正文与课件术语校验基准；骨架、概念图谱与术语表须经人工批准（门禁①，在生产端 dsh 审批）后方可逐节生产。
 - 节级生产：`sections` 为教学单元（约对应 1 个课时，可拆分/合并）；节教材 1200–3000 字 grounded Markdown，事实段落必须携带 `citations`（source unit 引用），无出处断言校验拒绝；图示三路分工——`diagram`（LLM 出结构化 spec、服务端渲染器确定性出 SVG，标注文字必须正确）、`keyframe`（按 source unit 时间戳取源画面）、`generated`（文生图仅装饰，禁止承载教学信息）。**配额以 C14 与架构 §6.6.2 为准**（节级 `keyframe` ≤6/节、`diagram` ≤2/节；`generated` 不经节级图示端点，沿用 M8 限额每章 ≤3）。
 - 交互课件：白名单 8 类组件的 JSON spec——`kline-annotator`（K 线标注练习）、`pattern-quiz`（形态识别）、`step-reveal`（分步解盘）、`calc-trainer`（参数化计算）、`mcq-quiz`、`flashcards`、`checklist`、`timeline-explorer`（概念依赖浏览）；每节 1–3 个。spec 携带教学断言与 citations；图表数据由**确定性生成器**按 spec 声明合成（seed 可重放），服务端**断言证明器**逐条验证并把证明记录落 `validation`，缺任一证明拒绝入库 `409 assertion_unproven`；**禁止 LLM 生成可执行代码**，渲染由学员端/管理台确定性 React 渲染器按 `spec_version` 契约执行。
@@ -262,6 +262,7 @@
 | AI | 权限 | operator 可读用量/运行；绑定写仅 admin；学员 `403` |
 | 语料 | 帧轨道与理解写入 | `frames` 返回短时签名帧 URL；source units `(assetId,startMs)` 幂等，重复写入返回既有 unitId |
 | 语料 | source units 检索 | 词法+向量混合召回出结果；空结果 `units=[]`；学员令牌 `403` |
+| 语料 | source units 证据读取 | `unitIds` ≤20 回读转写原文、视觉、关键帧签名 URL 与播放会话；混入不存在 unitId → `409 unit_not_readable` |
 | 语料 | 目录先验与概念归一 | 目录外章节/节不被创建；概念别名归一唯一，重复 name `409`；自环边 `400` |
 | 课件 | spec 复检与断言证明 | 全部断言有证明记录 `200`；缺任一证明 `409 assertion_unproven`；同 seed 重放数据一致 |
 | 课件 | 白名单与版本契约 | `type` 白名单外 `400`；不支持的 `spec_version` `400`；spec 无可执行代码落点 |

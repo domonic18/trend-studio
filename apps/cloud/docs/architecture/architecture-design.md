@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.12）
+# 趋势课程云端服务 · 架构设计（v0.13）
 
-版本：v0.12（2026-11-06；M3b 契约阻断项批次 B2：§6.6.1 DSL 增段落级 `[[unit:su_xxx|label]]` 内联锚——引用集口径 = 扁平 citations ∪ 锚（并集去重计数）；锚 unitId 不属本课程 `400 unit_anchor_unknown`，课程归属经 `media_assets.course_id` 关联）
+版本：v0.13（2026-11-06；M3b 契约阻断项批次 B3：新增 `POST /v1/admin/content/source-units/read` 完整证据读取端点——转写原文 + 视觉 + 窗内关键帧签名 URL + 播放会话，`unitIds` 1–20 全有或全无，不存在/素材未就绪 `409 unit_not_readable`；教材落库引用集 = 扁平 citations ∪ 正文 `[[unit:]]` 锚（并集去重））
+v0.12（2026-11-06；M3b 契约阻断项批次 B2：§6.6.1 DSL 增段落级 `[[unit:su_xxx|label]]` 内联锚——引用集口径 = 扁平 citations ∪ 锚（并集去重计数）；锚 unitId 不属本课程 `400 unit_anchor_unknown`，课程归属经 `media_assets.course_id` 关联）
 v0.11（2026-11-06；M3b 契约阻断项批次 B1：新增 `producer` 角色与生产/发布分权——生产命名空间 `/v1/admin/content/*` 接受 operator/admin/producer，发布/审批/账号/模型配置仍限 operator/admin；迁移 015 含 content_approvals 与 course_stock_quotes 表结构）
 v0.10（2026-11-05；文档体系梳理：M10 R1 呈现层落地状态回写、§7 小节编号去重（模型配置由重复的「7.1」改为 7.6）、案例股代号双形态统一（DB 6 位数字 + exchange ↔ 正文带前缀形态）、§6.5.4 图示配额改为指向 §6.6.2、跨仓版本引用校正）
 v0.9（2026-11-05；采纳「老师标注详情 + 逐根回放判断闭环」增补提案（来源 producer 调研线 `docs/research/m10-replay-annotation-proposal.md`，评审修正 3 处）：DSL v2 草案增 `:::annotation`/`:::replay`（按 code 解析，不带 widgetId）、`spec_version=2` 批次增 `bar-replay-decision`（3 条新断言、bars 不入 spec）、渲染组件输入扩 `annotations[]`、ADR C33/C34；隐私护栏：学员作答不采集。实现挂 R2 后半/R3 试点，R1 范围不变）
@@ -460,6 +461,7 @@ queued ──claim──> running ──success──> succeeded
 | `GET /v1/admin/content/media-assets/{assetId}/frames?from&to` | 关键帧轨道查询，返回短时签名帧 URL（供生产端 VLM） |
 | `POST /v1/admin/content/source-units` | 批量写入理解产物 |
 | `GET /v1/admin/content/source-units?assetId&q&conceptId` | 检索（词法+向量混合，复用既有召回栈） |
+| `POST /v1/admin/content/source-units/read` | 完整证据读取（转写原文 + 视觉描述 + 窗内关键帧签名 URL + 播放会话）；`unitIds` 1–20，**全有或全无**（任一 unitId 不存在或素材未就绪 → `409 unit_not_readable`） |
 | `PUT /v1/admin/content/concepts`、`POST /v1/admin/content/concept-edges` | 术语表与依赖边 |
 | `GET/PUT /v1/admin/content/sections`、`PUT /v1/admin/content/sections/{id}/article` | 节与节教材草稿 |
 | `GET/POST /v1/admin/content/sections/{id}/widgets` | 课件 spec 草稿；服务端复检 schema 与断言记录 |

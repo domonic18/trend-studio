@@ -4033,3 +4033,112 @@ test('M3b 分权：producer 可写内容生产、不可发布与管理账号', a
   })
   assert.equal(operatorArticle.statusCode, 200, operatorArticle.body)
 })
+
+test('M3b：source unit 证据读取（全有或全无）与段落级锚引用并集', async () => {
+  const courseId = 'T-M9-PROD'
+  const assetId = await insertAsset(courseId, '证据读取素材')
+  await pool.query("UPDATE media_assets SET status = 'ready' WHERE asset_id = $1", [assetId])
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{
+        assetId,
+        startMs: 60_000,
+        endMs: 180_000,
+        transcriptText: '起飞平台是趋势延续的中继形态，量能要放到 20 日均量两倍以上。',
+        visual: { description: '日 K 缩量平台后放量长阳', chartType: 'kline' },
+        summary: '起飞平台定义与量能判据',
+      }],
+    },
+  })
+  assert.equal(created.statusCode, 200, created.body)
+  const unitId = created.json().saved[0].unitId as string
+
+  const read = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: [unitId] },
+  })
+  assert.equal(read.statusCode, 200, read.body)
+  const evidence = read.json() as {
+    units: {
+      unitId: string
+      assetId: string
+      startMs: number
+      endMs: number
+      transcriptText: string
+      visual: Record<string, unknown>
+      keyframes: { sec: number; url: string }[]
+      playback: { playlistUrl: string; fromSec: number; toSec: number; expiresAt: number }
+    }[]
+  }
+  assert.equal(evidence.units.length, 1)
+  const unit = evidence.units[0]
+  assert.equal(unit?.unitId, unitId)
+  assert.equal(unit?.assetId, assetId)
+  assert.equal(unit?.startMs, 60_000)
+  assert.equal(unit?.endMs, 180_000)
+  assert.ok(unit?.transcriptText.includes('起飞平台'))
+  assert.equal(unit?.visual.description, '日 K 缩量平台后放量长阳')
+  assert.ok(Array.isArray(unit?.keyframes))
+  assert.ok(unit?.playback.playlistUrl.includes('token='))
+  assert.equal(unit?.playback.fromSec, 60)
+  assert.equal(unit?.playback.toSec, 180)
+
+  // 全有或全无：混入不存在的 unitId → 409 unit_not_readable
+  const mixed = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: [unitId, 'su_ffffffffffffffff'] },
+  })
+  assert.equal(mixed.statusCode, 409, mixed.body)
+  assert.equal((mixed.json() as { error: { code: string } }).error.code, 'unit_not_readable')
+
+  // 非法 unitId 形状 → 400
+  const malformed = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units/read',
+    headers: adminHeaders(),
+    payload: { unitIds: ['not-a-unit'] },
+  })
+  assert.equal(malformed.statusCode, 400)
+
+  // 段落级锚：合法锚并入引用集；课程外锚 → 400 unit_anchor_unknown
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId: 'CH9', title: '证据锚节', position: 9, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = section.json().section.sectionId as string
+
+  const withAnchor = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: `证据出处是 [[unit:${unitId}|起飞平台定义]]。`, citations: [unitId] },
+  })
+  assert.equal(withAnchor.statusCode, 200, withAnchor.body)
+  const preview = await app.inject({
+    method: 'GET',
+    url: `/v1/admin/content/sections/${sectionId}/preview`,
+    headers: adminHeaders(),
+  })
+  assert.equal(preview.statusCode, 200, preview.body)
+  const citations = (preview.json() as { article: { citations: string[] } }).article.citations
+  assert.deepEqual(citations, [unitId])
+
+  const unknownAnchor = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '证据出处是 [[unit:su_ffffffffffffffff|他课证据]]。', citations: [unitId] },
+  })
+  assert.equal(unknownAnchor.statusCode, 400, unknownAnchor.body)
+  assert.equal((unknownAnchor.json() as { error: { code: string } }).error.code, 'unit_anchor_unknown')
+})

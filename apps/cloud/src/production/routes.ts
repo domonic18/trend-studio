@@ -110,6 +110,42 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     }))
   })
 
+  app.post('/v1/admin/content/source-units/read', async (request, reply) => {
+    const principal = await guard(request)
+    const body = asObject(request.body ?? {})
+    const evidence = await service.readSourceUnits(body.unitIds)
+    const units = []
+    for (const unit of evidence.units) {
+      const fromSec = Math.floor(unit.startMs / 1000)
+      const toSec = Math.min(Math.ceil(unit.endMs / 1000), fromSec + 3600)
+      const session = await playback.createAssetSession(principal, unit.assetId, { fromSec, toSec })
+      units.push({
+        unitId: unit.unitId,
+        assetId: unit.assetId,
+        startMs: unit.startMs,
+        endMs: unit.endMs,
+        transcriptText: unit.transcriptText,
+        visual: unit.visual,
+        keyframes: unit.keyframes.map(frame => ({
+          ...frame,
+          url: signKeyframeUrl(
+            config.mediaSigningSecret,
+            config.mediaBaseUrl,
+            `${unit.assetId}/keyframes/${frame.sec}.jpg`,
+            config.keyframeSigningTtlSec,
+          ),
+        })),
+        playback: {
+          playlistUrl: session.playlistUrl,
+          fromSec: session.fromSec ?? fromSec,
+          toSec: session.toSec ?? toSec,
+          expiresAt: session.expiresAt,
+        },
+      })
+    }
+    return reply.send({ units })
+  })
+
   app.post('/v1/admin/content/source-units/reindex', async (request, reply) => {
     await guard(request)
     const body = request.body === undefined ? {} : asObject(request.body)
