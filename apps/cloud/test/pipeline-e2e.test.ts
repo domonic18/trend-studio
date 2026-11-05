@@ -342,6 +342,17 @@ async function uploadSource(assetId: string, body: Buffer, sha?: string): Promis
   assert.equal(response.statusCode, 200, response.body)
 }
 
+/** M3b：发布前必须先签 final 审批（对当前内容指纹签名）。 */
+async function approveCourse(courseId: string, gate: 'skeleton' | 'final' = 'final'): Promise<void> {
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/approvals`,
+    headers: adminHeaders(),
+    payload: { gate },
+  })
+  assert.equal(response.statusCode, 200, response.body)
+}
+
 async function enqueueIngest(assetId: string): Promise<JobBody> {
   const response = await app.inject({
     method: 'POST',
@@ -1202,6 +1213,8 @@ test('管线：生成、预览、应用、发布与学员可见性', async () =>
   })
   assert.equal(finalSelection.statusCode, 200, finalSelection.body)
 
+  await approveCourse(COURSE_ID)
+
   reindexFails = true
   const failedPublish = await app.inject({
     method: 'POST',
@@ -1231,6 +1244,7 @@ test('管线：生成、预览、应用、发布与学员可见性', async () =>
       segments: number
       sections: number
       widgets: number
+      caseStocks: number
     }
   }
   assert.equal(published.courseId, COURSE_ID)
@@ -1243,6 +1257,7 @@ test('管线：生成、预览、应用、发布与学员可见性', async () =>
     segments: preview.generation.counts.segments,
     sections: 0,
     widgets: 0,
+    caseStocks: 0,
   })
   assert.equal(published.indexed, true)
   assert.equal(published.embedded, 2)
@@ -1263,6 +1278,7 @@ test('管线：生成、预览、应用、发布与学员可见性', async () =>
     segments: preview.generation.counts.segments,
     sections: 0,
     widgets: 0,
+    caseStocks: 0,
   })
   assert.equal(reindexCalls, 3)
 
@@ -1468,6 +1484,7 @@ test('M9 发布门禁：课件证明记录不完整 409 widget_unproven，补齐
      WHERE widget_id = $1`,
     [widgetId],
   )
+  await approveCourse(courseId)
   const published = await app.inject({
     method: 'POST',
     url: `/v1/admin/content/courses/${courseId}/publish`,
@@ -1583,6 +1600,7 @@ test('M9 发布：sections-only 课程（无 segments）可发布并翻转节状
   })
   assert.equal(widget.statusCode, 200, widget.body)
 
+  await approveCourse(courseId)
   const publishResponse = await app.inject({
     method: 'POST',
     url: `/v1/admin/content/courses/${courseId}/publish`,

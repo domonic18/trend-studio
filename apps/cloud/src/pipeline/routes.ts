@@ -8,6 +8,7 @@ import { badRequest, HttpError, notFound, tooManyRequests } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, optionalStringField } from '../http/validation.js'
 import { RateLimiter } from '../rate-limit.js'
+import type { ApprovalGate } from '@trend/contracts'
 import {
   parseAssetId,
   parseAssetStatus,
@@ -50,17 +51,23 @@ function queryText(query: Record<string, unknown>, key: string): string | undefi
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+function parseApprovalGate(value: unknown): ApprovalGate {
+  if (value === 'skeleton' || value === 'final') return value
+  throw badRequest('gate must be skeleton or final')
+}
+
 export async function registerPipelineRoutes(app: FastifyInstance, deps: PipelineRouteDeps): Promise<void> {
   const { api, accounts, config, limiter } = deps
   const uploadLimit = config.pipeline?.maxUploadBytes ?? 1024 * 1024
   const staff = (request: FastifyRequest): Promise<{ userId: string }> =>
     requireSession(request, accounts, ['operator', 'admin'])
 
-  const guard = async (request: FastifyRequest): Promise<void> => {
+  const guard = async (request: FastifyRequest): Promise<{ userId: string }> => {
     const principal = await staff(request)
     if (!limiter.take(`pipeline:${principal.userId}`, config.rateLimitPipelinePerMinute)) {
       throw tooManyRequests()
     }
+    return principal
   }
 
   app.get('/v1/admin/content/media-assets', async request => {
@@ -249,6 +256,23 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     await guard(request)
     const { courseId } = request.params as { courseId: string }
     return api.publishCourse(parseContentId(courseId, 'courseId'))
+  })
+
+  // M3b 审批版本绑定：签批 = 对内容指纹签名；发布时重算比对，内容变了必须重签。
+  app.post('/v1/admin/content/courses/:courseId/approvals', async request => {
+    const principal = await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    const body = asObject(request.body ?? {})
+    const gate = parseApprovalGate(body.gate)
+    return {
+      approval: await api.approveCourse(parseContentId(courseId, 'courseId'), gate, principal.userId),
+    }
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/approvals', async request => {
+    await guard(request)
+    const { courseId } = request.params as { courseId: string }
+    return api.listApprovals(parseContentId(courseId, 'courseId'))
   })
 
   app.post('/v1/admin/content/media-assets/:assetId/ingest', async (request, reply) => {

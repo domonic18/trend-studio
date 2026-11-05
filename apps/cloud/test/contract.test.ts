@@ -3516,6 +3516,7 @@ test('M10 呈现层：发布门禁复检节正文 figure/clip 引用', async () 
   assert.equal(article.statusCode, 200, article.body)
 
   const publishUrl = `/v1/admin/content/courses/${courseId}/publish`
+  const approvalsUrl = `/v1/admin/content/courses/${courseId}/approvals`
 
   // figure 被取消选定（引用失效）→ 409 figure_unresolved
   await pool.query('UPDATE figures SET selected_candidate_id = NULL WHERE figure_id = $1', [figureId])
@@ -3527,6 +3528,13 @@ test('M10 呈现层：发布门禁复检节正文 figure/clip 引用', async () 
 
   // figure 恢复，clip 窗不再落 source unit → 409 clip_invalid
   await pool.query('UPDATE figures SET selected_candidate_id = c.candidate_id FROM figure_candidates c WHERE figures.figure_id = $1 AND c.figure_id = $1', [figureId])
+  const approved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(approved.statusCode, 200, approved.body)
   await pool.query('UPDATE source_units SET start_ms = 50000 WHERE unit_id = $1', [unitId])
   const clipInvalid = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
   assert.equal(clipInvalid.statusCode, 409, clipInvalid.body)
@@ -4141,4 +4149,172 @@ test('M3b：source unit 证据读取（全有或全无）与段落级锚引用�
   })
   assert.equal(unknownAnchor.statusCode, 400, unknownAnchor.body)
   assert.equal((unknownAnchor.json() as { error: { code: string } }).error.code, 'unit_anchor_unknown')
+})
+
+test('M3b：审批版本绑定（未审批拒绝发布 / 内容变更失效 / 签批后发布并翻转案例股）', async () => {
+  const courseId = 'T-M3B-APPROVAL'
+  const chapterId = 'CHAPR'
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: adminHeaders(),
+    payload: { courseId, title: 'M3b 审批测试课程' },
+  })
+  assert.ok(course.statusCode === 201 || course.statusCode === 409, course.body)
+  const chapter = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/courses/${courseId}/chapters`,
+    headers: adminHeaders(),
+    payload: { chapterId, title: '审批章', position: 1 },
+  })
+  assert.ok(chapter.statusCode === 201 || chapter.statusCode === 409, chapter.body)
+
+  const assetId = await insertAsset(courseId, '审批素材')
+  const unit = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/source-units',
+    headers: adminHeaders(),
+    payload: {
+      units: [{ assetId, startMs: 0, endMs: 300_000, transcriptText: '审批用例转写', summary: '审批单元' }],
+    },
+  })
+  assert.equal(unit.statusCode, 200, unit.body)
+  const unitId = (unit.json().saved[0] as { unitId: string }).unitId
+
+  const section = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders(),
+    payload: { courseId, chapterId, title: '审批节', position: 1, sourceAssetIds: [assetId] },
+  })
+  assert.equal(section.statusCode, 200, section.body)
+  const sectionId = (section.json().section as { sectionId: string }).sectionId
+
+  const article = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '审批前的教材正文。', citations: [unitId] },
+  })
+  assert.equal(article.statusCode, 200, article.body)
+
+  const stocks = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/case-stocks`,
+    headers: adminHeaders(),
+    payload: {
+      stocks: [{
+        name: '丰乐种业',
+        exchange: 'SZSE',
+        code: '000713',
+        windowStart: '2019-01-02',
+        windowEnd: '2020-02-28',
+        events: [{ date: '2019-05-17', label: '课程筹码峰 8.68', unitId }],
+      }],
+    },
+  })
+  assert.equal(stocks.statusCode, 200, stocks.body)
+
+  const publishUrl = `/v1/admin/content/courses/${courseId}/publish`
+  const approvalsUrl = `/v1/admin/content/courses/${courseId}/approvals`
+
+  // 1. 未签批 → 409 approval_required
+  const unapproved = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(unapproved.statusCode, 409, unapproved.body)
+  assert.equal((unapproved.json() as { error: { code: string } }).error.code, 'approval_required')
+
+  // 2. producer 无签批权限 → 403
+  const PRODUCER = 'm3b-approver'
+  const PRODUCER_PASSWORD = 'approver-pass-123'
+  const created = await adminCreateUser({
+    username: PRODUCER,
+    displayName: 'M3b 签批越权',
+    role: 'producer',
+    password: PRODUCER_PASSWORD,
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
+  const producerLogin = await loginSession(PRODUCER, PRODUCER_PASSWORD)
+  assert.equal(producerLogin.statusCode, 200, JSON.stringify(producerLogin.body))
+  const producerHeaders = { authorization: `Bearer ${producerLogin.body.token}` }
+  const producerApprove = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: producerHeaders,
+    payload: { gate: 'final' },
+  })
+  assert.equal(producerApprove.statusCode, 403, producerApprove.body)
+
+  // 3. 非法门禁 → 400
+  const badGate = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'whatever' },
+  })
+  assert.equal(badGate.statusCode, 400, badGate.body)
+
+  // 4. 签批：digest 为 64 位十六进制，digestSections 覆盖本节
+  const approved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(approved.statusCode, 200, approved.body)
+  const approval = (approved.json() as { approval: { approvalId: string; digest: string; digestSections: Record<string, string>; approvedBy: string } }).approval
+  assert.match(approval.approvalId, /^apr_[0-9a-f]{16}$/)
+  assert.match(approval.digest, /^[0-9a-f]{64}$/)
+  assert.equal(typeof approval.digestSections[sectionId], 'string')
+  assert.ok(approval.approvedBy.length > 0)
+
+  // 5. 幂等重批：内容未变 → digest 相同
+  const reapproved = await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  assert.equal(reapproved.statusCode, 200, reapproved.body)
+  assert.equal((reapproved.json() as { approval: { digest: string } }).approval.digest, approval.digest)
+
+  // 6. 审批记录可查
+  const listed = await app.inject({ method: 'GET', url: approvalsUrl, headers: adminHeaders() })
+  assert.equal(listed.statusCode, 200, listed.body)
+  const approvals = (listed.json() as { approvals: { gate: string; digest: string }[] }).approvals
+  assert.equal(approvals.length, 1)
+  assert.equal(approvals[0]?.gate, 'final')
+  assert.equal(approvals[0]?.digest, approval.digest)
+
+  // 7. 签批后改动教材 → 409 approval_stale
+  const changed = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/sections/${sectionId}/article`,
+    headers: adminHeaders(),
+    payload: { markdown: '签批之后被改写的教材正文。', citations: [unitId] },
+  })
+  assert.equal(changed.statusCode, 200, changed.body)
+  const stale = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(stale.statusCode, 409, stale.body)
+  const staleError = (stale.json() as { error: { code: string; expected: string; actual: string } }).error
+  assert.equal(staleError.code, 'approval_stale')
+  assert.equal(staleError.expected.length, 16)
+  assert.equal(staleError.actual.length, 16)
+  assert.notEqual(staleError.expected, staleError.actual)
+
+  // 8. 重新签批后发布成功，案例股随发布翻转
+  await app.inject({
+    method: 'POST',
+    url: approvalsUrl,
+    headers: adminHeaders(),
+    payload: { gate: 'final' },
+  })
+  const published = await app.inject({ method: 'POST', url: publishUrl, headers: adminHeaders() })
+  assert.equal(published.statusCode, 200, published.body)
+  const counts = (published.json() as { counts: { caseStocks: number } }).counts
+  assert.equal(counts.caseStocks, 1)
+  const stockRows = await pool.query<{ status: string }>(
+    'SELECT status FROM section_case_stocks WHERE section_id = $1',
+    [sectionId],
+  )
+  assert.equal(stockRows.rows[0]?.status, 'published')
 })

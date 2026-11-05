@@ -75,6 +75,8 @@ export function createDisabledPipelineApi(): PipelineApi {
     regenerateFigure: fail,
     deleteFigure: fail,
     candidateFile: fail,
+    approveCourse: fail,
+    listApprovals: fail,
     publishCourse: fail,
     listJobs: fail,
     getJob: fail,

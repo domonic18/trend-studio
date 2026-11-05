@@ -1647,7 +1647,7 @@ components:
         counts:
           type: object
           additionalProperties: false
-          required: [chapters, knowledgePoints, chapterArticles, figures, segments, sections, widgets]
+          required: [chapters, knowledgePoints, chapterArticles, figures, segments, sections, widgets, caseStocks]
           properties:
             chapters:
               type: integer
@@ -1670,6 +1670,53 @@ components:
             widgets:
               type: integer
               minimum: 0
+            caseStocks:
+              type: integer
+              minimum: 0
+
+    ApprovalWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [gate]
+      properties:
+        gate:
+          type: string
+          enum: [skeleton, final]
+
+    Approval:
+      type: object
+      additionalProperties: false
+      required: [approvalId, courseId, gate, digest, digestSections, approvedBy, approvedAt]
+      properties:
+        approvalId:
+          type: string
+          pattern: '^apr_[0-9a-f]{16}$'
+        courseId:
+          type: string
+        gate:
+          type: string
+          enum: [skeleton, final]
+        digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        digestSections:
+          type: object
+          additionalProperties:
+            type: string
+        approvedBy:
+          type: string
+        approvedAt:
+          type: string
+
+    ApprovalsListResponse:
+      type: object
+      additionalProperties: false
+      required: [approvals]
+      properties:
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Approval'
 
     FigureStatus:
       type: string
@@ -4934,6 +4981,80 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/courses/{courseId}/approvals:
+    post:
+      summary: 审批签批：对当前课程内容指纹签名（operator/admin）
+      description: 同课程同门禁幂等重批；发布前必须有 final 门禁且内容指纹未变。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalWriteRequest'
+      responses:
+        '200':
+          description: 已签批
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [approval]
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      summary: 查询课程审批记录（operator/admin）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 审批记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':

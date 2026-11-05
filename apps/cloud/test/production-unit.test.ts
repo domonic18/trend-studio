@@ -11,6 +11,7 @@ import {
 } from '../src/production/widgets/generators.js'
 import { planKeyframeSecs } from '../src/pipeline/keyframes.js'
 import { jpegDimensions } from '../src/pipeline/keyframes.js'
+import { canonicalJson, digestOfManifest, type CourseDigestManifest } from '../src/production/digest.js'
 import { proveWidget } from '../src/production/widgets/provers.js'
 import { validateAssertions, validateSpec } from '../src/production/widgets/schema.js'
 
@@ -210,4 +211,48 @@ test('补向量 reindexSourceUnits：limit 分批、失败保持 NULL 可重入'
   // 第二轮只取仍为 NULL 的单位：写入失败者重试，仍失败则继续留 NULL
   assert.deepEqual(await service.reindexSourceUnits(200), { embedded: 0, failed: 1, remaining: 1 })
   assert.deepEqual([...embeddedTexts].sort(), [...summaries.values()].sort())
+})
+
+test('内容指纹：规范 JSON 键序无关，改内容必改指纹', () => {
+  assert.equal(
+    canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 4, e: 5 }] } }),
+    canonicalJson({ a: { c: [3, { e: 5, f: 4 }], d: 2 }, b: 1 }),
+  )
+
+  const manifest: CourseDigestManifest = {
+    v: 1,
+    chapters: [],
+    sections: [{
+      sectionId: 'sec_0000000000000001',
+      title: '节',
+      sortOrder: 1,
+      article: { dslVersion: 1, markdown: '正文', citations: ['su_0000000000000001'] },
+      widgets: [],
+      figures: [],
+      caseStocks: [],
+    }],
+  }
+  const reordered: CourseDigestManifest = {
+    v: 1,
+    sections: [{
+      sortOrder: 1,
+      title: '节',
+      sectionId: 'sec_0000000000000001',
+      article: { citations: ['su_0000000000000001'], markdown: '正文', dslVersion: 1 },
+      widgets: [],
+      figures: [],
+      caseStocks: [],
+    }],
+    chapters: [],
+  }
+  assert.equal(digestOfManifest(manifest), digestOfManifest(reordered))
+
+  const changed: CourseDigestManifest = {
+    ...manifest,
+    sections: [{
+      ...manifest.sections[0]!,
+      article: { ...manifest.sections[0]!.article!, markdown: '改过的正文' },
+    }],
+  }
+  assert.notEqual(digestOfManifest(manifest), digestOfManifest(changed))
 })

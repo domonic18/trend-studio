@@ -12,6 +12,8 @@ import {
   serviceUnavailable,
 } from '../errors.js'
 import { codePointLength, stringField } from '../http/validation.js'
+import { listCourseApprovals, upsertCourseApproval } from '../production/approvals.js'
+import { computeCourseDigest } from '../production/digest.js'
 import { parseArticleDsl } from '../production/dsl/parse.js'
 import { chapterIdFor, draftSegmentIdFor, figureIdFor, knowledgePointIdFor } from './ids.js'
 import { ActiveJobError, type JobQueue, type PipelineJob } from './jobs.js'
@@ -27,6 +29,7 @@ import {
   type JobStatus,
 } from './types.js'
 import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
+import type { ApprovalGate, ApprovalItem } from '@trend/contracts'
 
 const ID = /^[A-Za-z0-9._-]{1,64}$/
 const JOB_ID = /^job_[0-9a-f]{16}$/
@@ -218,6 +221,7 @@ export interface PublishResult {
     segments: number
     sections: number
     widgets: number
+    caseStocks: number
   }
 }
 
@@ -264,6 +268,9 @@ export interface PipelineApi {
   deleteFigure(figureId: string): Promise<void>
   /** 后台候选预览：只返回相对路径，文件由路由按会话鉴权后读出。 */
   candidateFile(candidateId: string): Promise<{ relPath: string }>
+  /** 审批签批：对当前课程内容指纹签名（同课程同门禁幂等重批）。 */
+  approveCourse(courseId: string, gate: ApprovalGate, approvedBy: string): Promise<ApprovalItem>
+  listApprovals(courseId: string): Promise<{ approvals: ApprovalItem[] }>
   publishCourse(courseId: string): Promise<PublishResult>
   listJobs(filters: JobFilters): Promise<{ jobs: JobDto[]; total: number; offset: number; limit: number }>
   getJob(jobId: string): Promise<JobDetail>
@@ -1055,6 +1062,31 @@ export class PipelineService implements PipelineApi {
     throw conflict('generation is not a draft')
   }
 
+  /** 审批签批：算当前课程内容指纹并落审批记录（同课程同门禁幂等重批）。 */
+  async approveCourse(courseId: string, gate: ApprovalGate, approvedBy: string): Promise<ApprovalItem> {
+    const { rows: courseRows } = await this.pool.query<{ status: string }>(
+      'SELECT status FROM courses WHERE course_id = $1',
+      [courseId],
+    )
+    const course = courseRows[0]
+    if (course === undefined) throw notFound('course not found')
+    if (course.status === 'archived') throw conflict('course is archived')
+    const digest = await computeCourseDigest(this.pool, courseId)
+    return upsertCourseApproval(this.pool, {
+      courseId,
+      gate,
+      digest: digest.digest,
+      digestSections: digest.sectionDigests,
+      approvedBy,
+    })
+  }
+
+  async listApprovals(courseId: string): Promise<{ approvals: ApprovalItem[] }> {
+    const { rows: courseRows } = await this.pool.query('SELECT 1 FROM courses WHERE course_id = $1', [courseId])
+    if (courseRows.length === 0) throw notFound('course not found')
+    return { approvals: await listCourseApprovals(this.pool, courseId) }
+  }
+
   async publishCourse(rawCourseId: string): Promise<PublishResult> {
     const courseId = parseContentId(rawCourseId, 'courseId')
     const { rows: courseRows } = await this.pool.query<{ status: string }>(
@@ -1078,6 +1110,7 @@ export class PipelineService implements PipelineApi {
     await this.requireResolvedFigures(courseId)
     await this.requireProvenWidgets(courseId)
     await this.requireResolvedSectionMedia(courseId)
+    await this.requireFinalApproval(courseId)
 
     const reindex = this.options.reindex
     const embeddingReady = reindex !== undefined
@@ -1123,6 +1156,13 @@ export class PipelineService implements PipelineApi {
         `UPDATE widget_specs
          SET status = 'published', updated_at = now()
          WHERE course_id = $1 AND status = 'draft'`,
+        [courseId],
+      )
+      const caseStocks = await client.query(
+        `UPDATE section_case_stocks
+         SET status = 'published', updated_at = now()
+         WHERE status = 'draft'
+           AND section_id IN (SELECT section_id FROM sections WHERE course_id = $1)`,
         [courseId],
       )
       await client.query(
@@ -1171,6 +1211,7 @@ export class PipelineService implements PipelineApi {
           segments: row?.segments ?? 0,
           sections: row?.sections ?? 0,
           widgets: row?.widgets ?? 0,
+          caseStocks: caseStocks.rowCount ?? 0,
         },
       }
     } catch (error) {
@@ -1334,6 +1375,26 @@ export class PipelineService implements PipelineApi {
     if (unproven.length > 0) {
       throw codedConflict('widget_unproven', 'course widgets have incomplete assertion proofs', {
         widgetIds: unproven,
+      })
+    }
+  }
+
+  /** M3b 发布硬门禁：final 审批必须存在，且当前内容指纹与签批时一致（内容变了必须重签）。 */
+  private async requireFinalApproval(courseId: string): Promise<void> {
+    const { rows } = await this.pool.query<{ digest: string }>(
+      `SELECT digest FROM content_approvals WHERE course_id = $1 AND gate = 'final'`,
+      [courseId],
+    )
+    const approved = rows[0]
+    if (approved === undefined) {
+      throw codedConflict('approval_required', 'course has no final approval', { courseId })
+    }
+    const current = await computeCourseDigest(this.pool, courseId)
+    if (current.digest !== approved.digest) {
+      throw codedConflict('approval_stale', 'course content changed after the final approval', {
+        courseId,
+        expected: approved.digest.slice(0, 16),
+        actual: current.digest.slice(0, 16),
       })
     }
   }
