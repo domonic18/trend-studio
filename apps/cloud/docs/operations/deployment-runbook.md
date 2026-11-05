@@ -207,7 +207,7 @@ APP_ENV=staging
 PUBLIC_BASE_URL=https://localhost
 MEDIA_BASE_URL=https://localhost/media
 DOMAIN=localhost
-# 默认即 ./workspace/media；要复用插件样片可覆盖为 ../dsh-plugin-trend-coach/spike/media
+# 默认即 ./workspace/media；要复用插件样片可覆盖为 ../../coach/spike/media
 MEDIA_HOST_DIR=./workspace/media
 MEDIA_LOCAL_DIR=/media
 PIPELINE_ENABLED=true

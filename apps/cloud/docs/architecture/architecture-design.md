@@ -1154,5 +1154,5 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 - [云端服务对接清单](./cloud-service-integration-checklist.md)
 - [云端服务需求](../requirements/product-requirements.md)
 - [项目规范](../conventions/project-conventions.md)
-- 插件仓库：`../dsh-plugin-trend-coach`（PRD v1.8 §6、架构 v1.8 §6/§9/§10/§12/§17）
-- 生产插件仓库：`../dsh-plugin-trend-producer`（PRD v0.3、架构 v0.4；生产 Agent 循环与呈现层生产职责 F7，架构见本文 §6.5/§6.6）
+- 插件仓库：`../../coach`（PRD v1.8 §6、架构 v1.8 §6/§9/§10/§12/§17）
+- 生产插件仓库：`../../producer`（PRD v0.3、架构 v0.4；生产 Agent 循环与呈现层生产职责 F7，架构见本文 §6.5/§6.6）

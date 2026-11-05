@@ -1,6 +1,6 @@
-# trend-coach-cloud
+# trend-coach-cloud（apps/cloud）
 
-`dsh-plugin-trend-coach` 的云端服务仓库：提供课程知识检索、片段元数据、签名 HLS 播放会话、设备码授权、后台账号与内容管理、指标事件接收、语音转写（M4.2，MiniMax ASR）、视频→课程管线（M1），公开门户与自助账号、AI 用量与任务级模型路由（M7），语料级生产底座（M9：关键帧轨道、source units、概念图谱、课件 spec 复检、溯源账本），以及教材呈现层（M10：富文本 DSL、节级图示、SVG 模板、资产时间窗播放会话）。
+monorepo（`~/Code/trend`）的云端应用：提供课程知识检索、片段元数据、签名 HLS 播放会话、设备码授权、后台账号与内容管理、指标事件接收、语音转写（M4.2，MiniMax ASR）、视频→课程管线（M1），公开门户与自助账号、AI 用量与任务级模型路由（M7），语料级生产底座（M9：关键帧轨道、source units、概念图谱、课件 spec 复检、溯源账本），以及教材呈现层（M10：富文本 DSL、节级图示、SVG 模板、资产时间窗播放会话）。
 
 ## 边界
 
@@ -133,9 +133,9 @@
 
 ## 对接方
 
-- 学员插件仓库：`../dsh-plugin-trend-coach`
-- 生产插件仓库（M9/M10 生产端）：`../dsh-plugin-trend-producer`
-- 插件侧 mock：`../dsh-plugin-trend-coach/spike/mock-kb-server.mjs`（可作为契约夹具参考）
+- 学员插件仓库：`../../coach`
+- 生产插件仓库（M9/M10 生产端）：`../../producer`
+- 插件侧 mock：`../../coach/spike/mock-kb-server.mjs`（可作为契约夹具参考）
 
 ## 本地运行
 
@@ -165,7 +165,7 @@ curl -s -X POST http://127.0.0.1:3939/v1/auth/session \
   -d '{"username":"admin01","password":"<初始密码>"}'
 # 学员首次登录：打开 https://<域名>/device?code=<USER-CODE> 填写账号密码，
 # 或使用邀请码设置密码；也可直接调用 /v1/auth/device/approve。
-npm test                       # 单元 + 契约测试（自动重置测试库）
+npm test                       # 单元 + 契约测试（自动重置测试库；需设 TEST_DATABASE_URL，守卫拦与 DATABASE_URL 同库）
 ```
 
 本地媒体需在 `.env` 设置 `MEDIA_LOCAL_DIR` 指向含 `hls/index.m3u8` 的目录；生产媒体走 CDN，不设该项。配置项与默认值见 `.env.example`。

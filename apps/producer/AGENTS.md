@@ -1,12 +1,11 @@
 # AGENTS.md
 
-趋势交易课程**生产插件**仓库（dsh 0.2.1-rc.5）：驱动"语料级视频 → 图文课程 + 交互课件"的生产 Agent 编排，运行于教员本机 dsh（web/headless profile）。
+趋势交易课程**生产插件**（monorepo `apps/producer`，dsh 0.2.1-rc.5）：驱动"语料级视频 → 图文课程 + 交互课件"的生产 Agent 编排，运行于教员本机 dsh（web/headless profile）。
 
-云端契约真相源（冲突时先改云端文档，再同步本仓库）：
+契约真相源分层（冲突时以此顺序裁决）：
 
-- [trend-coach-cloud 需求 v0.9 §C13/C14](../trend-coach-cloud/docs/requirements/product-requirements.md)
-- [trend-coach-cloud 对接清单 v0.8 §3.13（语料生产）/§3.14（呈现层）](../trend-coach-cloud/docs/architecture/cloud-service-integration-checklist.md)
-- [trend-coach-cloud 架构 v0.10 §6.5（生产）/§6.6（呈现层）](../trend-coach-cloud/docs/architecture/architecture-design.md)
+- 人读契约：cloud 应用三份文档，变更先改文档再同步实现——[需求 v0.9 §C13/C14](../../cloud/docs/requirements/product-requirements.md)、[对接清单 v0.8 §3.13/§3.14](../../cloud/docs/architecture/cloud-service-integration-checklist.md)、[架构 v0.10 §6.5/§6.6](../../cloud/docs/architecture/architecture-design.md)
+- 机器真相：[`packages/contracts`](../../packages/contracts)（@trend/contracts，zod 单一真相：admin API schema、DSL 解析校验、ID/枚举）；本仓库 `src/host/contracts.ts` 仅是绑定错误形状的适配壳
 
 ## 先读这些
 
@@ -15,7 +14,7 @@
 3. 云端对接清单 §3.13/§3.14 与云端架构 §6.5/§6.6（上方链接）— 全部接口契约、生产管线与呈现层契约
 4. [项目规范](docs/conventions/project-conventions.md)
 5. [Skill 包格式](skills/README.md)
-6. 学员插件参考 `../dsh-plugin-trend-coach`（dsh 平台约束与代码模式的来源）
+6. 学员插件参考 `apps/coach`（dsh 平台约束与代码模式的来源）
 
 ## 硬约束（写代码前必须确认）
 
@@ -28,7 +27,7 @@
 7. **云 DB 即 checkpoint**：生产进度以云端为准（哪些 unit/节/spec 已存在由云端查询得出），本地不持有生产进度真相；中断恢复 = 按云端缺失单元重入队。
 8. **不可信文本**：云端转写/摘要/回执按不可信数据处理——喂给模型前边界包裹并剥离控制字符，进工具输出前转义（参照学员插件 `src/untrusted.ts` 纪律）。
 9. **dsh 平台**：`engines.dsh` 精确锁 `0.2.1-rc.5`；关键路径只用稳定包（subagent spawn/fork、skill、tool-skill、jobs、credentials）；experimental 包（agent-team/workflow 等）禁入。最小权限——不注册 shell / 文件写入工具；帧图一律经云端签名 URL + 模型多模态消息处理，本地不做媒体处理。
-10. **契约先行**：接口字段变更先改云端需求/清单/OpenAPI，再改本仓库 `shared/contracts` 与实现；契约测试对齐清单 §3.13 验收用例。
+10. **契约先行**：接口字段变更先改云端需求/清单/OpenAPI 与 `packages/contracts`（zod，同批提交），再改本仓库实现；契约测试对齐清单 §3.13 验收用例，`@trend/contracts` 变更必须跑三端行为基线（contracts/fixtures/producer/cloud）。
 11. **提交**：遵循 Conventional Commits，分批提交，提交前检查敏感信息。
 
 ## 生产流水线（与云端架构 §6.5 对齐）
@@ -57,11 +56,13 @@
 ## 常用命令
 
 ```bash
-npm install
-npm run typecheck
-npm run build
-# 安装到试验 profile：dsh plugin --profile <name> add -w $(npm pack)
-# 契约测试：npm test（fakeAuth 回放，对齐云端清单 §3.13 验收口径）；smoke 待 dsh 试验 profile 联调
+# monorepo 根执行；单应用用 pnpm --filter dsh-plugin-trend-producer <script>
+pnpm --filter dsh-plugin-trend-producer install
+pnpm --filter dsh-plugin-trend-producer typecheck
+pnpm --filter dsh-plugin-trend-producer test
+# 产出可独立安装的 tarball（staging 内嵌 @trend/contracts）：apps/producer/*.tgz
+pnpm --filter dsh-plugin-trend-producer pack
+# 安装到试验 profile：dsh plugin --profile <name> add -w <tarball 路径>
 ```
 
 ## 目录
@@ -75,7 +76,7 @@ cordis.patch.yml     bundle patch（config 走 schema 默认值/环境变量）
 
 ## 改动规则
 
-- 工具/产物字段变化：先改云端需求 v0.9 C13/C14 与清单 §3.13/§3.14，再改本仓库 contracts 与实现。
+- 工具/产物字段变化：先改云端需求 v0.9 C13/C14、清单 §3.13/§3.14 与 `packages/contracts`，再改本仓库实现。
 - 新增注册一律放进 `ctx.effect(...)` 并返回清理函数。
 - 工具入参与云端响应在 Host 边界校验；非法数据报错，不静默丢弃。
 - 注释只写"为什么"；不写多段注释。

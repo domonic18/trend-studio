@@ -154,7 +154,7 @@ deploy/           # staging/production 部署与密钥注入说明（不含密�
 
 ## 5. 与插件仓库的关系
 
-- 插件仓库 `../dsh-plugin-trend-coach`（学员端）：只保留 mock 与 Host/Client 实现，不含云端实现。
-- 生产插件仓库 `../dsh-plugin-trend-producer`（M9/M10 生产端）：只做生产编排与 Skill 工艺，不含云端实现。
+- 插件仓库 `../../coach`（学员端）：只保留 mock 与 Host/Client 实现，不含云端实现。
+- 生产插件仓库 `../../producer`（M9/M10 生产端）：只做生产编排与 Skill 工艺，不含云端实现。
 - 插件侧 mock（`spike/mock-kb-server.mjs`）可用于对齐请求/响应形状；云端实现以对接清单为准。
 - 契约冲突时，接口字段与错误码以本仓对接清单与架构为准（云端是契约真相源）；插件侧实现方式与渲染策略以插件仓文档为准。生产插件仓的 `docs/research/` 为调研材料，采纳结论已回写本仓架构 ADR。

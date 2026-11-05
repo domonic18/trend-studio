@@ -342,5 +342,5 @@
 - [云端服务对接清单](../architecture/cloud-service-integration-checklist.md)
 - [云端架构设计](../architecture/architecture-design.md)
 - [项目规范](../conventions/project-conventions.md)
-- 插件仓库：`../dsh-plugin-trend-coach`（PRD v1.8 §6、架构 v1.8 §6/§9/§10/§12/§17）
-- 生产插件仓库：`../dsh-plugin-trend-producer`（已建；PRD v0.3/架构 v0.4 承载生产 Agent 循环、呈现层生产（F7）与审批卡点；契约见本文 §6（C13/C14）与云端架构 v0.10 §6.5/§6.6）
+- 插件仓库：`../../coach`（PRD v1.8 §6、架构 v1.8 §6/§9/§10/§12/§17）
+- 生产插件仓库：`../../producer`（已建；PRD v0.3/架构 v0.4 承载生产 Agent 循环、呈现层生产（F7）与审批卡点；契约见本文 §6（C13/C14）与云端架构 v0.10 §6.5/§6.6）
