@@ -1,0 +1,21 @@
+{
+  "name": "trend",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "turbo run check",
+    "test": "turbo run test",
+    "build": "turbo run build"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "zod": "4.4.3"
+    }
+  }
+}

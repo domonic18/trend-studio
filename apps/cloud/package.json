@@ -16,6 +16,7 @@
     "build:portal": "node scripts/prerender-portal.mjs",
     "start": "node --env-file-if-exists=.env dist/server/index.js",
     "typecheck": "tsc --noEmit && tsc -p web/admin/tsconfig.json --noEmit && tsc -p web/portal/tsconfig.json --noEmit",
+    "check": "tsc --noEmit && tsc -p web/admin/tsconfig.json --noEmit && tsc -p web/portal/tsconfig.json --noEmit",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
@@ -43,7 +44,7 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.5",
     "remark-gfm": "^4.0.1",
-    "zod": "^4.6.7"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -52,7 +53,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.2.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
+    "typescript": "^5.9.0",
     "vite": "^7.3.7",
     "yaml": "^2.6.0"
   }
