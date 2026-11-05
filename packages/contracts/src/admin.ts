@@ -99,7 +99,7 @@ export const sourceUnitReadItem = z.object({
   startMs: z.number().int().nonnegative(),
   endMs: z.number().int().positive(),
   transcriptText: z.string(),
-  visual: z.record(z.string(), z.unknown()),
+  visual: z.record(z.string(), z.json()),
   keyframes: z.array(unitKeyframe),
   playback: unitPlayback,
 }).strict()
