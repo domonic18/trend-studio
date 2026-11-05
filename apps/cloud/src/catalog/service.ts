@@ -1,9 +1,13 @@
 import type { Pool } from 'pg'
 import { parseQuizQuestions, type QuizQuestion } from '../content/quiz.js'
 import { HttpError } from '../errors.js'
-import { codePointLength, stringField } from '../http/validation.js'
+import { asObject, codePointLength, intField, stringField } from '../http/validation.js'
 import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
+import type { CatalogPlaybackOutput, CatalogSectionOutput, CatalogSectionSummary } from '@trend/contracts/catalog'
+import type { Principal } from '../auth/service.js'
+import type { PlaybackService } from '../playback/service.js'
 import { readCourseQuotes, type CatalogQuotes, type QuoteQuery } from './quotes.js'
+import { parseAssetId, parseSectionId, readSection, readSectionSummaries, resolveClipWindow } from './sections.js'
 
 const COURSE_ID = /^[A-Za-z0-9._-]{1,64}$/
 const CHAPTER_ID = /^[A-Za-z0-9._-]{1,64}$/
@@ -18,8 +22,10 @@ const MAX_FIGURES_PER_CHAPTER = 3
 const MAX_RESPONSE_BYTES = 512 * 1024
 const MAX_ADJACENT = 5
 
-/** M8 起课程树携带契约版本；缺失视为 1，避免旧云端被静默降级。 */
+/** 章级目录（v2）契约版本。 */
 export const CATALOG_CONTRACT_VERSION = 2
+/** 节级学习契约（v3）：课程存在已发布节正文时下发。 */
+export const CATALOG_CONTRACT_VERSION_SECTIONS = 3
 
 export interface CatalogCourseSummary {
   courseId: string
@@ -52,6 +58,8 @@ export interface CatalogCourse {
   courseId: string
   title: string
   chapters: CatalogChapter[]
+  /** v3 起下发：节级学习契约摘要；v2 课程无此字段。 */
+  sections?: CatalogSectionSummary[]
 }
 
 export interface ChapterArticle {
@@ -181,6 +189,7 @@ export class CatalogService {
   constructor(
     private readonly pool: Pool,
     private readonly figureUrl: (relPath: string) => string,
+    private readonly playback: PlaybackService,
   ) {}
 
   async listCourses(userId: string): Promise<{ courses: CatalogCourseSummary[] }> {
@@ -219,6 +228,41 @@ export class CatalogService {
     const payload = await readCourseQuotes(this.pool, courseId, query)
     ensureSize(payload)
     return payload
+  }
+
+  /** 学员节详情：正文 + 课件 + 图示 + 案例股（M3b B6）。 */
+  async getSection(rawCourseId: string, rawSectionId: string): Promise<CatalogSectionOutput> {
+    const courseId = parseCourseId(rawCourseId)
+    const sectionId = parseSectionId(rawSectionId)
+    const payload = await readSection(this.pool, courseId, sectionId, this.figureUrl)
+    ensureSize(payload)
+    return payload
+  }
+
+  /**
+   * 学员播放会话：请求窗必须完整落在该节已发布正文的 clip 窗内（M3b B6）。
+   * 越窗 409 playback_window_invalid。
+   */
+  async createPlayback(
+    principal: Principal,
+    rawSectionId: string,
+    rawBody: unknown,
+  ): Promise<CatalogPlaybackOutput> {
+    const sectionId = parseSectionId(rawSectionId)
+    const body = asObject(rawBody)
+    const assetId = parseAssetId(stringField(body, 'assetId', { max: 64 }))
+    const fromSec = intField(body, 'fromSec', { min: 0, max: 86_400 })
+    const toSec = intField(body, 'toSec', { min: 1, max: 86_400 })
+    if (toSec <= fromSec) throw new HttpError(400, 'toSec must be greater than fromSec')
+    await resolveClipWindow(this.pool, sectionId, assetId, fromSec, toSec)
+    const session = await this.playback.createAssetSession(principal, assetId, { fromSec, toSec })
+    return {
+      sessionId: session.sessionId,
+      playlistUrl: session.playlistUrl,
+      fromSec: session.fromSec,
+      toSec: session.toSec,
+      expiresAt: session.expiresAt,
+    }
   }
 
   async getCourse(rawCourseId: string, userId: string): Promise<CatalogCourse> {
@@ -287,8 +331,9 @@ export class CatalogService {
       pointsByChapter.set(row.chapter_id, list)
     }
 
+    const hasSections = await this.courseHasPublishedSections(courseId)
     const payload: CatalogCourse = {
-      contractVersion: CATALOG_CONTRACT_VERSION,
+      contractVersion: hasSections ? CATALOG_CONTRACT_VERSION_SECTIONS : CATALOG_CONTRACT_VERSION,
       courseId: parseCourseId(course.course_id),
       title: title(course.title, 'course title'),
       chapters: chapterRows.map(row => ({
@@ -299,9 +344,23 @@ export class CatalogService {
         figureCount: row.figure_count,
         knowledgePoints: pointsByChapter.get(row.chapter_id) ?? [],
       })),
+      ...(hasSections ? { sections: await readSectionSummaries(this.pool, courseId) } : {}),
     }
     ensureSize(payload)
     return payload
+  }
+
+  /** v3 判定：课程存在已发布节正文才算节级契约；老课程字段零变化。 */
+  private async courseHasPublishedSections(courseId: string): Promise<boolean> {
+    const { rows } = await this.pool.query<{ present: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM section_articles a
+           JOIN sections s ON s.section_id = a.section_id AND s.status = 'published'
+          WHERE s.course_id = $1 AND a.status = 'published'
+       ) AS present`,
+      [courseId],
+    )
+    return rows[0]?.present === true
   }
 
   async getChapter(rawCourseId: string, rawChapterId: string): Promise<CatalogChapterArticle> {

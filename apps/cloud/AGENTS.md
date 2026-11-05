@@ -58,7 +58,7 @@ curl -X POST localhost:3939/v1/auth/session -H 'content-type: application/json' 
 src/                 服务实现（accounts/auth/content/kb/playback/events/media/asr/pipeline/model-config/ai/portal/production/http）
 web/admin/           React + Vite 管理端（构建产物 dist/admin）
 web/portal/          React + Vite 门户（预渲染产物 dist/portal）
-web/widgets/         管理台与学员端共用的渲染组件包（DSL 容器块渲染器、片段卡）
+web/widgets/         已外迁至 monorepo packages/widgets（@trend/widgets）：管理台与学员端共用的渲染组件包（DSL 容器块渲染器、片段卡）
 migrations/          SQL 迁移（004 管线、005/006 模型配置、007 门户与 AI 运营、008–011 M8、012 M9、013 M10）
 data/seed.json       本地种子数据
 workspace/           运行期持久化数据（gitignore；postgres/pipeline/caddy/media/backups）

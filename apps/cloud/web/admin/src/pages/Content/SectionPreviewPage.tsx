@@ -8,9 +8,9 @@ import { PageHeader } from '../../components/PageHeader'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
 import type { FigureBrief } from '../../types'
-import { ArticleRenderer } from '@widgets/article'
-import type { ArticleHost, FigureMeta } from '@widgets/types'
-import '@widgets/widgets.css'
+import { ArticleRenderer } from '@trend/widgets/article'
+import type { ArticleHost, FigureMeta } from '@trend/widgets/types'
+import '@trend/widgets/widgets.css'
 import { WidgetPlayer } from '../../widgets'
 
 export function SectionPreviewPage() {

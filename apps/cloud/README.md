@@ -192,7 +192,6 @@ scripts/backup.sh                # 备份（可配 cron）
 src/            # Fastify 服务：accounts/auth/content/kb/playback/events/media/asr/pipeline/model-config/ai/portal/http/production
 web/admin/      # React + Vite 管理端源码（构建产物 dist/admin）
 web/portal/     # React + Vite 门户源码与 Markdown 内容（预渲染产物 dist/portal）
-web/widgets/    # 渲染组件包（DSL 容器块渲染器、片段卡），管理台与学员端共用契约
 content/        # 发布清单 content/releases.json（下载文件放 dist/downloads）
 migrations/     # SQL 迁移（启动时自动执行；004 管线、005/006 模型配置、007 门户与 AI 运营、008–011 M8、012 M9、013 M10）
 data/seed.json  # 本地种子数据（与插件 mock 对齐）
@@ -204,4 +203,4 @@ deploy/         # Caddy 与可选监控模板（不随 Compose 启动）
 scripts/        # migrate/seed、预渲染、压测与备份恢复入口
 ```
 
-当前为 M10 实现阶段：M2 业务接口、设备码授权、签名 HLS、事件接收已落地；M3.1 账号与后台登录、M3.2 内容管理 API 与 React 控制台、M3.3 体系与进度接口已落地；M4.2 语音转写已落地（真实 MiniMax 已验收）；M4.3 模型配置页已落地（LLM/ASR 条目、密钥加密、连通性测试）；M1 视频→课程管线已落地（上传、单码率 HLS、长音频转写、切分、文章草稿、人工发布；真实 ASR/LLM/embedding 已验收）；M7 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换已落地；M9 语料级生产底座（帧轨道、source units、概念图谱、节与课件 spec 复检、溯源账本）已落地；M10 呈现层 R1（DSL 校验、节级图示与 SVG 模板、资产播放会话、发布门禁扩展、管理台渲染组件包）已落地，R2 实盘层与 R3 质量收敛待落地。多码率 HLS、召回评估、客服入口后置。
+当前为 M10 实现阶段：M2 业务接口、设备码授权、签名 HLS、事件接收已落地；M3.1 账号与后台登录、M3.2 内容管理 API 与 React 控制台、M3.3 体系与进度接口已落地；M4.2 语音转写已落地（真实 MiniMax 已验收）；M4.3 模型配置页已落地（LLM/ASR 条目、密钥加密、连通性测试）；M1 视频→课程管线已落地（上传、单码率 HLS、长音频转写、切分、文章草稿、人工发布；真实 ASR/LLM/embedding 已验收）；M7 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换已落地；M9 语料级生产底座（帧轨道、source units、概念图谱、节与课件 spec 复检、溯源账本）已落地；M10 呈现层 R1（DSL 校验、节级图示与 SVG 模板、资产播放会话、发布门禁扩展、管理台渲染组件包）已落地，R2 实盘层与 R3 质量收敛待落地。渲染组件包已外迁至 monorepo `packages/widgets`（`@trend/widgets`），管理台与学员端共用同一构建产物。多码率 HLS、召回评估、客服入口后置。

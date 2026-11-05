@@ -59,6 +59,20 @@ export function registerCatalogRoutes(app: FastifyInstance, deps: CatalogRouteDe
     return catalog.getChapter(courseId, chapterId)
   })
 
+  /** v3 节级学习契约：正文 + 课件 + 图示 + 案例股。 */
+  app.get('/v1/catalog/courses/:courseId/sections/:sectionId', async request => {
+    await guard(request)
+    const { courseId, sectionId } = request.params as { courseId: string; sectionId: string }
+    return catalog.getSection(courseId, sectionId)
+  })
+
+  /** 学员播放会话：请求窗必须完整落在该节已发布正文的 clip 窗内，否则 409。 */
+  app.post('/v1/catalog/sections/:sectionId/playback', async request => {
+    const principal = await guard(request)
+    const { sectionId } = request.params as { sectionId: string }
+    return catalog.createPlayback(principal, sectionId, request.body)
+  })
+
   app.get('/v1/catalog/knowledge-points/:knowledgePointId', async request => {
     await guard(request)
     const { knowledgePointId } = request.params as { knowledgePointId: string }

@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AccountService } from '../accounts/service.js'
 import type { AppConfig } from '../config.js'
@@ -7,6 +5,7 @@ import { parseContentId, titleField } from '../content/service.js'
 import { badRequest, HttpError, notFound, tooManyRequests } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, optionalStringField } from '../http/validation.js'
+import { readFigureImageBytes } from '../media/figure-image.js'
 import { RateLimiter } from '../rate-limit.js'
 import type { ApprovalGate } from '@trend/contracts'
 import {
@@ -232,24 +231,10 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     const { relPath } = await api.candidateFile(parseCandidateId(candidateId))
     const root = config.figureLocalDir
     if (root === undefined) throw new HttpError(503, 'figure storage not configured')
-    const base = resolve(root)
-    const target = resolve(base, relPath)
-    if (target !== base && !target.startsWith(`${base}${sep}`)) {
-      throw new HttpError(500, 'candidate path invalid')
-    }
-    let bytes: Buffer
-    try {
-      bytes = await readFile(target)
-    } catch {
-      throw notFound('candidate image not found')
-    }
+    const image = await readFigureImageBytes(root, relPath)
+    if (image === undefined) throw notFound('candidate image not found')
     reply.header('cache-control', 'private, max-age=300')
-    const mime = target.endsWith('.svg')
-      ? 'image/svg+xml'
-      : target.endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg'
-    return reply.type(mime).send(bytes)
+    return reply.type(image.mime).send(image.bytes)
   })
 
   app.post('/v1/admin/content/courses/:courseId/publish', async request => {

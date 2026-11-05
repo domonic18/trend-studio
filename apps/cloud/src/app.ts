@@ -198,6 +198,7 @@ export async function buildApp({
   const catalog = new CatalogService(
     pool,
     relPath => signFigureUrl(config.mediaSigningSecret, config.mediaBaseUrl, relPath, config.figureSigningTtlSec),
+    playback,
   )
   const progress = new ProgressService(pool)
   const content = new ContentService(pool, embedding)

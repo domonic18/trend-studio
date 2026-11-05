@@ -5,6 +5,7 @@ import {
   caseStocksWriteInput, checkAttrs, parseBody, sectionArticleWriteInput,
   parseArticleDsl, validateArticleDsl, sourceUnitsReadInput, approvalsWriteInput,
   quotesSyncInput, quotesSyncOutput, quotesItem, quotesListOutput,
+  catalogSectionSummary, catalogSectionOutput, catalogPlaybackOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -160,4 +161,54 @@ test('M3b 行情条目 schema：口径字段与严格模式', () => {
   // 多余字段拒绝（strict）
   assert.equal(quotesItem.safeParse({ ...bar, adj: 'qfq' }).success, false)
   assert.equal(quotesListOutput.safeParse({ pending: false, quotes: [bar], extra: 1 }).success, false)
+})
+
+test('M3b v3 目录 schema：节摘要 / 节详情 / 播放会话', () => {
+  const summary = {
+    sectionId: SECTION, title: '趋势线', position: 1, hasArticle: true,
+    figureCount: 1, widgetTypes: ['kline-annotator'], caseStockCodes: ['000713'],
+  }
+  assert.equal(catalogSectionSummary.safeParse(summary).success, true)
+  assert.equal(catalogSectionSummary.safeParse({ ...summary, caseStockCodes: ['713'] }).success, false)
+  assert.equal(catalogSectionSummary.safeParse({ ...summary, extra: 1 }).success, false)
+
+  const section = {
+    sectionId: SECTION,
+    courseId: 'TC-101',
+    chapterId: 'CH1',
+    title: '趋势线',
+    position: 1,
+    article: { markdown: '正文', dslVersion: 1, version: 1, publishedAt: 1 },
+    widgets: [{ widgetId: 'w1', type: 'kline-annotator', specVersion: 1, version: 1, spec: {}, assertions: {} }],
+    figures: [{
+      figureId: 'fig_1', kind: 'diagram', caption: '图', assetId: null,
+      sourceSec: null, candidateId: 'cand_1', url: 'https://cdn/figures/fig_1/cand_1.jpg',
+    }],
+    caseStocks: [{
+      code: '000713', name: '丰乐种业', exchange: 'SZSE',
+      windowStart: '2019-01-02', windowEnd: '2020-02-28', events: [],
+    }],
+  }
+  assert.equal(catalogSectionOutput.safeParse(section).success, true)
+  // 图示未选定候选时 url 为 null，不允许省略字段
+  assert.equal(catalogSectionOutput.safeParse({
+    ...section,
+    figures: [{ ...section.figures[0], url: null }],
+  }).success, true)
+  assert.equal(catalogSectionOutput.safeParse({
+    ...section,
+    figures: [{ ...section.figures[0], url: undefined }],
+  }).success, false)
+  assert.equal(catalogSectionOutput.safeParse({
+    ...section,
+    caseStocks: [{ ...section.caseStocks[0], exchange: 'NYSE' }],
+  }).success, false)
+
+  const playback = {
+    sessionId: 'ps_1', playlistUrl: 'https://cdn/hls/index.m3u8?token=x',
+    fromSec: 10, toSec: 40, expiresAt: 1,
+  }
+  assert.equal(catalogPlaybackOutput.safeParse(playback).success, true)
+  assert.equal(catalogPlaybackOutput.safeParse({ ...playback, fromSec: null, toSec: null }).success, true)
+  assert.equal(catalogPlaybackOutput.safeParse({ ...playback, playlistUrl: '' }).success, false)
 })

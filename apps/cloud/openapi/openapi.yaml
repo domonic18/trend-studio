@@ -321,6 +321,7 @@ components:
         contractVersion:
           type: integer
           minimum: 1
+          description: 2=章级目录；3=节级学习契约（课程存在已发布节正文时附带 sections）。
         courseId:
           type: string
           pattern: '^[A-Za-z0-9._-]{1,64}$'
@@ -333,6 +334,211 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/CatalogChapter'
+        sections:
+          type: array
+          description: v3 才有；v2 老课程不返回此字段。
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/CatalogSectionSummary'
+
+    CatalogSectionSummary:
+      type: object
+      additionalProperties: false
+      required: [sectionId, title, position, hasArticle, figureCount, widgetTypes, caseStockCodes]
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+        hasArticle:
+          type: boolean
+        figureCount:
+          type: integer
+          minimum: 0
+          maximum: 20
+        widgetTypes:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 32
+        caseStockCodes:
+          type: array
+          items:
+            type: string
+            pattern: '^[0-9]{6}$'
+
+    CatalogSection:
+      type: object
+      additionalProperties: false
+      required: [sectionId, courseId, chapterId, title, position, article, widgets, figures, caseStocks]
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        courseId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        chapterId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{1,64}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogSectionArticle'
+            - type: 'null'
+        widgets:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogWidget'
+        figures:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogFigure'
+        caseStocks:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CatalogCaseStock'
+
+    CatalogSectionArticle:
+      type: object
+      additionalProperties: false
+      required: [markdown, dslVersion, version, publishedAt]
+      properties:
+        markdown:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        dslVersion:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          minimum: 0
+        publishedAt:
+          type: integer
+          description: 毫秒时间戳
+
+    CatalogWidget:
+      type: object
+      additionalProperties: false
+      required: [widgetId, type, specVersion, version, spec, assertions]
+      properties:
+        widgetId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        type:
+          type: string
+          minLength: 1
+          maxLength: 32
+        specVersion:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          minimum: 0
+        spec:
+          type: object
+          additionalProperties: true
+        assertions:
+          type: object
+          additionalProperties: true
+
+    CatalogFigure:
+      type: object
+      additionalProperties: false
+      required: [figureId, kind, caption, assetId, sourceSec, candidateId, url]
+      properties:
+        figureId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        kind:
+          type: string
+          minLength: 1
+          maxLength: 16
+        caption:
+          type: string
+          minLength: 1
+          maxLength: 200
+        assetId:
+          type: string
+          nullable: true
+        sourceSec:
+          type: integer
+          nullable: true
+        candidateId:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+          description: 短时签名图片地址；未选定候选时为 null。
+
+    CatalogCaseStock:
+      type: object
+      additionalProperties: false
+      required: [code, name, exchange, windowStart, windowEnd, events]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        exchange:
+          type: string
+          enum: [SZSE, SSE, BSE]
+        windowStart:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        windowEnd:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    CatalogPlayback:
+      type: object
+      additionalProperties: false
+      required: [sessionId, playlistUrl, fromSec, toSec, expiresAt]
+      properties:
+        sessionId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        playlistUrl:
+          type: string
+          minLength: 1
+        fromSec:
+          type: integer
+          nullable: true
+        toSec:
+          type: integer
+          nullable: true
+        expiresAt:
+          type: integer
+          description: 毫秒时间戳
 
     ChapterArticle:
       type: object
@@ -3296,6 +3502,94 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/courses/{courseId}/sections/{sectionId}:
+    get:
+      summary: 节级学习契约（正文 + 课件 + 图示 + 案例股）
+      description: 只返回已发布课程已发布节的内容；图示带短时签名地址。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 节详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogSection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/catalog/sections/{sectionId}/playback:
+    post:
+      summary: 学员播放会话（节内 clip 窗）
+      description: 请求窗必须完整落在该节已发布正文的某个 clip 块窗内，否则 409 playback_window_invalid。
+      security:
+        - bearerAuth: []
+          deviceId: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [assetId, fromSec, toSec]
+              properties:
+                assetId:
+                  type: string
+                  pattern: '^asset_[0-9a-f]{16}$'
+                fromSec:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                toSec:
+                  type: integer
+                  minimum: 1
+                  maximum: 86400
+      responses:
+        '200':
+          description: 播放会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPlayback'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /v1/catalog/knowledge-points/{knowledgePointId}:
     get:

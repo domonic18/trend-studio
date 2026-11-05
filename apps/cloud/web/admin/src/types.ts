@@ -2,7 +2,7 @@ export type ContentStatus = 'draft' | 'published' | 'archived'
 export type UserRole = 'student' | 'operator' | 'admin' | 'producer'
 export type UserStatus = 'active' | 'disabled'
 
-import type { WidgetAssertions, WidgetSpec, WidgetType } from './widgets/types'
+import type { WidgetAssertions, WidgetSpec, WidgetType } from '@trend/widgets/spec-types'
 
 export interface SessionUser {
   userId: string

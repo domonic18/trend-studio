@@ -19,8 +19,8 @@ import {
   previewProve,
   trendlineAt,
   type Candle,
-} from './engine'
-import type { WidgetAssertions, WidgetSpec, WidgetType } from './types'
+} from '@trend/widgets/engine'
+import type { WidgetAssertions, WidgetSpec, WidgetType } from '@trend/widgets/spec-types'
 import type { WidgetDetail } from '../types'
 
 const FORMULA_LABELS: Record<string, string> = {

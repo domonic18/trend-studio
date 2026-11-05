@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.14）
+# 趋势课程云端服务 · 架构设计（v0.16）
 
-版本：v0.15（2026-11-06；M3b 契约阻断项批次 B5：新增 `POST /v1/admin/content/courses/{courseId}/quotes-sync` 行情同步端点（operator/admin，同步执行腾讯前复权日 K，按 `(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes` 学员行情端点（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `{pending:true}`；成交量单位手、成交额恒 null 不估算；详见 §6.6.3））
+版本：v0.16（2026-11-06；M3b 契约阻断项批次 B6：学员端节级学习契约落地——课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包由 `apps/cloud/web/widgets` 外迁至 monorepo `packages/widgets`（`@trend/widgets`，管理台与学员端共用构建产物））
+v0.15（2026-11-06；M3b 契约阻断项批次 B5：新增 `POST /v1/admin/content/courses/{courseId}/quotes-sync` 行情同步端点（operator/admin，同步执行腾讯前复权日 K，按 `(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes` 学员行情端点（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `{pending:true}`；成交量单位手、成交额恒 null 不估算；详见 §6.6.3））
 v0.14（2026-11-06；M3b 契约阻断项批次 B4：新增 `POST|GET /v1/admin/content/courses/{courseId}/approvals` 审批签批端点（operator/admin，producer 不可自签）；签批 = 对课程内容指纹 sha256 签名（§6.5.9）；publish 新增硬门禁——无 `gate=final` 签批 `409 approval_required`，内容变更后指纹不符 `409 approval_stale`；发布事务内节级案例股清单 draft→published 翻转）
 v0.13（2026-11-06；M3b 契约阻断项批次 B3：新增 `POST /v1/admin/content/source-units/read` 完整证据读取端点——转写原文 + 视觉 + 窗内关键帧签名 URL + 播放会话，`unitIds` 1–20 全有或全无，不存在/素材未就绪 `409 unit_not_readable`；教材落库引用集 = 扁平 citations ∪ 正文 `[[unit:]]` 锚（并集去重））
 v0.12（2026-11-06；M3b 契约阻断项批次 B2：§6.6.1 DSL 增段落级 `[[unit:su_xxx|label]]` 内联锚——引用集口径 = 扁平 citations ∪ 锚（并集去重计数）；锚 unitId 不属本课程 `400 unit_anchor_unknown`，课程归属经 `media_assets.course_id` 关联）
@@ -627,9 +628,9 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 | 媒体层 | 关键帧配图卡 + HLS 时间窗片段卡 | §6.6.2 |
 | 实盘层 | 节级案例股清单 + K 线/成交量对照侧栏 | §6.6.3 |
 
-- **管理台先行**：全部能力先在管理台节预览落地，不耦合学员端；渲染组件以独立包边界实现（`web/widgets`，不依赖 admin/portal 私有运行时，二者只作宿主）；学员端启用随 `contractVersion=3`。
+- **管理台先行**：全部能力先在管理台节预览落地，不耦合学员端；渲染组件以独立包边界实现（monorepo `packages/widgets`，即 `@trend/widgets`，不依赖 admin/portal 私有运行时，二者只作宿主）；学员端启用随 `contractVersion=3`。
 - 存量 6 节教材按 DSL **一次性重写回灌**，不做新旧格式双轨（实施顺序 R1→R3 见 §6.6.6）。
-- **实现状态（2026-11-05）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `web/widgets` 渲染组件包与管理台节预览接入；**R2 案例股端点已落地、行情侧已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）；**R2 待落地**——§6.6.5 课件换皮与新题型；**R3 待落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）与 §6.6.5 的 `bar-replay-decision` 试点冻结、rubric 0.4.0、6 节重写回灌。R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_list` 成员校验随 R2 案例股表落地）。
+- **实现状态（2026-11-05）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `@trend/widgets` 渲染组件包与管理台节预览接入；**R2 案例股端点已落地、行情侧已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）；**学员端节级契约已落地**——M3b B6：`contractVersion=3` 课程树附带节摘要、`GET /v1/catalog/courses/:courseId/sections/:sectionId` 下发正文/课件/图示签名地址/案例股、`POST /v1/catalog/sections/:sectionId/playback` 校验播放窗完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`）；**R2 待落地**——§6.6.5 课件换皮与新题型与学员端 K 线组件（M3b B7）；**R3 待落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）与 §6.6.5 的 `bar-replay-decision` 试点冻结、rubric 0.4.0、6 节重写回灌。R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_list` 成员校验随 R2 案例股表落地）。
 
 #### 6.6.1 富文本 DSL（v1，2026-11-05 冻结）
 
@@ -1073,7 +1074,7 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 | M7 | 公开门户、门户自助账号、AI 用量账本、运行链路、任务级主备绑定与切换 | 门户深链可刷新；注册/登录/个人中心闭环；AI 调用可计量、可降级 | 已落地；客服/联系入口后置 |
 | M8 | 章节教材、图示（关键帧 + 文生图）、图片模型配置与限额、体系契约升级 | 章节教材 1500–3000 字且可带 0–3 图；缺图发布被拦截；插件按新契约渲染；成本 ≤¥10/课程 | 已落地；插件同步升级并通过 S12；真实 Ark 出图待图片模型 Key |
 | M9 | 语料级生产重构：关键帧轨道、source units / 概念图谱 / 节存储与检索、生产溯源上报、课件 spec 复检与断言证明、管理台渲染预览、`contractVersion=3`；配套 `dsh-plugin-trend-producer`（独立仓库） | 以"总论"卷（7 集 ≈3.5h）跑通阶段 0–4 全链路：骨架审批→逐节生产→三层校验收敛→课件断言证明→人工终审发布可检索；rubric 评估集对 M8 产物盲评占优；溯源账本完整覆盖生产调用 | 阶段 0–3 真机跑通（2026-11-04/05：6 集 ingest、227 units、48 概念、6 节教材与 18 课件已发布、溯源账本完整）；`contractVersion=3` 与 figures 写入通道随 M10 收口 |
-| M10 | 教材呈现层：富文本 DSL 校验与渲染组件包、配图卡与片段卡、参数化 SVG 模板图示、案例股清单与课程侧行情缓存、K 线对照组件（含老师标注层）、课件换皮 + 新题型（`spec_version=2`，含逐根回放判断闭环）、rubric 0.4.0、6 节 DSL 重写回灌 | 管理台节预览以 V3 原型形态呈现全部 6 节；全部节按 DSL 重写并通过门禁②（含 2 节 reject 回灌）；片段窗与事件锚点 grounded 校验生效；新题型 spec 冻结且断言证明通过（回放判断闭环含先判断后揭晓交互与隐私护栏）；行情缓存覆盖全课案例股且日更稳定 | **R1 已落地**（2026-11-05，4 commit）：DSL 解析与服务端校验、节级 figures 端点与四模板 SVG 渲染器、资产时间窗播放会话与 publish 门禁扩展、`web/widgets` 渲染组件包与管理台接入；M3b B5 落地行情侧（同步端点 + 学员行情端点 + 缓存表）；R2 余下（K 线组件、课件换皮与新题型）与 R3 质量收敛待启动 |
+| M10 | 教材呈现层：富文本 DSL 校验与渲染组件包、配图卡与片段卡、参数化 SVG 模板图示、案例股清单与课程侧行情缓存、K 线对照组件（含老师标注层）、课件换皮 + 新题型（`spec_version=2`，含逐根回放判断闭环）、rubric 0.4.0、6 节 DSL 重写回灌 | 管理台节预览以 V3 原型形态呈现全部 6 节；全部节按 DSL 重写并通过门禁②（含 2 节 reject 回灌）；片段窗与事件锚点 grounded 校验生效；新题型 spec 冻结且断言证明通过（回放判断闭环含先判断后揭晓交互与隐私护栏）；行情缓存覆盖全课案例股且日更稳定 | **R1 已落地**（2026-11-05，4 commit）：DSL 解析与服务端校验、节级 figures 端点与四模板 SVG 渲染器、资产时间窗播放会话与 publish 门禁扩展、`@trend/widgets`（monorepo `packages/widgets`）渲染组件包与管理台接入；M3b B5 落地行情侧（同步端点 + 学员行情端点 + 缓存表）；M3b B6 落地学员端节级契约（`contractVersion=3` 节摘要 + 节详情端点 + clip 窗播放会话）与组件包外迁；R2 余下（学员端 K 线组件、课件换皮与新题型）与 R3 质量收敛待启动 |
 
 **实现状态（2026-11-01）**
 
