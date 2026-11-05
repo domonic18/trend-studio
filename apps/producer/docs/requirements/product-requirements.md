@@ -30,7 +30,8 @@
 ### F1 工具集（T1，P0）
 
 - `cloud_frames(assetId, from, to)`：取关键帧轨道（签名帧 URL，供多模态消息）。
-- `cloud_source_units_write(units)` / `cloud_source_units_search(assetId?, q?, conceptId?)`：理解产物批量写入（幂等）与混合检索。
+- `cloud_source_units_write(units)` / `cloud_source_units_search(assetId?, q?, conceptId?)`：理解产物批量写入（幂等）与混合检索（只回摘要）。
+- `cloud_source_units_read(unitIds)`：批量读完整证据（转写原文、视觉描述、窗内关键帧、播放会话），写正文前必用（M3b）。
 - `cloud_concepts_write` / `cloud_concept_edges_write`：术语归一与依赖边。
 - `cloud_sections_write` / `cloud_section_article_write(sectionId, markdown, citations)`：节与节教材草稿。
 - `cloud_section_preview(sectionId)`：读回节的教材正文、课件 spec 与图示（主编评审前置读）。

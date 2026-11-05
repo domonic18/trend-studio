@@ -43,7 +43,8 @@ test/                      Host 边界/契约测试（T1 起固化）
 | `cloud_pipeline_status` | `GET /v1/admin/content/pipeline/jobs`（既有） | ingest/转写/帧轨道就绪判断 |
 | `cloud_frames` | `GET .../media-assets/{id}/frames` | 签名帧 URL 列表，供多模态消息 |
 | `cloud_source_units_write` | `POST .../source-units` | 批量 ≤100，幂等回执 `deduped` |
-| `cloud_source_units_search` | `GET .../source-units` | 混合检索 |
+| `cloud_source_units_search` | `GET .../source-units` | 混合检索（只回摘要，用于选材） |
+| `cloud_source_units_read` | `POST .../source-units/read`（M3b 新增） | 批量 ≤20 读完整证据：转写原文 + 视觉描述 + 窗内关键帧 + 播放会话；全有或全无（`409 unit_not_readable`）；写正文前的证据来源 |
 | `cloud_concepts_write` / `cloud_concepts_list` / `cloud_concept_edges_write` | `PUT /concepts`、`GET /concepts`、`POST /concept-edges` | 术语归一；`409` 冲突回灌 |
 | `cloud_sections_write` / `cloud_section_article_write` | `GET/PUT /sections`、`PUT .../article` | 节草稿与教材 |
 | `cloud_section_preview` | `GET .../sections/{id}/preview` | 读回节产物（教材正文 + 课件 spec + 图示）；主编评审（门禁②）的前置读 |
