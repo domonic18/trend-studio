@@ -89,7 +89,7 @@ test('catalogCourse 接受 contractVersion=2 并规范化', async () => {
 
 test('catalogCourse 拒绝高于已知上限的版本', async () => {
   await assert.rejects(
-    getCatalogCourse(stub(coursePayload(3)), 'TC-101', signal),
+    getCatalogCourse(stub(coursePayload(4)), 'TC-101', signal),
     (error) => error instanceof InvalidResponseError
       && error.message === '课程内容已升级，请更新插件后再试',
   )

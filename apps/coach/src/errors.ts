@@ -15,6 +15,7 @@ export const MAX_COURSE_ID_LENGTH = 64
 export const MAX_SEGMENT_ID_LENGTH = 80
 export const MAX_KNOWLEDGE_POINT_ID_LENGTH = 64
 export const MAX_CHAPTER_ID_LENGTH = 64
+export const MAX_SECTION_ID_LENGTH = 64
 export const MAX_SESSION_ID_LENGTH = 128
 export const DEFAULT_TOP_K = 5
 export const MAX_TOP_K = 20
@@ -24,6 +25,7 @@ const COURSE_ID_PATTERN = /^[A-Za-z0-9._-]+$/
 const SEGMENT_ID_PATTERN = /^seg-[A-Za-z0-9._-]+$/
 const KNOWLEDGE_POINT_ID_PATTERN = /^[A-Za-z0-9._-]+$/
 const CHAPTER_ID_PATTERN = /^[A-Za-z0-9._-]+$/
+const SECTION_ID_PATTERN = /^sec_[0-9a-f]{16}$/
 const SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
 
 export class InputError extends Error {
@@ -202,6 +204,14 @@ export function requireChapterId(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0
     || value.length > MAX_CHAPTER_ID_LENGTH || !CHAPTER_ID_PATTERN.test(value)) {
     throw new InputError('章节 ID 格式不合法')
+  }
+  return value
+}
+
+export function requireSectionId(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0
+    || value.length > MAX_SECTION_ID_LENGTH || !SECTION_ID_PATTERN.test(value)) {
+    throw new InputError('节 ID 格式不合法')
   }
   return value
 }

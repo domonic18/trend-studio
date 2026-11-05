@@ -8,14 +8,15 @@ const fixtures = JSON.parse(
 )
 
 // 知识点 KP-3.2 故意不配标题，用于验证客户端缺失时回退显示 ID。
-const courseTitles = { 'TC-101': '趋势交易基础' }
-const chapterTitles = { M1: '第一章 趋势认知', M2: '第二章 结构识别', M3: '第三章 买卖时机' }
+const courseTitles = { 'TC-101': '趋势交易基础', 'TC-102': '旧版章节课（v2 契约）' }
+const chapterTitles = { M1: '第一章 趋势认知', M2: '第二章 结构识别', M3: '第三章 买卖时机', V1: '第一章 旧版正文' }
 const knowledgePointTitles = {
   'KP-1.1': '趋势的定义与三种方向',
   'KP-1.2': '趋势结构:推动段与调整段',
   'KP-2.1': '均线的方向与排列',
   'KP-2.2': '量价配合的基本观察',
   'KP-3.1': '趋势反转的初步信号',
+  'KP-V2.1': '旧版课程的知识点',
 }
 
 const articleMarkdown = {
@@ -78,6 +79,13 @@ const articleMarkdown = {
 课程只讨论风险边界的方法，不构成任何投资建议。
 
 对应视频片段：\`seg-tc101-m3-kp3-2\``,
+  'KP-V2.1': `# 旧版课程正文
+
+这是一门 **v2 契约**的老课程：只有章节正文，没有节级课件、图示与案例股。
+
+客户端应继续按章节模式学习，不依赖 v3 的节摘要。
+
+对应视频片段：\`seg-tc102-v1-kp1-1\``,
 }
 
 const ARTICLE_PUBLISHED_AT = Date.parse('2026-10-01T00:00:00.000Z')
@@ -118,6 +126,65 @@ const MOCK_FIGURE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" he
   <polyline points="120,760 400,690 700,650 980,540 1260,470 1480,410" fill="none" stroke="#e08a2e" stroke-width="10" stroke-dasharray="24 18" stroke-linecap="round"/>
   <text x="120" y="130" font-size="56" font-family="sans-serif" fill="#33475b">均线多头排列示意</text>
 </svg>`
+
+// v3 节级样例：正文走 DSL（片段卡 + 段落级 unit 锚 + 案例股锚），节 ID 走 sec_<16 hex>。
+const MOCK_SECTION_IDS = { M1: 'sec_0000000000000001', M2: 'sec_0000000000000002' }
+const MOCK_ASSET_ID = 'asset_0000000000000001'
+const MOCK_UNIT_ID = 'su_0000000000000001'
+const MOCK_CASE_STOCK_CODE = '600519'
+const MOCK_CASE_STOCK = {
+  code: MOCK_CASE_STOCK_CODE,
+  name: '贵州茅台',
+  exchange: 'SSE',
+  windowStart: '2026-01-05',
+  windowEnd: '2026-02-10',
+  events: [
+    { date: '2026-01-12', kind: 'breakout', note: '放量突破前高' },
+    { date: '2026-01-26', kind: 'pullback', note: '缩量回踩 M20' },
+    { date: '2026-02-09', kind: 'breakdown', note: '跌破 M60' },
+  ],
+}
+// 第二只案例股故意不同步：用来验证「等待行情同步」的 pending 态。
+const MOCK_PENDING_CASE_STOCK = {
+  code: '000001',
+  name: '未同步标的',
+  exchange: 'SZSE',
+  windowStart: '2026-01-05',
+  windowEnd: '2026-02-10',
+  events: [],
+}
+const MOCK_CASE_STOCKS = [MOCK_CASE_STOCK, MOCK_PENDING_CASE_STOCK]
+// 只有 600519 同步过行情；000001 从未同步，用来触发 pending 态。
+const MOCK_SYNCED_CODES = new Set([MOCK_CASE_STOCK_CODE])
+const MOCK_WIDGET = {
+  widgetId: 'wgt_0000000000000001',
+  type: 'kline-annotator',
+  specVersion: 1,
+  version: 1,
+  spec: {
+    type: 'kline-annotator',
+    data: { generator: 'uptrend', seed: 7, bars: 120 },
+    task: '在图上画出连接两个低点的趋势线，并判断斜率方向。',
+  },
+  assertions: { trendlineTouches: { min: 2 }, slopeRange: [0, 1.5], noBreakBelow: true },
+}
+
+const MOCK_SECTION_ARTICLES = {
+  M1: `## 趋势的度量
+
+先用高低点排列判断方向，再看均线斜率确认力度。[[unit:${MOCK_UNIT_ID}|均线方向证据]]
+
+案例：[[stock:sh${MOCK_CASE_STOCK_CODE}|贵州茅台]]在区间内的三次结构变化。
+
+:::clip assetId="${MOCK_ASSET_ID}" from="192" to="400" caption="推动段识别" unitId="${MOCK_UNIT_ID}"
+:::`,
+  M2: `## 结构识别
+
+区分推动段与调整段，避免把调整误判为反转。
+
+:::clip assetId="${MOCK_ASSET_ID}" from="920" to="1150" caption="调整段识别" unitId="${MOCK_UNIT_ID}"
+:::`,
+}
 const progress = new Map()
 
 const MAX_ASR_BODY_BYTES = 3 * 1024 * 1024
@@ -293,12 +360,123 @@ function courseTree(courseId, deviceId) {
       completed: record?.completed ?? false,
     })
   }
+  const sections = courseSections(courseId)
   return {
-    contractVersion: 2,
+    contractVersion: sections.length > 0 ? 3 : 2,
     courseId,
     title: courseTitles[courseId] ?? courseId,
     chapters,
+    ...(sections.length > 0 ? { sections } : {}),
   }
+}
+
+/** v3 节摘要：仅 TC-101 有节；TC-102 保持 v2 章-only 形态。 */
+function courseSections(courseId) {
+  const sections = []
+  for (const [chapterId, sectionId] of Object.entries(MOCK_SECTION_IDS)) {
+    if (courseSegments(courseId).every(segment => segment.chapterId !== chapterId)) continue
+    sections.push({
+      sectionId,
+      title: chapterTitles[chapterId] ?? chapterId,
+      position: sections.length,
+      hasArticle: true,
+      figureCount: 1,
+      widgetTypes: [MOCK_WIDGET.type],
+      caseStockCodes: MOCK_CASE_STOCKS.map(stock => stock.code).sort(),
+    })
+  }
+  return sections
+}
+
+function sectionPayload(courseId, sectionId) {
+  const entry = Object.entries(MOCK_SECTION_IDS).find(([, value]) => value === sectionId)
+  if (entry === undefined) return undefined
+  const [chapterId] = entry
+  if (courseSegments(courseId).every(segment => segment.chapterId !== chapterId)) return undefined
+  const markdown = MOCK_SECTION_ARTICLES[chapterId]
+  const expires = Math.floor(Date.now() / 1000) + 600
+  return {
+    sectionId,
+    courseId,
+    chapterId,
+    title: chapterTitles[chapterId] ?? chapterId,
+    position: Object.keys(MOCK_SECTION_IDS).indexOf(chapterId),
+    article: markdown === undefined
+      ? null
+      : { markdown, dslVersion: 1, version: 2, publishedAt: ARTICLE_PUBLISHED_AT },
+    widgets: [MOCK_WIDGET],
+    figures: [{
+      figureId: MOCK_FIGURE_ID,
+      kind: 'ma_diagram',
+      caption: '均线多头排列示意',
+      assetId: MOCK_ASSET_ID,
+      sourceSec: 192,
+      candidateId: 'cand_mock',
+      url: `${origin}/media/figures/${MOCK_FIGURE_ID}/cand_mock.svg?expires=${expires}&sig=mock`,
+    }],
+    caseStocks: MOCK_CASE_STOCKS,
+  }
+}
+
+/** 确定性日K：同一 code 每次刷新得到同一条曲线，方便本地走查。 */
+function quoteBars(code) {
+  const seed = Number.parseInt(code, 10) % 7
+  const bars = []
+  let close = 1600 + seed * 10
+  for (let index = 0; index < 120; index += 1) {
+    const drift = Math.sin((index + seed) / 9) * 12
+    const open = close
+    close = Number((close + drift).toFixed(2))
+    const high = Number((Math.max(open, close) + 6).toFixed(2))
+    const low = Number((Math.min(open, close) - 6).toFixed(2))
+    const day = new Date(Date.UTC(2025, 8, 1) + index * 86_400_000)
+    const tradeDate = day.toISOString().slice(0, 10)
+    bars.push({
+      code,
+      tradeDate,
+      open,
+      high,
+      low,
+      close,
+      volume: 1_000_000 + ((index * 7 + seed) % 500_000),
+      amount: null,
+      source: 'tencent-qfq',
+    })
+  }
+  return bars
+}
+
+/** 与云端 readCourseQuotes 同口径：清单外代号过滤；压根没同步过才 pending。 */
+function catalogQuotes(courseId, codes) {
+  const published = new Set(courseSections(courseId).flatMap(section => section.caseStockCodes))
+  if (published.size === 0) return undefined
+  const wanted = (codes === undefined || codes.length === 0 ? [...published] : codes)
+    .filter(code => published.has(code))
+  if (wanted.length === 0) return { pending: false, quotes: [] }
+  const quotes = wanted.flatMap(code => (MOCK_SYNCED_CODES.has(code) ? quoteBars(code) : []))
+  return { pending: quotes.length === 0, quotes }
+}
+
+/** 已发布正文里的片段卡时间窗（与云端 resolveClipWindow 同一口径）。 */
+function clipWindows(markdown) {
+  const windows = []
+  const re = /^:::clip\s+([^\n]*)$/gm
+  let match
+  while ((match = re.exec(markdown)) !== null) {
+    const attrs = {}
+    const attrRe = /([A-Za-z][A-Za-z0-9_-]*)=(?:"([^"]*)"|([^\s"=]+))/g
+    let attrMatch
+    while ((attrMatch = attrRe.exec(match[1] ?? '')) !== null) {
+      attrs[attrMatch[1]] = attrMatch[2] ?? attrMatch[3] ?? ''
+    }
+    if (attrs.assetId === undefined) continue
+    windows.push({
+      assetId: attrs.assetId,
+      fromSec: Number(attrs.from),
+      toSec: Number(attrs.to),
+    })
+  }
+  return windows
 }
 
 function catalogChapter(courseId, chapterId) {
@@ -848,6 +1026,84 @@ const server = createServer(async (request, response) => {
       return
     }
     json(response, 200, chapter)
+    return
+  }
+
+  const sectionMatch = /^\/v1\/catalog\/courses\/([^/]+)\/sections\/([^/]+)$/.exec(url.pathname)
+  if (request.method === 'GET' && sectionMatch !== null) {
+    if (requireAuth(request, response) === undefined) return
+    const courseId = decodeURIComponent(sectionMatch[1])
+    const sectionId = decodeURIComponent(sectionMatch[2])
+    const section = sectionPayload(courseId, sectionId)
+    if (section === undefined) {
+      json(response, 404, { error: 'section not found' })
+      return
+    }
+    json(response, 200, section)
+    return
+  }
+
+  const quotesMatch = /^\/v1\/catalog\/courses\/([^/]+)\/quotes$/.exec(url.pathname)
+  if (request.method === 'GET' && quotesMatch !== null) {
+    if (requireAuth(request, response) === undefined) return
+    const courseId = decodeURIComponent(quotesMatch[1])
+    const codes = (url.searchParams.get('codes') ?? '')
+      .split(',')
+      .map(code => code.trim())
+      .filter(code => code.length > 0)
+    const quotes = catalogQuotes(courseId, codes)
+    if (quotes === undefined) {
+      json(response, 404, { error: 'course has no published case stocks' })
+      return
+    }
+    json(response, 200, quotes)
+    return
+  }
+
+  const sectionPlaybackMatch = /^\/v1\/catalog\/sections\/([^/]+)\/playback$/.exec(url.pathname)
+  if (request.method === 'POST' && sectionPlaybackMatch !== null) {
+    const auth = requireAuth(request, response)
+    if (auth === undefined) return
+    const sectionId = decodeURIComponent(sectionPlaybackMatch[1])
+    const chunks = []
+    for await (const chunk of request) chunks.push(chunk)
+    let payload
+    try {
+      payload = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    } catch {
+      json(response, 400, { error: 'invalid json' })
+      return
+    }
+    const entry = Object.entries(MOCK_SECTION_IDS).find(([, value]) => value === sectionId)
+    if (entry === undefined) {
+      json(response, 404, { error: 'section not found' })
+      return
+    }
+    const markdown = MOCK_SECTION_ARTICLES[entry[0]] ?? ''
+    const windows = clipWindows(markdown).filter(window => window.assetId === payload?.assetId)
+    const match = windows.find(window => payload?.fromSec >= window.fromSec && payload?.toSec <= window.toSec)
+    if (match === undefined) {
+      json(response, 409, {
+        error: {
+          code: 'playback_window_invalid',
+          message: 'playback window is outside the published clip window',
+        },
+        requestId: 'mock',
+      })
+      return
+    }
+    if (!statSync(playlistFile, { throwIfNoEntry: false })) {
+      json(response, 503, { error: 'hls asset missing, run npm run mock:rebuild' })
+      return
+    }
+    const session = issueSession(auth.deviceId)
+    json(response, 200, {
+      sessionId: session.sessionId,
+      playlistUrl: session.playlistUrl,
+      fromSec: match.fromSec,
+      toSec: match.toSec,
+      expiresAt: session.expiresAt,
+    })
     return
   }
 

@@ -129,6 +129,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ~3.18.5
         version: 3.18.5
+      '@trend/widgets':
+        specifier: workspace:*
+        version: link:../../packages/widgets
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5

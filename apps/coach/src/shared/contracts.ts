@@ -83,6 +83,95 @@ export interface CatalogCourse {
   courseId: string
   title: string
   chapters: CatalogChapter[]
+  /** v3 才有：课程树附带的节摘要；v2 老课程不返回。 */
+  sections?: CatalogSectionSummary[]
+}
+
+/** v3 节摘要：够渲染目录页，不必下发正文。 */
+export interface CatalogSectionSummary {
+  sectionId: string
+  title: string
+  position: number
+  hasArticle: boolean
+  figureCount: number
+  widgetTypes: string[]
+  caseStockCodes: string[]
+}
+
+export interface CatalogSectionArticle {
+  markdown: string
+  dslVersion: number
+  version: number
+  publishedAt: number
+}
+
+export interface CatalogWidget {
+  widgetId: string
+  type: string
+  specVersion: number
+  version: number
+  spec: Record<string, unknown>
+  assertions: Record<string, unknown>
+}
+
+export interface CatalogFigure {
+  figureId: string
+  kind: string
+  caption: string
+  assetId: string | null
+  sourceSec: number | null
+  candidateId: string | null
+  /** 已选定候选的签名图片地址；未就绪时为 null。 */
+  url: string | null
+}
+
+export interface CatalogCaseStock {
+  code: string
+  name: string
+  exchange: 'SZSE' | 'SSE' | 'BSE'
+  windowStart: string
+  windowEnd: string
+  events: unknown[]
+}
+
+/** v3 节详情：正文 + 课件 + 图示 + 案例股。 */
+export interface CatalogSection {
+  sectionId: string
+  courseId: string
+  chapterId: string
+  title: string
+  position: number
+  article: CatalogSectionArticle | null
+  widgets: CatalogWidget[]
+  figures: CatalogFigure[]
+  caseStocks: CatalogCaseStock[]
+}
+
+/** 学员播放会话：HLS 直放地址 + 生效窗。 */
+export interface CatalogPlayback {
+  sessionId: string
+  playlistUrl: string
+  fromSec: number | null
+  toSec: number | null
+  expiresAt: number
+}
+
+/** 行情条目：腾讯前复权日K 原始口径。 */
+export interface QuoteItem {
+  code: string
+  tradeDate: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  amount: number | null
+  source: string
+}
+
+export interface QuoteList {
+  pending: boolean
+  quotes: QuoteItem[]
 }
 
 export interface ChapterArticle {
@@ -186,8 +275,13 @@ export const MAX_QUIZ_PROMPT_CHARS = 300
 export const MAX_QUIZ_OPTION_CHARS = 200
 export const MAX_QUIZ_EXPLANATION_CHARS = 500
 export const MIN_CATALOG_CONTRACT_VERSION = 2
-export const MAX_KNOWN_CATALOG_CONTRACT_VERSION = 2
+export const MAX_KNOWN_CATALOG_CONTRACT_VERSION = 3
 export const MAX_WATCHED_SEC = 86400
+export const MAX_SECTIONS_PER_COURSE = 200
+export const MAX_WIDGETS_PER_SECTION = 50
+export const MAX_CASE_STOCKS_PER_SECTION = 20
+export const MAX_QUOTE_CODES = 10
+export const MAX_QUOTE_BARS = 320
 
 export const MAX_LEARNER_SELECTED_RAW = 4000
 export const MAX_LEARNER_SELECTED_CHARS = 500

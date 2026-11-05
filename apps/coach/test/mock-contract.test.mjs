@@ -200,7 +200,7 @@ test('mock 云端接口满足对接清单', async (t) => {
 
     const list = await api('/v1/catalog/courses', { token: grant.accessToken })
     assert.equal(list.status, 200)
-    assert.equal(list.json.courses.length, 1)
+    assert.equal(list.json.courses.length, 2)
     assert.deepEqual(list.json.courses[0], {
       courseId: 'TC-101',
       title: '趋势交易基础',
@@ -208,10 +208,17 @@ test('mock 云端接口满足对接清单', async (t) => {
       knowledgePointCount: 6,
       completedCount: 0,
     })
+    assert.deepEqual(list.json.courses[1], {
+      courseId: 'TC-102',
+      title: '旧版章节课（v2 契约）',
+      chapterCount: 1,
+      knowledgePointCount: 1,
+      completedCount: 0,
+    })
 
     const tree = await api('/v1/catalog/courses/TC-101', { token: grant.accessToken })
     assert.equal(tree.status, 200)
-    assert.equal(tree.json.contractVersion, 2)
+    assert.equal(tree.json.contractVersion, 3)
     assert.equal(tree.json.title, '趋势交易基础')
     assert.equal(tree.json.chapters.length, 3)
     for (const chapter of tree.json.chapters) {
@@ -303,6 +310,125 @@ test('mock 云端接口满足对接清单', async (t) => {
       token: grant.accessToken,
     })
     assert.equal(missingPoint.status, 404)
+  })
+
+  await t.test('v2 老课程保持章-only 形态', async () => {
+    const tree = await api('/v1/catalog/courses/TC-102', { token: grant.accessToken })
+    assert.equal(tree.status, 200)
+    assert.equal(tree.json.contractVersion, 2)
+    assert.equal('sections' in tree.json, false)
+    assert.equal(tree.json.chapters.length, 1)
+    assert.equal(tree.json.chapters[0].chapterId, 'V1')
+    assert.equal(tree.json.chapters[0].hasArticle, true)
+
+    const chapter = await api('/v1/catalog/courses/TC-102/chapters/V1', {
+      token: grant.accessToken,
+    })
+    assert.equal(chapter.status, 200)
+    assert.equal(chapter.json.article.version, 1)
+  })
+
+  await t.test('v3 节接口返回正文、课件、图示与案例股', async () => {
+    const tree = await api('/v1/catalog/courses/TC-101', { token: grant.accessToken })
+    assert.equal(tree.json.sections.length, 2)
+    const summary = tree.json.sections[0]
+    assert.match(summary.sectionId, /^sec_[0-9a-f]{16}$/)
+    assert.equal(summary.hasArticle, true)
+    assert.equal(summary.figureCount, 1)
+    assert.deepEqual(summary.widgetTypes, ['kline-annotator'])
+    assert.deepEqual(summary.caseStockCodes, ['000001', '600519'])
+
+    const unauthorized = await api(`/v1/catalog/courses/TC-101/sections/${summary.sectionId}`)
+    assert.equal(unauthorized.status, 401)
+
+    const section = await api(`/v1/catalog/courses/TC-101/sections/${summary.sectionId}`, {
+      token: grant.accessToken,
+    })
+    assert.equal(section.status, 200)
+    assert.equal(section.json.sectionId, summary.sectionId)
+    assert.equal(section.json.courseId, 'TC-101')
+    assert.equal(section.json.article.dslVersion, 1)
+    assert.match(section.json.article.markdown, /\[\[unit:su_[0-9a-f]{16}\|均线方向证据\]\]/)
+    assert.match(section.json.article.markdown, /\[\[stock:sh600519\|贵州茅台\]\]/)
+    assert.match(section.json.article.markdown, /:::clip assetId="asset_[0-9a-f]{16}"/)
+    assert.equal(section.json.widgets.length, 1)
+    assert.equal(section.json.widgets[0].type, 'kline-annotator')
+    assert.equal(typeof section.json.widgets[0].spec, 'object')
+    assert.equal(section.json.figures.length, 1)
+    assert.equal(new URL(section.json.figures[0].url).protocol, 'http:')
+    assert.equal(section.json.caseStocks.length, 2)
+
+    const missing = await api('/v1/catalog/courses/TC-101/sections/sec_ffffffffffffffff', {
+      token: grant.accessToken,
+    })
+    assert.equal(missing.status, 404)
+  })
+
+  await t.test('v3 行情端点过滤清单外标的并区分 pending', async () => {
+    const all = await api('/v1/catalog/courses/TC-101/quotes', { token: grant.accessToken })
+    assert.equal(all.status, 200)
+    assert.equal(all.json.pending, false)
+    assert.equal(all.json.quotes.length > 0, true)
+    for (const quote of all.json.quotes) {
+      assert.match(quote.code, /^\d{6}$/)
+      assert.match(quote.tradeDate, /^\d{4}-\d{2}-\d{2}$/)
+      assert.equal(typeof quote.close, 'number')
+      assert.equal(quote.source, 'tencent-qfq')
+    }
+
+    const synced = await api('/v1/catalog/courses/TC-101/quotes?codes=600519', {
+      token: grant.accessToken,
+    })
+    assert.equal(synced.status, 200)
+    assert.equal(synced.json.quotes.every(quote => quote.code === '600519'), true)
+
+    const pending = await api('/v1/catalog/courses/TC-101/quotes?codes=000001', {
+      token: grant.accessToken,
+    })
+    assert.equal(pending.status, 200)
+    assert.equal(pending.json.pending, true)
+    assert.deepEqual(pending.json.quotes, [])
+
+    const foreign = await api('/v1/catalog/courses/TC-101/quotes?codes=000002', {
+      token: grant.accessToken,
+    })
+    assert.equal(foreign.status, 200)
+    assert.equal(foreign.json.pending, false)
+    assert.deepEqual(foreign.json.quotes, [])
+  })
+
+  await t.test('v3 播放端点只放行已发布正文里的片段窗', async () => {
+    const inside = await api('/v1/catalog/sections/sec_0000000000000001/playback', {
+      method: 'POST',
+      body: { assetId: 'asset_0000000000000001', fromSec: 200, toSec: 300 },
+      token: grant.accessToken,
+    })
+    assert.equal(inside.status, 200)
+    assert.equal(typeof inside.json.sessionId, 'string')
+    assert.equal(new URL(inside.json.playlistUrl).protocol, 'http:')
+    assert.equal(inside.json.fromSec, 192)
+    assert.equal(inside.json.toSec, 400)
+
+    const outside = await api('/v1/catalog/sections/sec_0000000000000001/playback', {
+      method: 'POST',
+      body: { assetId: 'asset_0000000000000001', fromSec: 200, toSec: 9999 },
+      token: grant.accessToken,
+    })
+    assert.equal(outside.status, 409)
+    assert.equal(outside.json.error.code, 'playback_window_invalid')
+
+    const otherAsset = await api('/v1/catalog/sections/sec_0000000000000001/playback', {
+      method: 'POST',
+      body: { assetId: 'asset_ffffffffffffffff', fromSec: 200, toSec: 300 },
+      token: grant.accessToken,
+    })
+    assert.equal(otherAsset.status, 409)
+
+    const unauthorized = await api('/v1/catalog/sections/sec_0000000000000001/playback', {
+      method: 'POST',
+      body: { assetId: 'asset_0000000000000001', fromSec: 200, toSec: 300 },
+    })
+    assert.equal(unauthorized.status, 401)
   })
 
   await t.test('进度合并取最大时长且完成状态不可回退', async () => {

@@ -42,6 +42,7 @@ export interface CatalogPanelProps {
   knowledgePoint: (knowledgePointId: string) => Promise<RemoteKnowledgePointResult>
   openSegment: (target: CatalogOpenTarget) => Promise<void>
   openClassroom: (target: { courseId: string; chapterId: string }) => void
+  openSection: (target: { courseId: string; sectionId: string }) => void
 }
 
 interface ChapterCacheEntry {
@@ -341,6 +342,7 @@ export function CatalogPanel({
   knowledgePoint,
   openSegment,
   openClassroom,
+  openSection,
 }: CatalogPanelProps): React.ReactElement {
   const [auth, setAuth] = React.useState<AuthStatus | undefined>(undefined)
   const [device, setDevice] = React.useState<DeviceAuthStart | undefined>(undefined)
@@ -792,6 +794,25 @@ export function CatalogPanel({
         style: { border: 0, background: 'transparent', color: '#2a6ebb', cursor: 'pointer', padding: 0 },
       }, '← 返回课程列表'),
       React.createElement('h4', { key: 'course-title', style: { margin: '8px 0 2px' } }, course.title),
+      (course.sections ?? []).length === 0
+        ? null
+        : React.createElement('div', { key: 'sections', style: { marginBottom: 12 } },
+          React.createElement('div', { style: { color: '#666', marginBottom: 2 } }, '课程节：'),
+          ...(course.sections ?? []).map((section) =>
+            React.createElement('button', {
+              key: section.sectionId,
+              type: 'button',
+              onClick: () => void openSection({ courseId: course.courseId, sectionId: section.sectionId }),
+              style: { ...buttonStyle(), borderTop: '1px dashed #e5e5e5' },
+            },
+            React.createElement('div', null, section.title),
+            React.createElement('div', { style: { color: '#888', fontSize: 12 } },
+              `${section.widgetTypes.length} 个课件 · ${section.figureCount} 张图示 · ${section.caseStockCodes.length} 只案例股`
+                + (section.hasArticle ? ' · 有教材' : ''),
+            ),
+            ),
+          ),
+        ),
       ...course.chapters.map((item) =>
         React.createElement('section', { key: item.chapterId, style: { marginTop: 8 } },
           React.createElement('button', {

@@ -1,0 +1,298 @@
+import * as React from 'react'
+import { ArticleRenderer, LearnerWidgetPlayer } from '@trend/widgets'
+import type { CatalogCaseStock, CatalogSection, QuoteItem } from '../shared/contracts.js'
+import type {
+  RemoteCatalogSectionResult,
+  RemoteCourseQuotesResult,
+  RemoteSectionPlaybackResult,
+} from './dsh.js'
+import { createArticleHost } from './article-host.js'
+import type { KlineBar } from './kline.js'
+import { KlineView } from './kline-view.js'
+import { ensureWidgetsStyles } from './styles.js'
+
+export interface SectionViewProps {
+  courseId: string
+  sectionId: string
+  catalogSection: (courseId: string, sectionId: string) => Promise<RemoteCatalogSectionResult>
+  sectionPlayback: (
+    sectionId: string,
+    assetId: string,
+    fromSec: number,
+    toSec: number,
+  ) => Promise<RemoteSectionPlaybackResult>
+  courseQuotes: (courseId: string, codes: string[]) => Promise<RemoteCourseQuotesResult>
+}
+
+const EXCHANGE_LABEL: Record<CatalogCaseStock['exchange'], string> = {
+  SZSE: '深交所',
+  SSE: '上交所',
+  BSE: '北交所',
+}
+
+function toBars(quotes: QuoteItem[], code: string): KlineBar[] {
+  return quotes
+    .filter((quote) => quote.code === code)
+    .map((quote) => ({
+      tradeDate: quote.tradeDate,
+      open: quote.open,
+      high: quote.high,
+      low: quote.low,
+      close: quote.close,
+      volume: quote.volume,
+    }))
+    .sort((left, right) => (left.tradeDate < right.tradeDate ? -1 : 1))
+}
+
+function formatDate(value: number): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** v3 节视图：正文 + 课件 + 图示 + 案例股行情。 */
+export function SectionView({
+  courseId,
+  sectionId,
+  catalogSection,
+  sectionPlayback,
+  courseQuotes,
+}: SectionViewProps): React.ReactElement {
+  const [section, setSection] = React.useState<CatalogSection | undefined>(undefined)
+  const [quotes, setQuotes] = React.useState<QuoteItem[]>([])
+  const [pending, setPending] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | undefined>(undefined)
+  const [unitNotice, setUnitNotice] = React.useState<string | undefined>(undefined)
+
+  React.useEffect(() => {
+    ensureWidgetsStyles()
+  }, [])
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        const result = await catalogSection(courseId, sectionId)
+        if (cancelled) return
+        if (result.ok) {
+          setSection(result.value)
+          setError(undefined)
+        } else {
+          setError(result.error.message)
+        }
+      } catch (failure: unknown) {
+        if (!cancelled) setError(failure instanceof Error ? failure.message : '节教材读取失败')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [courseId, sectionId, catalogSection])
+
+  const codes = React.useMemo(
+    () => (section?.caseStocks ?? []).map((stock) => stock.code),
+    [section],
+  )
+  const codesKey = codes.join(',')
+
+  React.useEffect(() => {
+    if (codes.length === 0) {
+      setQuotes([])
+      setPending(false)
+      return undefined
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = await courseQuotes(courseId, codes)
+        if (cancelled) return
+        if (result.ok) {
+          setQuotes(result.value.quotes)
+          setPending(result.value.pending)
+        } else {
+          setError(result.error.message)
+        }
+      } catch (failure: unknown) {
+        if (!cancelled) setError(failure instanceof Error ? failure.message : '行情读取失败')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [courseId, codesKey, courseQuotes])
+
+  const host = React.useMemo(
+    () => (section === undefined
+      ? undefined
+      : createArticleHost(section, { sectionPlayback })),
+    [section, sectionPlayback],
+  )
+
+  React.useEffect(() => {
+    const onUnitAnchor = (event: Event): void => {
+      const detail = (event as CustomEvent<{ unitId?: string }>).detail
+      const unitId = detail?.unitId
+      setUnitNotice(unitId === undefined ? undefined : `证据 ${unitId}`)
+    }
+    const onStockAnchor = (event: Event): void => {
+      const detail = (event as CustomEvent<{ code?: string }>).detail
+      const code = detail?.code
+      if (code === undefined) return
+      const target = document.getElementById(`tc-case-${code}`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    document.addEventListener('trend-coach:unit-anchor', onUnitAnchor)
+    document.addEventListener('trend-coach:stock-anchor', onStockAnchor)
+    return () => {
+      document.removeEventListener('trend-coach:unit-anchor', onUnitAnchor)
+      document.removeEventListener('trend-coach:stock-anchor', onStockAnchor)
+    }
+  }, [])
+
+  const children: React.ReactNode[] = []
+
+  if (loading) {
+    children.push(React.createElement('p', { key: 'loading', style: { color: '#888' } }, '加载中…'))
+  }
+  if (error !== undefined) {
+    children.push(React.createElement('p', { key: 'error', style: { color: '#c0392b' } }, error))
+  }
+  if (unitNotice !== undefined) {
+    children.push(React.createElement(
+      'p',
+      { key: 'unit', style: { color: '#faad14', fontSize: 12, margin: '4px 0' } },
+      unitNotice,
+    ))
+  }
+
+  if (section !== undefined) {
+    children.push(React.createElement(
+      'h3',
+      { key: 'title', style: { margin: '0 0 4px' } },
+      section.title,
+    ))
+    children.push(React.createElement(
+      'p',
+      { key: 'meta', style: { margin: '0 0 8px', color: '#888', fontSize: 12 } },
+      `第 ${section.position + 1} 节 · ${section.chapterId}`,
+    ))
+
+    if (section.article === null) {
+      children.push(React.createElement(
+        'p',
+        { key: 'no-article', style: { color: '#666' } },
+        '本节教材暂未发布。',
+      ))
+    } else {
+      children.push(React.createElement(
+        'div',
+        { key: 'article', style: { border: '1px solid #eee', borderRadius: 4, padding: '8px 10px' } },
+        React.createElement('p', {
+          key: 'article-meta',
+          style: { margin: '0 0 6px', color: '#888', fontSize: 12 },
+        }, `教材 v${section.article.version} · DSL v${section.article.dslVersion} · 发布于 ${formatDate(section.article.publishedAt)}`),
+        host === undefined
+          ? null
+          : React.createElement(ArticleRenderer, {
+            key: 'article-body',
+            markdown: section.article.markdown,
+            host,
+          }),
+      ))
+    }
+
+    if (section.widgets.length > 0) {
+      children.push(React.createElement(
+        'div',
+        { key: 'widgets' },
+        React.createElement('h4', { key: 'widgets-title', style: { margin: '12px 0 4px' } }, '课件'),
+        ...section.widgets.map((widget) => React.createElement(LearnerWidgetPlayer, {
+          key: widget.widgetId,
+          widget: {
+            widgetId: widget.widgetId,
+            type: widget.type,
+            spec: widget.spec,
+            assertions: widget.assertions,
+          },
+        })),
+      ))
+    }
+
+    if (section.figures.length > 0) {
+      children.push(React.createElement(
+        'div',
+        { key: 'figures' },
+        React.createElement('h4', { key: 'figures-title', style: { margin: '12px 0 4px' } }, '图示'),
+        ...section.figures.map((figure) => React.createElement(
+          'figure',
+          { key: figure.figureId, style: { margin: '8px 0' } },
+          figure.url === null
+            ? React.createElement('div', { style: { color: '#888', fontSize: 12 } }, `图示暂不可用：${figure.caption}`)
+            : React.createElement('img', {
+              src: figure.url,
+              alt: figure.caption,
+              loading: 'lazy',
+              decoding: 'async',
+              referrerPolicy: 'no-referrer',
+              style: { maxWidth: '100%', height: 'auto', borderRadius: 4 },
+            }),
+          React.createElement('figcaption', {
+            style: { color: '#666', fontSize: 12, marginTop: 4 },
+          }, figure.caption),
+        )),
+      ))
+    }
+
+    if (section.caseStocks.length > 0) {
+      children.push(React.createElement(
+        'div',
+        { key: 'case-stocks' },
+        React.createElement('h4', { key: 'case-title', style: { margin: '12px 0 4px' } }, '案例股'),
+        pending
+          ? React.createElement('p', { key: 'pending', style: { color: '#888', fontSize: 12 } }, '等待行情同步…')
+          : null,
+        ...section.caseStocks.map((stock) => {
+          const bars = toBars(quotes, stock.code)
+          return React.createElement(
+            'section',
+            {
+              key: stock.code,
+              id: `tc-case-${stock.code}`,
+              style: {
+                border: '1px solid #eee',
+                borderRadius: 4,
+                padding: '6px 10px',
+                marginTop: 8,
+              },
+            },
+            React.createElement('div', { key: 'name' }, `${stock.name}（${stock.code}）`),
+            React.createElement('div', {
+              key: 'meta',
+              style: { color: '#888', fontSize: 12, marginBottom: 4 },
+            }, `${EXCHANGE_LABEL[stock.exchange]} · ${stock.windowStart} ~ ${stock.windowEnd}`),
+            bars.length === 0
+              ? React.createElement('p', {
+                key: 'no-bars',
+                style: { color: '#888', fontSize: 12, margin: 0 },
+              }, pending ? '等待行情同步…' : '暂无行情数据')
+              : React.createElement(KlineView, { key: 'kline', bars }),
+          )
+        }),
+      ))
+    }
+  }
+
+  return React.createElement(
+    'div',
+    { className: 'tc-section', style: { padding: 12, fontSize: 13, lineHeight: 1.6 } },
+    ...children,
+    React.createElement('p', {
+      key: 'disclaimer',
+      style: { margin: '12px 0 0', color: '#888', fontSize: 12 },
+    }, '课程内容仅供学习，不构成投资建议。'),
+  )
+}

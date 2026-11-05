@@ -7,6 +7,8 @@ import type {
   CatalogChapterArticle,
   CatalogCourse,
   CatalogCourseSummary,
+  CatalogPlayback,
+  CatalogSection,
   DeviceAuthPoll,
   DeviceAuthStart,
   EventsConsent,
@@ -15,14 +17,18 @@ import type {
   LearnerContextUpdate,
   PlaybackSession,
   ProgressResult,
+  QuoteList,
   SearchResult,
   Segment,
   VoiceTranscript,
 } from '../shared/contracts.js'
 import {
   createPlaybackSession,
+  createSectionPlayback,
   getCatalogChapter,
   getCatalogCourse,
+  getCatalogSection,
+  getCourseQuotes,
   getKnowledgePoint,
   getSegment,
   listCourses,
@@ -109,6 +115,41 @@ export class TrendCoachService extends TypertRemoteService {
   async knowledgePoint(knowledgePointId: string, signal: AbortSignal): Promise<KnowledgePointDetail> {
     return await this.invoke('知识点读取', () =>
       getKnowledgePoint(this.auth, knowledgePointId, signal))
+  }
+
+  /** v3 节级教材：正文 + 课件 + 图示 + 案例股。 */
+  @Remote
+  async catalogSection(
+    courseId: string,
+    sectionId: string,
+    signal: AbortSignal,
+  ): Promise<CatalogSection> {
+    return await this.invoke('节教材读取', () =>
+      getCatalogSection(this.auth, courseId, sectionId, signal))
+  }
+
+  /** v3 学员播放会话：窗必须落在该节已发布正文的 clip 窗内。 */
+  @Remote
+  async sectionPlayback(
+    sectionId: string,
+    assetId: string,
+    fromSec: number,
+    toSec: number,
+    signal: AbortSignal,
+  ): Promise<CatalogPlayback> {
+    return await this.invoke('节播放会话创建', () =>
+      createSectionPlayback(this.auth, sectionId, assetId, fromSec, toSec, signal))
+  }
+
+  /** v3 学员行情：只读课程已发布案例股。 */
+  @Remote
+  async courseQuotes(
+    courseId: string,
+    codes: string[] | undefined,
+    signal: AbortSignal,
+  ): Promise<QuoteList> {
+    return await this.invoke('课程行情读取', () =>
+      getCourseQuotes(this.auth, courseId, codes, signal))
   }
 
   /** 进度是业务写入，失败只记 debug，不阻塞播放。 */

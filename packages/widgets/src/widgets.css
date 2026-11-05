@@ -47,6 +47,20 @@
   white-space: nowrap;
 }
 
+/* 证据锚：指向语料 unit 的内联徽章 */
+.wg-unit-anchor {
+  display: inline-block;
+  padding: 0 0.5em;
+  border: 1px dashed rgba(250, 173, 20, 0.6);
+  border-radius: 999px;
+  color: #faad14;
+  font-size: 0.88em;
+  line-height: 1.6;
+  margin: 0 0.1em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 /* 语料徽章 */
 .wg-unit-badge {
   display: inline-block;

@@ -4,6 +4,8 @@ import type {
   CatalogChapterArticle,
   CatalogCourse,
   CatalogCourseSummary,
+  CatalogPlayback,
+  CatalogSection,
   DeviceAuthPoll,
   DeviceAuthStart,
   EventsConsent,
@@ -12,6 +14,7 @@ import type {
   LearnerContextUpdate,
   PlaybackSession,
   ProgressResult,
+  QuoteList,
   SearchResult,
   Segment,
   VoiceTranscript,
@@ -63,6 +66,18 @@ export type RemoteCatalogCourseResult =
 
 export type RemoteCatalogChapterResult =
   | { ok: true; value: CatalogChapterArticle }
+  | { ok: false; error: { code: string; message: string } }
+
+export type RemoteCatalogSectionResult =
+  | { ok: true; value: CatalogSection }
+  | { ok: false; error: { code: string; message: string } }
+
+export type RemoteSectionPlaybackResult =
+  | { ok: true; value: CatalogPlayback }
+  | { ok: false; error: { code: string; message: string } }
+
+export type RemoteCourseQuotesResult =
+  | { ok: true; value: QuoteList }
   | { ok: false; error: { code: string; message: string } }
 
 export type RemoteKnowledgePointResult =
@@ -121,6 +136,14 @@ interface ClientRemoteService {
     catalogCourses(): Promise<RemoteCatalogCoursesResult>
     catalogCourse(courseId: string): Promise<RemoteCatalogCourseResult>
     catalogChapter(courseId: string, chapterId: string): Promise<RemoteCatalogChapterResult>
+    catalogSection(courseId: string, sectionId: string): Promise<RemoteCatalogSectionResult>
+    sectionPlayback(
+      sectionId: string,
+      assetId: string,
+      fromSec: number,
+      toSec: number,
+    ): Promise<RemoteSectionPlaybackResult>
+    courseQuotes(courseId: string, codes: string[]): Promise<RemoteCourseQuotesResult>
     knowledgePoint(knowledgePointId: string): Promise<RemoteKnowledgePointResult>
     reportProgress(knowledgePointId: string, watchedSec: number, completed: boolean): Promise<RemoteProgressResult>
     setLearnerContext(sessionId: string, update: LearnerContextUpdate): Promise<RemoteLearnerContextResult>

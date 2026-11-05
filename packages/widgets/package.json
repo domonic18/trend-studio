@@ -38,6 +38,10 @@
       "types": "./lib/spec-types.d.ts",
       "default": "./lib/spec-types.js"
     },
+    "./styles": {
+      "types": "./lib/styles.d.ts",
+      "default": "./lib/styles.js"
+    },
     "./types": {
       "types": "./lib/types.d.ts",
       "default": "./lib/types.js"
