@@ -15,6 +15,7 @@ import { codePointLength, stringField } from '../http/validation.js'
 import { listCourseApprovals, upsertCourseApproval } from '../production/approvals.js'
 import { computeCourseDigest } from '../production/digest.js'
 import { parseArticleDsl } from '../production/dsl/parse.js'
+import { requireResolvedAnnotationsAndReplays } from './publish-gates.js'
 import { chapterIdFor, draftSegmentIdFor, figureIdFor, knowledgePointIdFor } from './ids.js'
 import { ActiveJobError, type JobQueue, type PipelineJob } from './jobs.js'
 import { SourceChecksumError, SourceTooLargeError, type MediaStore } from './media-store.js'
@@ -1148,6 +1149,7 @@ export class PipelineService implements PipelineApi {
     await this.requireResolvedFigures(courseId)
     await this.requireProvenWidgets(courseId)
     await this.requireResolvedSectionMedia(courseId)
+    await requireResolvedAnnotationsAndReplays(this.pool, courseId)
     await this.requireFinalApproval(courseId)
 
     const reindex = this.options.reindex

@@ -2616,7 +2616,7 @@ components:
           pattern: '^wgt_[0-9a-f]{16}$'
         type:
           type: string
-          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
         specVersion:
           type: integer
         specBytes:
@@ -2664,6 +2664,103 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FigureBrief'
+
+    CoursePreview:
+      type: object
+      required: [course, chapters]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: '#/components/schemas/AdminCourse'
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChapterPreview'
+
+    ChapterPreview:
+      type: object
+      required: [chapterId, title, position, sections]
+      additionalProperties: false
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+          minimum: 1
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseSectionPreview'
+
+    CourseSectionPreview:
+      type: object
+      required: [section, article, widgets, figures, caseStocks]
+      additionalProperties: false
+      properties:
+        section:
+          $ref: '#/components/schemas/SectionBrief'
+        article:
+          oneOf:
+            - $ref: '#/components/schemas/ArticleBrief'
+            - type: 'null'
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WidgetDetail'
+        figures:
+          type: array
+          items:
+            $ref: '#/components/schemas/FigureBrief'
+        caseStocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseStockPreview'
+
+    CaseStockPreview:
+      type: object
+      required: [stockRefId, name, exchange, code, windowStart, windowEnd, events, note, status, position]
+      additionalProperties: false
+      properties:
+        stockRefId:
+          type: string
+          pattern: '^cst_[0-9a-f]{16}$'
+        name:
+          type: string
+        exchange:
+          type: string
+          enum: [SZSE, SSE, BSE]
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        windowStart:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        windowEnd:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        events:
+          type: array
+          items:
+            type: object
+            required: [date, label, unitId]
+            additionalProperties: true
+            properties:
+              date:
+                type: string
+              label:
+                type: string
+              unitId:
+                type: string
+        note:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [draft, published, archived]
+        position:
+          type: integer
+          minimum: 1
 
     SectionBrief:
       type: object
@@ -2713,7 +2810,7 @@ components:
         dslVersion:
           type: integer
           minimum: 1
-          description: 富文本 DSL 能力版本（§6.6.1，当前 1）；渲染器按版本门禁
+          description: 富文本 DSL 能力版本（§6.6.1，当前 2）；渲染器按版本门禁
 
     WidgetDetail:
       type: object
@@ -2725,7 +2822,7 @@ components:
           pattern: '^wgt_[0-9a-f]{16}$'
         type:
           type: string
-          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
         specVersion:
           type: integer
         spec:
@@ -4241,6 +4338,89 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/admin/content/courses/{courseId}/preview:
+    get:
+      summary: 课程全量草稿预览（operator/admin/producer，M10 v2）
+      description: 返回课程树全量草稿态，含每节教材、课件 spec/断言、图示、案例股；供生产端所见即所得审阅。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 课程预览聚合
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoursePreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/courses/{courseId}/quotes:
+    get:
+      summary: 课程案例股行情草稿可见（operator/admin/producer，M10 v2）
+      description: 返回该课程案例股清单内行情，草稿案例股亦可见；清单外代号被过滤。尚未同步时返回 pending=true 与空数组。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+        - name: codes
+          in: query
+          required: false
+          description: 逗号分隔的 6 位代号，最多 10 只；缺省为课程全部案例股
+          schema:
+            type: string
+            maxLength: 69
+        - name: from
+          in: query
+          required: false
+          description: 起始交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: to
+          in: query
+          required: false
+          description: 结束交易日（含），YYYY-MM-DD
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        '200':
+          description: 行情序列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotesListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
   /v1/admin/content/courses/{courseId}/chapters:
     post:
       summary: 新增章节（operator/admin）
@@ -5463,8 +5643,8 @@ paths:
 
   /v1/admin/content/courses/{courseId}/quotes-sync:
     post:
-      summary: 同步课程案例股行情（operator/admin）
-      description: 同步执行腾讯前复权日K 并幂等 upsert；同步任务直接落 succeeded 记录，不进队列。
+      summary: 同步课程案例股行情（operator/admin/producer）
+      description: 同步执行腾讯前复权日K 并幂等 upsert；同步任务直接落 succeeded 记录，不进队列。producer 可触发同步以支撑正文标注与回放 grounding。
       security:
         - sessionAuth: []
       parameters:
@@ -7247,7 +7427,7 @@ paths:
               properties:
                 type:
                   type: string
-                  enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer]
+                  enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
                 specVersion:
                   type: integer
                   enum: [1]

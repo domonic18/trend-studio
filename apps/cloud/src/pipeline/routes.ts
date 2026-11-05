@@ -69,6 +69,14 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     return principal
   }
 
+  const producerGuard = async (request: FastifyRequest): Promise<{ userId: string }> => {
+    const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
+    if (!limiter.take(`pipeline:${principal.userId}`, config.rateLimitPipelinePerMinute)) {
+      throw tooManyRequests()
+    }
+    return principal
+  }
+
   app.get('/v1/admin/content/media-assets', async request => {
     await guard(request)
     const query = asObject(request.query)
@@ -261,7 +269,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.post('/v1/admin/content/courses/:courseId/quotes-sync', async request => {
-    await guard(request)
+    await producerGuard(request)
     const { courseId } = request.params as { courseId: string }
     return api.syncQuotes(parseContentId(courseId, 'courseId'))
   })

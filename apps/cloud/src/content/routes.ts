@@ -63,15 +63,23 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   const { content, accounts, config, limiter } = deps
   const staff = (request: Parameters<typeof requireSession>[0]) =>
     requireSession(request, accounts, ['operator', 'admin'])
+  const reader = (request: Parameters<typeof requireSession>[0]) =>
+    requireSession(request, accounts, ['operator', 'admin', 'producer'])
   const guard = async (request: Parameters<typeof staff>[0]): Promise<void> => {
     const principal = await staff(request)
     if (!limiter.take(`content:${principal.userId}`, config.rateLimitContentPerMinute)) {
       throw tooManyRequests()
     }
   }
+  const readGuard = async (request: Parameters<typeof reader>[0]): Promise<void> => {
+    const principal = await reader(request)
+    if (!limiter.take(`content:${principal.userId}`, config.rateLimitContentPerMinute)) {
+      throw tooManyRequests()
+    }
+  }
 
   app.get('/v1/admin/content/courses', async request => {
-    await guard(request)
+    await readGuard(request)
     return content.listCourses()
   })
 
@@ -87,7 +95,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   })
 
   app.get('/v1/admin/content/courses/:courseId', async request => {
-    await guard(request)
+    await readGuard(request)
     const { courseId } = request.params as { courseId: string }
     return content.getCourseTree(courseId)
   })

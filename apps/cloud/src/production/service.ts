@@ -16,6 +16,15 @@ import { validateArticleDsl, type DslUnitRef } from './dsl/validate.js'
 import { parseArticleDsl, type DslParseResult } from './dsl/parse.js'
 import { cloudDslSink } from './dsl/sink.js'
 import {
+  readCoursePreview,
+  type CoursePreview,
+} from './course-preview.js'
+import {
+  readQuotes,
+  type CatalogQuotes,
+  type QuoteQuery,
+} from '../quotes/read.js'
+import {
   createSectionFigure as writeSectionFigure,
   listSectionFigures as querySectionFigures,
   parseSectionFigureInput,
@@ -29,13 +38,12 @@ import {
   type CaseStockEntry,
   type CaseStockSaveResult,
 } from './case-stocks.js'
-import { proveWidget } from './widgets/provers.js'
+import { proveWidget, type ProofContext } from './widgets/provers.js'
 import {
   isWidgetType,
   validateAssertions,
   validateCitations,
   validateSpec,
-  WIDGET_SPEC_VERSION,
   type WidgetAssertions,
   type WidgetSpec,
   type WidgetType,
@@ -339,14 +347,15 @@ export class ProductionService {
     await this.validateArticleGrounding(sectionId, section.course_id, parsed)
     // 引用集口径：扁平 citations 字段 ∪ 正文 [[unit:]] 锚，去重后落库。
     const unionCitations = [...new Set([...citations, ...parsed.unitAnchors.map(anchor => anchor.unitId)])]
+    const dslVersion = markdownDslVersion(markdown, cloudDslSink)
     const { rows } = await this.pool.query<{ version: number; status: string }>(
-      `INSERT INTO section_articles (section_id, markdown, citations, version, status)
-       VALUES ($1, $2, $3::jsonb, 1, 'draft')
+      `INSERT INTO section_articles (section_id, markdown, citations, version, dsl_version, status)
+       VALUES ($1, $2, $3::jsonb, 1, $4, 'draft')
        ON CONFLICT (section_id) DO UPDATE
          SET markdown = $2, citations = $3::jsonb, version = section_articles.version + 1,
-             status = 'draft', updated_at = now()
+             dsl_version = $4, status = 'draft', updated_at = now()
        RETURNING version, status`,
-      [sectionId, markdown, JSON.stringify(unionCitations)],
+      [sectionId, markdown, JSON.stringify(unionCitations), dslVersion],
     )
     const articleRow = rows[0]
     if (articleRow === undefined) throw new Error('article upsert returned no row')
@@ -389,6 +398,34 @@ export class ProductionService {
           [sectionId, exchange, code],
         )
         return rows.length > 0
+      },
+      assetExists: async (assetId) => {
+        const { rows } = await this.pool.query('SELECT 1 FROM media_assets WHERE asset_id = $1 LIMIT 1', [assetId])
+        return rows.length > 0
+      },
+      caseStockWindow: async (exchange, code) => {
+        const { rows } = await this.pool.query<{ window_start: string | Date; window_end: string | Date }>(
+          'SELECT window_start, window_end FROM section_case_stocks WHERE section_id = $1 AND exchange = $2 AND code = $3 LIMIT 1',
+          [sectionId, exchange, code],
+        )
+        if (rows[0] === undefined) return null
+        return { start: toDateStr(rows[0].window_start), end: toDateStr(rows[0].window_end) }
+      },
+      isTradingDay: async (_exchange, code, date) => {
+        const { rows } = await this.pool.query(
+          'SELECT 1 FROM course_stock_quotes WHERE code = $1 AND trade_date = $2::date LIMIT 1',
+          [code, date],
+        )
+        return rows.length > 0
+      },
+      conceptNames: await this.conceptNameSet(courseId),
+      replayWidgetCount: async (code) => {
+        const { rows } = await this.pool.query<{ count: string }>(
+          `SELECT count(*)::text AS count FROM widget_specs
+            WHERE section_id = $1 AND type = 'bar-replay-decision' AND spec->>'code' = $2`,
+          [sectionId, code],
+        )
+        return Number(rows[0]?.count ?? 0)
       },
     })
   }
@@ -489,6 +526,14 @@ export class ProductionService {
         sectionId: row.section_id,
       })),
     }
+  }
+
+  async getCoursePreview(courseId: string): Promise<CoursePreview> {
+    return readCoursePreview(this.pool, courseId)
+  }
+
+  async getCourseQuotes(courseId: string, query: QuoteQuery): Promise<CatalogQuotes> {
+    return readQuotes(this.pool, courseId, query, { publishedOnly: false })
   }
 
   async createSourceUnits(units: unknown[]): Promise<{ saved: { unitId: string; assetId: string; startMs: number; deduped: boolean }[] }> {
@@ -944,7 +989,9 @@ export class ProductionService {
     const body = input as Record<string, unknown>
     const type = body.type
     if (typeof type !== 'string' || !isWidgetType(type)) throw badRequest('type is not in the frozen whitelist')
-    if (body.specVersion !== WIDGET_SPEC_VERSION) throw badRequest(`specVersion must be ${WIDGET_SPEC_VERSION}`)
+    const specVersion = Number(body.specVersion)
+    if (!Number.isInteger(specVersion) || specVersion < 1 || specVersion > 2) throw badRequest('specVersion must be 1 or 2')
+    if (type === 'bar-replay-decision' && specVersion !== 2) throw badRequest('bar-replay-decision requires specVersion 2')
     const spec = validateSpec(type, body.spec)
     const assertions = validateAssertions(type, body.assertions)
     const citations = body.citations === undefined ? [] : validateCitations(body.citations)
@@ -953,7 +1000,27 @@ export class ProductionService {
     await this.assertCourseDraft(section.course_id)
     if (citations.length > 0) await this.assertCount('source_units', 'unit_id', citations, 'citations contain unknown source unit')
     const conceptNames = await this.conceptNameSet(section.course_id)
-    const proof = proveWidget(type, spec, assertions, { conceptNames })
+    const proofCtx: ProofContext = { conceptNames }
+    if (type === 'bar-replay-decision') {
+      const barSpec = spec as unknown as {
+        type: 'bar-replay-decision'
+        code: string
+        annotations?: Array<{ unitId: string; atMs: number; kind: string; d: string; label: string }>
+        decisions: Array<{ atDate: string; question: string; options: Array<{ label: string }>; correct: number; revealText: string; unitId: string; atMs: number }>
+        citations: string[]
+      }
+      const unitIds = [...new Set([
+        ...(barSpec.annotations ?? []),
+        ...barSpec.decisions,
+      ].map(point => point.unitId))]
+      const unitWindows = await this.loadUnitWindows(unitIds)
+      const caseWindow = await this.loadCaseStockWindow(sectionId, barSpec.code)
+      const tradingDays = caseWindow === undefined
+        ? new Set<string>()
+        : await this.loadTradingDays(barSpec.code, caseWindow)
+      Object.assign(proofCtx, { unitWindows, caseWindow, tradingDays })
+    }
+    const proof = proveWidget(type, spec, assertions, proofCtx)
     if (!proof.ok) {
       throw codedConflict('assertion_unproven', 'widget assertions failed server-side proof', { failed: proof.failed })
     }
@@ -968,7 +1035,7 @@ export class ProductionService {
         sectionId,
         section.course_id,
         type,
-        WIDGET_SPEC_VERSION,
+        specVersion,
         JSON.stringify(spec),
         JSON.stringify(assertions),
         JSON.stringify(proof.validation),
@@ -1196,6 +1263,48 @@ export class ProductionService {
     }
     return names
   }
+
+  /** bar-replay-decision 证明上下文：unit 时间窗。 */
+  private async loadUnitWindows(unitIds: string[]): Promise<Map<string, { startMs: number; endMs: number }>> {
+    const windows = new Map<string, { startMs: number; endMs: number }>()
+    if (unitIds.length === 0) return windows
+    const { rows } = await this.pool.query<{ unit_id: string; start_ms: string | bigint; end_ms: string | bigint }>(
+      'SELECT unit_id, start_ms, end_ms FROM source_units WHERE unit_id = ANY($1::text[])',
+      [unitIds],
+    )
+    for (const row of rows) {
+      windows.set(row.unit_id, { startMs: Number(row.start_ms), endMs: Number(row.end_ms) })
+    }
+    return windows
+  }
+
+  /** bar-replay-decision 证明上下文：该股本节案例窗口。 */
+  private async loadCaseStockWindow(sectionId: string, code: string): Promise<{ start: string; end: string } | undefined> {
+    const plainCode = code.replace(/^(sz|sh|bj)/, '')
+    const { rows } = await this.pool.query<{ window_start: string | Date; window_end: string | Date }>(
+      'SELECT window_start, window_end FROM section_case_stocks WHERE section_id = $1 AND code = $2 LIMIT 1',
+      [sectionId, plainCode],
+    )
+    if (rows[0] === undefined) return undefined
+    return { start: toDateStr(rows[0].window_start), end: toDateStr(rows[0].window_end) }
+  }
+
+  /** bar-replay-decision 证明上下文：该股案例窗口内的交易日集合。 */
+  private async loadTradingDays(code: string, window: { start: string; end: string }): Promise<Set<string>> {
+    const plainCode = code.replace(/^(sz|sh|bj)/, '')
+    const { rows } = await this.pool.query<{ trade_date: string | Date }>(
+      'SELECT trade_date FROM course_stock_quotes WHERE code = $1 AND trade_date BETWEEN $2::date AND $3::date',
+      [plainCode, window.start, window.end],
+    )
+    return new Set(rows.map(row => toDateStr(row.trade_date)))
+  }
+}
+
+function toDateStr(value: string | Date): string {
+  if (typeof value === 'string') return value.slice(0, 10)
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${value.getFullYear()}-${month}-${day}`
 }
 
 /** RRF 融合（k=60），按各路理论最高分归一到 [0,1]，与 kb 召回栈同口径。 */

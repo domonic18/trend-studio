@@ -12,9 +12,42 @@ import {
 } from './generators.js'
 import type { WidgetAssertions, WidgetSpec, WidgetType } from './schema.js'
 
+interface BarReplayAnnotation {
+  unitId: string
+  atMs: number
+  kind: string
+  d: string
+  label: string
+}
+
+interface BarReplayDecision {
+  atDate: string
+  question: string
+  options: { label: string }[]
+  correct: number
+  revealText: string
+  unitId: string
+  atMs: number
+}
+
+interface BarReplaySpec {
+  type: 'bar-replay-decision'
+  code: string
+  window: { from: string; to: string }
+  annotations?: BarReplayAnnotation[]
+  decisions: BarReplayDecision[]
+  citations: string[]
+}
+
 export interface ProofContext {
   /** 课程内 concepts 名称与别名的并集，mcq/flashcards/checklist/timeline 术语校验基准。 */
   conceptNames: ReadonlySet<string>
+  /** M10 v2 bar-replay-decision：unitId → [startMs, endMs]（用于 grounding）。 */
+  unitWindows?: ReadonlyMap<string, { startMs: number; endMs: number }>
+  /** M10 v2：该股案例窗口。 */
+  caseWindow?: { start: string; end: string }
+  /** M10 v2：该股行情缓存中的交易日集合（YYYY-MM-DD）。 */
+  tradingDays?: ReadonlySet<string>
 }
 
 export type ProofResult =
@@ -134,6 +167,49 @@ function proofFor(type: WidgetType, spec: WidgetSpec, key: string, assertions: W
         return true
       }
       return [...adjacency.keys()].every(visit)
+    }
+    case 'decisionPointsGrounded': {
+      const barSpec = spec as BarReplaySpec
+      const unitWindows = ctx.unitWindows
+      const caseWindow = ctx.caseWindow
+      const tradingDays = ctx.tradingDays
+      if (unitWindows === undefined || caseWindow === undefined || tradingDays === undefined) return false
+      const points = [...(barSpec.annotations ?? []), ...barSpec.decisions]
+      for (const point of points) {
+        const window = unitWindows.get(point.unitId)
+        if (window === undefined || point.atMs < window.startMs || point.atMs > window.endMs) return false
+        const date = 'd' in point ? point.d : point.atDate
+        if (date < caseWindow.start || date > caseWindow.end || !tradingDays.has(date)) return false
+      }
+      return true
+    }
+    case 'revealMonotonic': {
+      const barSpec = spec as BarReplaySpec
+      const decisions = barSpec.decisions
+      const annotations = barSpec.annotations ?? []
+      if (decisions.length === 0) return false
+      const decisionDates = decisions.map(d => d.atDate).sort()
+      for (let i = 1; i < decisionDates.length; i++) {
+        if (decisionDates[i]! <= decisionDates[i - 1]!) return false
+      }
+      const annotationDates = annotations.map(a => a.d).sort()
+      if (annotationDates.length < decisions.length) return false
+      for (let i = 0; i < decisions.length; i++) {
+        if (decisions[i]!.atDate >= annotationDates[i]!) return false
+      }
+      return true
+    }
+    case 'annotationTermsGrounded': {
+      const barSpec = spec as BarReplaySpec
+      const conceptNames = ctx.conceptNames
+      for (const decision of barSpec.decisions) {
+        if (decision.revealText.trim().length === 0) return false
+        if (![...conceptNames].some(name => decision.revealText.includes(name))) return false
+      }
+      for (const annotation of barSpec.annotations ?? []) {
+        if (!conceptNames.has(annotation.label)) return false
+      }
+      return true
     }
     default:
       return false

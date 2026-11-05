@@ -4475,8 +4475,8 @@ test('M3b：行情层（同步幂等 / 学员端只读清单内标的 / 未同�
   assert.equal(emptyWindow.statusCode, 200, emptyWindow.body)
   assert.deepEqual(emptyWindow.json(), { pending: false, quotes: [] })
 
-  // 8. producer 无同步权限 → 403
-  const PRODUCER = 'm3b-quoter'
+  // 8. producer 有同步权限（M10 v2：quotes-sync 对 producer 放开）
+  const PRODUCER = `m3b-quoter-${Date.now()}`
   const PRODUCER_PASSWORD = 'quoter-pass-123'
   const created = await adminCreateUser({
     username: PRODUCER,
@@ -4487,14 +4487,23 @@ test('M3b：行情层（同步幂等 / 学员端只读清单内标的 / 未同�
   assert.ok(created.statusCode === 201 || created.statusCode === 409, JSON.stringify(created.body))
   const producerLogin = await loginSession(PRODUCER, PRODUCER_PASSWORD)
   assert.equal(producerLogin.statusCode, 200, JSON.stringify(producerLogin.body))
+
   const producerSync = await app.inject({
     method: 'POST',
     url: syncUrl,
     headers: { authorization: `Bearer ${producerLogin.body.token}` },
   })
-  assert.equal(producerSync.statusCode, 403, producerSync.body)
+  assert.equal(producerSync.statusCode, 200, producerSync.body)
 
-  // 9. 未发布课程 → 404
+  // 9. 学员设备授权不能进入后台会话端点 → 401
+  const studentSync = await app.inject({
+    method: 'POST',
+    url: syncUrl,
+    headers: learner,
+  })
+  assert.equal(studentSync.statusCode, 401, studentSync.body)
+
+  // 10. 未发布课程 → 404
   const draftCourse = await app.inject({
     method: 'POST',
     url: '/v1/admin/content/courses',

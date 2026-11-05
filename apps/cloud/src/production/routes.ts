@@ -8,6 +8,7 @@ import { badRequest, tooManyRequests } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, intField, jsonObjectField, optionalStringField, stringField } from '../http/validation.js'
 import { signKeyframeUrl } from '../media/keyframe-sign.js'
+import { readQuotes, parseQuoteCodes, parseQuoteDate } from '../quotes/read.js'
 import type { PlaybackService } from '../playback/service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { parseSectionId, parseSourceUnitId, ProductionService } from './service.js'
@@ -185,6 +186,28 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
       fromConceptId: stringField(body, 'fromConceptId', { max: 20, pattern: /^cpt_[0-9a-f]{16}$/ }),
       toConceptId: stringField(body, 'toConceptId', { max: 20, pattern: /^cpt_[0-9a-f]{16}$/ }),
       kind,
+    }))
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/preview', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
+    return reply.send(await service.getCoursePreview(courseId))
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/quotes', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
+    const query = asObject(request.query as unknown)
+    const codes = queryText(query, 'codes')
+    const from = queryText(query, 'from')
+    const to = queryText(query, 'to')
+    return reply.send(await service.getCourseQuotes(courseId, {
+      ...(codes === undefined ? {} : { codes: parseQuoteCodes(codes) }),
+      ...(from === undefined ? {} : { from: parseQuoteDate(from, 'from') }),
+      ...(to === undefined ? {} : { to: parseQuoteDate(to, 'to') }),
     }))
   })
 
