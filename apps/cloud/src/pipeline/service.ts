@@ -26,11 +26,11 @@ import {
   type JobKind,
   type JobStatus,
 } from './types.js'
+import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
 
 const ID = /^[A-Za-z0-9._-]{1,64}$/
 const JOB_ID = /^job_[0-9a-f]{16}$/
 const GENERATION_ID = /^gen_[0-9a-f]{16}$/
-const FIGURE_ID = /^fig_[A-Za-z0-9._-]{1,60}$/
 const CANDIDATE_ID = /^cand_[A-Za-z0-9._-]{1,59}$/
 const FIGURE_REF = /!\[[^\]\n]*\]\(figure:([A-Za-z0-9._-]{1,64})\)/g
 const SHA256 = /^[0-9a-f]{64}$/

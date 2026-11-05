@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ImageFormat } from './image-size.js'
+import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
 
 /** diagram 模板渲染器产出的矢量候选与位图共用同一存储与签名通道。 */
 export type StoredFormat = ImageFormat | 'svg'
@@ -12,7 +13,6 @@ const FORMAT_EXTENSION: Record<StoredFormat, string> = {
   svg: 'svg',
 }
 
-const FIGURE_ID = /^fig_[A-Za-z0-9._-]{1,60}$/
 const CANDIDATE_ID = /^cand_[A-Za-z0-9._-]{1,59}$/
 
 export interface StoredFigureImage {

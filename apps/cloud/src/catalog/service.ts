@@ -2,12 +2,12 @@ import type { Pool } from 'pg'
 import { parseQuizQuestions, type QuizQuestion } from '../content/quiz.js'
 import { HttpError } from '../errors.js'
 import { codePointLength, stringField } from '../http/validation.js'
+import { FIGURE_ID_REF as FIGURE_ID } from '@trend/contracts'
 
 const COURSE_ID = /^[A-Za-z0-9._-]{1,64}$/
 const CHAPTER_ID = /^[A-Za-z0-9._-]{1,64}$/
 const KNOWLEDGE_POINT_ID = /^[A-Za-z0-9._-]{1,64}$/
 const SEGMENT_ID = /^seg-[A-Za-z0-9._-]+$/
-const FIGURE_ID = /^fig_[A-Za-z0-9._-]{1,60}$/
 const FIGURE_REF = /!\[[^\]\n]*\]\(figure:([A-Za-z0-9._-]{1,64})\)/g
 const MAX_COURSES = 50
 const MAX_CHAPTERS = 50

@@ -1,0 +1,40 @@
+{
+  "name": "@trend/contracts",
+  "version": "0.1.0",
+  "description": "趋势课程平台跨端契约单一真相源：生产 admin API、教材 DSL、ID/枚举（zod-first）",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./admin": {
+      "types": "./lib/admin.d.ts",
+      "default": "./lib/admin.js"
+    },
+    "./dsl": {
+      "types": "./lib/dsl.d.ts",
+      "default": "./lib/dsl.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:only": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -27,6 +27,7 @@
     "test:only": "node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@trend/contracts": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {
