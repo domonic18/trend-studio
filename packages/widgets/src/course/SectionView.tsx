@@ -34,8 +34,17 @@ export function SectionView({ section, host }: { section: SectionViewModel; host
 
   const bars = useMemo(() => toBars(quotesState.quotes), [quotesState.quotes])
   const articleHost = useMemo(
-    () => ({ ...host, widgets, bars }),
-    [host, widgets, bars],
+    () => ({
+      ...host,
+      widgets,
+      bars,
+      createPlaybackSession:
+        host.createPlaybackSessionForSection === undefined
+          ? host.createPlaybackSession
+          : (assetId: string, fromSec?: number, toSec?: number) =>
+              host.createPlaybackSessionForSection!(meta.sectionId, assetId, fromSec, toSec),
+    }),
+    [host, widgets, bars, meta.sectionId],
   )
 
   return (
@@ -45,7 +54,9 @@ export function SectionView({ section, host }: { section: SectionViewModel; host
       className="wg-course-section"
     >
       <header className="wg-section-hero">
-        {meta.conceptRefs.length > 0 ? (
+        {meta.conceptNames !== undefined && meta.conceptNames.length > 0 ? (
+          <div className="wg-section-chip">{meta.conceptNames[0]}</div>
+        ) : meta.conceptRefs.length > 0 ? (
           <div className="wg-section-chip">{meta.conceptRefs[0]}</div>
         ) : null}
         <h3 className="wg-section-title">{meta.title}</h3>

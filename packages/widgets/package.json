@@ -27,6 +27,10 @@
       "default": "./lib/course/index.js"
     },
     "./course.css": "./lib/course.css",
+    "./course.styles": {
+      "types": "./lib/course.styles.d.ts",
+      "default": "./lib/course.styles.js"
+    },
     "./dsl": {
       "types": "./lib/dsl.d.ts",
       "default": "./lib/dsl.js"

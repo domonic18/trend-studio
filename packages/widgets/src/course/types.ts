@@ -35,6 +35,8 @@ export interface SectionMeta {
   status: 'draft' | 'published' | 'archived'
   summary?: string
   conceptRefs: string[]
+  /** 概念名（按 conceptRefs 顺序）：hero chip 显示用；缺省时回落到 conceptRefs[0]。 */
+  conceptNames?: string[]
 }
 
 export interface ArticleView {
@@ -102,6 +104,16 @@ import type { ArticleHost } from '../types.js'
 
 export interface CoursePreviewHost extends ArticleHost {
   loadQuotes: (codes: string[]) => Promise<{ pending: boolean; quotes: CourseQuote[] }>
+  /**
+   * 按节签发播放会话：学员端播放会话须落在该节已发布正文的片段窗内，故须带 sectionId。
+   * 不提供时回落到 ArticleHost 的无节签发（管理台预览用）。
+   */
+  createPlaybackSessionForSection?: (
+    sectionId: string,
+    assetId: string,
+    fromSec?: number,
+    toSec?: number,
+  ) => Promise<PlaybackSessionTicket>
 }
 
 export interface FigureMeta {
