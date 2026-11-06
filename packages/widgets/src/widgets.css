@@ -1,86 +1,153 @@
-/* M10 呈现层组件包：编辑部式版式——衬线标题、卡片化、颜色只留给数据。 */
+/**
+ * M10 呈现层组件包：编辑部式版式——衬线标题、卡片化、颜色只留给数据。
+ * 全部颜色走 token：`:root` 为暗色（学员端课件底色），`.wg-course` 作用域切原型浅色编辑风。
+ */
 
 :root {
   --wg-bg: #0f1115;
-  --wg-surface: rgba(255, 255, 255, 0.03);
-  --wg-text: rgba(255, 255, 255, 0.88);
-  --wg-text-secondary: rgba(255, 255, 255, 0.55);
+  --wg-surface: rgba(255, 255, 255, 0.035);
+  --wg-surface-2: rgba(255, 255, 255, 0.07);
+  --wg-surface-3: rgba(255, 255, 255, 0.12);
+  --wg-text: rgba(255, 255, 255, 0.9);
+  --wg-text-secondary: rgba(255, 255, 255, 0.62);
   --wg-text-muted: rgba(255, 255, 255, 0.45);
   --wg-line: rgba(255, 255, 255, 0.12);
-  --wg-line-subtle: rgba(255, 255, 255, 0.18);
+  --wg-line-subtle: rgba(255, 255, 255, 0.2);
   --wg-brand: #6ea8ff;
+  --wg-brand-soft: rgba(110, 168, 255, 0.14);
+  --wg-brand-line: rgba(110, 168, 255, 0.34);
   --wg-up: #e85a5a;
+  --wg-up-soft: rgba(232, 90, 90, 0.14);
+  --wg-up-line: rgba(232, 90, 90, 0.4);
   --wg-down: #5ab67a;
-  --wg-warn: #e87a7a;
+  --wg-down-soft: rgba(90, 182, 122, 0.14);
+  --wg-down-line: rgba(90, 182, 122, 0.4);
+  --wg-warn: #e8b64c;
+  --wg-warn-soft: rgba(232, 182, 76, 0.14);
+  --wg-warn-line: rgba(232, 182, 76, 0.42);
   --wg-gold: #e8b64c;
   --wg-ma: #faad14;
   --wg-grid: rgba(255, 255, 255, 0.08);
   --wg-crosshair: rgba(255, 255, 255, 0.35);
   --wg-event: #6ea8ff;
+  --wg-canvas-bg: #141821;
+  --wg-surface-solid: #1a1f28;
+  --wg-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.28);
+  --wg-shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.45);
+  --wg-radius: 16px;
+  --wg-radius-sm: 10px;
+  --wg-serif: Georgia, 'Times New Roman', 'Songti SC', 'Noto Serif SC', serif;
+  --wg-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --wg-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* 课程作用域：原型浅色编辑风 */
 .wg-course {
   --wg-bg: #f6f7f9;
-  --wg-surface: #fff;
-  --wg-text: rgba(0, 0, 0, 0.88);
-  --wg-text-secondary: rgba(0, 0, 0, 0.55);
-  --wg-text-muted: rgba(0, 0, 0, 0.45);
-  --wg-line: rgba(0, 0, 0, 0.1);
-  --wg-line-subtle: rgba(0, 0, 0, 0.18);
-  --wg-brand: #2563eb;
-  --wg-up: #d93025;
-  --wg-down: #1e8e3e;
-  --wg-warn: #d93025;
+  --wg-surface: #ffffff;
+  --wg-surface-2: #f0f2f5;
+  --wg-surface-3: #e8ebf0;
+  --wg-text: #1a1d24;
+  --wg-text-secondary: #5b6473;
+  --wg-text-muted: #8b94a3;
+  --wg-line: #e3e7ee;
+  --wg-line-subtle: #cfd6e1;
+  --wg-brand: #2f5bd7;
+  --wg-brand-soft: #eaf0ff;
+  --wg-brand-line: rgba(47, 91, 215, 0.28);
+  --wg-up: #d9483f;
+  --wg-up-soft: #fff0ee;
+  --wg-up-line: rgba(217, 72, 63, 0.32);
+  --wg-down: #17a06e;
+  --wg-down-soft: #e9f7f0;
+  --wg-down-line: rgba(23, 160, 110, 0.32);
+  --wg-warn: #c47a12;
+  --wg-warn-soft: #fff6e5;
+  --wg-warn-line: rgba(196, 122, 18, 0.32);
   --wg-gold: #b45f06;
   --wg-ma: #b45f06;
   --wg-grid: rgba(0, 0, 0, 0.08);
   --wg-crosshair: rgba(0, 0, 0, 0.35);
-  --wg-event: #2563eb;
+  --wg-event: #2f5bd7;
+  --wg-canvas-bg: #ffffff;
+  --wg-surface-solid: #ffffff;
+  --wg-shadow: 0 1px 2px rgba(20, 28, 45, 0.04), 0 8px 28px rgba(20, 28, 45, 0.06);
+  --wg-shadow-lg: 0 12px 48px rgba(20, 28, 45, 0.13);
   background: var(--wg-bg);
   color: var(--wg-text);
 }
 
+/* ---------- 正文 ---------- */
 .wg-article {
   font-size: 15px;
-  line-height: 1.75;
-  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.8;
+  color: var(--wg-text);
 }
 
-.wg-markdown p { margin: 0 0 0.9em; }
+.wg-markdown p { margin: 0 0 0.95em; }
 .wg-markdown h1, .wg-markdown h2, .wg-markdown h3,
 .wg-markdown h4, .wg-markdown h5, .wg-markdown h6 {
-  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
-  margin: 1.2em 0 0.5em;
-  line-height: 1.4;
+  font-family: var(--wg-serif);
+  margin: 1.5em 0 0.6em;
+  line-height: 1.35;
+  color: var(--wg-text);
+  letter-spacing: -0.2px;
 }
-.wg-markdown ul, .wg-markdown ol { padding-left: 1.4em; margin: 0 0 0.9em; }
+.wg-markdown h1 { font-size: 1.8em; }
+.wg-markdown h2 { font-size: 1.35em; }
+.wg-markdown h3 { font-size: 1.12em; }
+.wg-markdown h4, .wg-markdown h5, .wg-markdown h6 { font-size: 1em; }
+.wg-markdown strong { font-weight: 650; color: var(--wg-text); }
+.wg-markdown a { color: var(--wg-brand); text-decoration: none; border-bottom: 1px solid var(--wg-brand-line); }
+.wg-markdown a:hover { border-bottom-color: var(--wg-brand); }
+.wg-markdown ul, .wg-markdown ol { padding-left: 1.5em; margin: 0 0 0.95em; }
+.wg-markdown li { margin: 0.25em 0; }
 .wg-markdown code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.92em;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.1em 0.35em;
-  border-radius: 4px;
+  font-family: var(--wg-mono);
+  font-size: 0.9em;
+  background: var(--wg-surface-2);
+  padding: 0.12em 0.38em;
+  border-radius: 5px;
+  color: var(--wg-text);
 }
-.wg-markdown pre code { display: block; padding: 0.8em 1em; overflow-x: auto; }
+.wg-markdown pre {
+  background: var(--wg-surface-2);
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius-sm);
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  margin: 0 0 1em;
+}
+.wg-markdown pre code { display: block; background: none; padding: 0; }
 .wg-markdown blockquote {
-  margin: 0 0 0.9em;
-  padding: 0.2em 1em;
-  border-left: 3px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 1em;
+  padding: 0.7em 1em;
+  border-left: 3px solid var(--wg-brand);
+  border-radius: 0 var(--wg-radius-sm) var(--wg-radius-sm) 0;
+  background: var(--wg-brand-soft);
+  color: var(--wg-text-secondary);
 }
-.wg-markdown table { border-collapse: collapse; margin: 0 0 0.9em; }
+.wg-markdown blockquote p:last-child { margin-bottom: 0; }
+.wg-markdown table { border-collapse: collapse; margin: 0 0 1.1em; width: 100%; font-size: 0.94em; }
+.wg-markdown th {
+  background: var(--wg-surface-2);
+  font-weight: 650;
+  text-align: left;
+}
 .wg-markdown th, .wg-markdown td {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 0.35em 0.8em;
+  border: 1px solid var(--wg-line);
+  padding: 0.5em 0.85em;
 }
+.wg-markdown hr { border: 0; border-top: 1px solid var(--wg-line); margin: 2em 0; }
 
 /* 个股锚：R1 高亮徽章 */
 .wg-stock-anchor {
   display: inline-block;
-  padding: 0 0.5em;
-  border: 1px solid rgba(64, 140, 255, 0.55);
+  padding: 0 0.6em;
+  border: 1px solid var(--wg-brand-line);
   border-radius: 999px;
-  color: #6ea8ff;
+  background: var(--wg-brand-soft);
+  color: var(--wg-brand);
   font-size: 0.88em;
   line-height: 1.6;
   margin: 0 0.1em;
@@ -90,10 +157,11 @@
 /* 证据锚：指向语料 unit 的内联徽章 */
 .wg-unit-anchor {
   display: inline-block;
-  padding: 0 0.5em;
-  border: 1px dashed rgba(250, 173, 20, 0.6);
+  padding: 0 0.6em;
+  border: 1px dashed var(--wg-warn-line);
   border-radius: 999px;
-  color: #faad14;
+  background: var(--wg-warn-soft);
+  color: var(--wg-warn);
   font-size: 0.88em;
   line-height: 1.6;
   margin: 0 0.1em;
@@ -105,218 +173,431 @@
 .wg-unit-badge {
   display: inline-block;
   padding: 0 0.5em;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.78em;
+  border-radius: 5px;
+  background: var(--wg-surface-2);
+  color: var(--wg-text-muted);
+  font-size: 0.76em;
   line-height: 1.7;
+  white-space: nowrap;
 }
 
-/* :::board 板书 */
+/* ---------- :::board 板书 ---------- */
 .wg-board {
-  margin: 1.2em 0;
-  padding: 1em 1.2em;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-left: 4px solid rgba(255, 255, 255, 0.4);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  margin: 1.5em 0;
+  padding: 1em 1.3em;
+  border: 1px solid var(--wg-line);
+  border-left: 4px solid var(--wg-brand);
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
 }
-.wg-block-head { margin-bottom: 0.5em; }
-.wg-board-text { margin: 0; white-space: pre-wrap; }
+.wg-block-head { margin-bottom: 0.6em; }
+.wg-board-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--wg-serif);
+  font-size: 1.02em;
+  line-height: 1.85;
+  color: var(--wg-text);
+}
 
-/* :::bignum 大数字 */
+/* ---------- :::bignum 大数字 ---------- */
 .wg-bignum {
-  display: flex;
-  gap: 12px;
-  margin: 1.2em 0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin: 1.5em 0;
 }
 .wg-bignum-item {
-  flex: 1;
-  padding: 0.9em 1.1em;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 16px 18px;
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
 }
 .wg-bignum-label {
   display: block;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.85em;
-  margin-bottom: 0.3em;
+  color: var(--wg-text-muted);
+  font-size: 0.76em;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
 }
 .wg-bignum-value {
   display: block;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1.9em;
-  line-height: 1.2;
-  color: #e8b64c;
+  font-family: var(--wg-serif);
+  font-size: 2em;
+  line-height: 1.15;
+  color: var(--wg-brand);
 }
 .wg-bignum-note {
   display: block;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.8em;
-  margin-top: 0.35em;
+  color: var(--wg-text-secondary);
+  font-size: 0.85em;
+  margin-top: 8px;
 }
 
-/* :::cmp 对照 */
-.wg-cmp { margin: 1.2em 0; }
+/* ---------- :::cmp 对照 ---------- */
+.wg-cmp { margin: 1.5em 0; }
 .wg-cmp-title {
-  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
-  margin: 0 0 0.6em;
-  font-size: 1.05em;
+  font-family: var(--wg-serif);
+  margin: 0 0 0.7em;
+  font-size: 1.1em;
+  color: var(--wg-text);
 }
-.wg-cmp-cols { display: flex; gap: 12px; }
+.wg-cmp-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
 .wg-cmp-side {
-  flex: 1;
-  padding: 0.9em 1.1em;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
+  overflow: hidden;
 }
-.wg-cmp-head { margin: 0 0 0.5em; font-size: 0.95em; }
-.wg-cmp-items { margin: 0; padding-left: 1.2em; }
-.wg-cmp-items li { margin: 0.25em 0; }
+.wg-cmp-head {
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--wg-surface-2);
+  border-bottom: 1px solid var(--wg-line);
+  font-size: 0.95em;
+  font-weight: 650;
+  color: var(--wg-text);
+}
+.wg-cmp-items {
+  margin: 0;
+  padding: 12px 18px 14px 32px;
+  color: var(--wg-text-secondary);
+  font-size: 0.94em;
+}
+.wg-cmp-items li { margin: 0.3em 0; }
+.wg-cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94em;
+  background: var(--wg-surface);
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
+  overflow: hidden;
+}
 .wg-cmp-table th, .wg-cmp-table td {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 0.4em 0.9em;
+  border: 1px solid var(--wg-line);
+  padding: 0.55em 0.9em;
   text-align: left;
 }
+.wg-cmp-table th { background: var(--wg-surface-2); font-weight: 650; }
 
-/* :::timeline 时间线 */
+/* ---------- :::timeline 时间线 ---------- */
 .wg-timeline {
   list-style: none;
-  margin: 1.2em 0;
+  margin: 1.5em 0;
   padding: 0;
-  border-left: 2px solid rgba(255, 255, 255, 0.18);
 }
 .wg-timeline-event {
   position: relative;
-  padding: 0 0 1em 1.4em;
+  padding: 0 0 20px 30px;
 }
 .wg-timeline-event::before {
   content: '';
   position: absolute;
-  left: -5px;
-  top: 0.45em;
-  width: 8px;
-  height: 8px;
+  left: 4px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--wg-brand);
+  box-shadow: 0 0 0 3px var(--wg-brand-soft);
+}
+.wg-timeline-event:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 8.5px;
+  top: 20px;
+  bottom: 0;
+  width: 2px;
+  background: var(--wg-line);
 }
 .wg-timeline-date {
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82em;
-  color: rgba(255, 255, 255, 0.5);
+  display: inline-block;
+  font-family: var(--wg-mono);
+  font-size: 0.76em;
+  color: var(--wg-text-muted);
+  background: var(--wg-surface-2);
+  padding: 1px 9px;
+  border-radius: 999px;
+  margin-bottom: 5px;
 }
-.wg-timeline-title { display: block; }
+.wg-timeline-title {
+  display: block;
+  font-weight: 650;
+  color: var(--wg-text);
+}
 .wg-timeline-desc {
   display: block;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.9em;
+  color: var(--wg-text-secondary);
+  font-size: 0.92em;
+  margin-top: 3px;
 }
 
-/* :::warn 提醒 */
+/* ---------- :::warn 提醒 ---------- */
 .wg-warn {
-  margin: 1.2em 0;
-  padding: 0.9em 1.2em;
-  border: 1px solid rgba(232, 90, 90, 0.4);
-  border-radius: 6px;
-  background: rgba(232, 90, 90, 0.07);
+  margin: 1.5em 0;
+  padding: 14px 18px;
+  border: 1px solid var(--wg-warn-line);
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-warn-soft);
 }
 .wg-warn-title {
   margin: 0 0 0.4em;
-  font-size: 0.98em;
-  color: #e87a7a;
+  font-size: 0.95em;
+  font-weight: 700;
+  color: var(--wg-warn);
 }
-.wg-warn-text { margin: 0; white-space: pre-wrap; }
+.wg-warn-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--wg-text-secondary);
+  font-size: 0.95em;
+}
 
-/* :::figure 图示 */
-.wg-figure { margin: 1.2em 0; }
+/* ---------- :::figure 图示 ---------- */
+.wg-figure {
+  margin: 1.7em 0;
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
+  overflow: hidden;
+}
+.wg-figure-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--wg-line);
+  background: var(--wg-surface-2);
+}
+.wg-figure-title {
+  font-size: 0.9em;
+  font-weight: 650;
+  color: var(--wg-text);
+}
+.wg-figure-badge {
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: var(--wg-brand-soft);
+  color: var(--wg-brand);
+  border: 1px solid var(--wg-brand-line);
+  white-space: nowrap;
+}
+.wg-figure-body { padding: 16px; }
 .wg-figure-img {
   display: block;
   width: 100%;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  height: auto;
+  border-radius: var(--wg-radius-sm);
 }
 .wg-figure-caption {
-  margin-top: 0.45em;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.88em;
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
+  padding: 10px 16px 14px;
+  color: var(--wg-text-muted);
+  font-size: 0.82em;
+  line-height: 1.65;
+  border-top: 1px solid var(--wg-line);
 }
 .wg-figure-loading, .wg-figure-missing, .wg-parse-error {
-  padding: 1.4em;
+  padding: 1.6em;
   text-align: center;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.45);
+  border: 1px dashed var(--wg-line-subtle);
+  border-radius: var(--wg-radius-sm);
+  color: var(--wg-text-muted);
   font-size: 0.9em;
 }
 
-/* :::clip 片段卡 */
-.wg-clip { margin: 1.2em 0; }
+/* ---------- :::clip 片段卡 ---------- */
+.wg-clip {
+  margin: 1.7em 0;
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
+  overflow: hidden;
+}
 .wg-clip-head {
   display: flex;
   align-items: center;
-  gap: 0.7em;
-  margin-bottom: 0.5em;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--wg-line);
+  background: var(--wg-surface-2);
 }
-.wg-clip-title { font-weight: 600; }
+.wg-clip-title { font-weight: 650; font-size: 0.92em; color: var(--wg-text); }
 .wg-clip-window {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82em;
-  color: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  padding: 0 0.4em;
+  font-family: var(--wg-mono);
+  font-size: 0.8em;
+  color: var(--wg-text-muted);
+  border: 1px solid var(--wg-line);
+  border-radius: 999px;
+  padding: 1px 9px;
 }
 .wg-clip-video {
   display: block;
   width: 100%;
   max-height: 420px;
-  border-radius: 8px;
   background: #000;
 }
 .wg-clip-start, .wg-clip-retry {
   cursor: pointer;
-  border: 1px solid rgba(110, 168, 255, 0.5);
-  background: rgba(110, 168, 255, 0.1);
-  color: #6ea8ff;
-  border-radius: 6px;
-  padding: 0.45em 1.1em;
+  border: 1px solid var(--wg-brand-line);
+  background: var(--wg-brand-soft);
+  color: var(--wg-brand);
+  border-radius: 8px;
+  padding: 0.5em 1.2em;
   font-size: 0.92em;
+  font-weight: 600;
 }
-.wg-clip-start { display: block; width: 100%; padding: 0.9em; }
+.wg-clip-start {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 16px;
+  padding: 0.9em;
+}
 .wg-clip-error, .wg-clip-ended {
   display: flex;
   align-items: center;
   gap: 0.8em;
-  padding: 0.6em 0.9em;
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.6);
-  border: 1px dashed rgba(255, 255, 255, 0.2);
+  padding: 0.7em 1em;
+  color: var(--wg-text-secondary);
+  border: 1px dashed var(--wg-line-subtle);
+  border-radius: var(--wg-radius-sm);
   font-size: 0.9em;
-  margin-top: 0.5em;
+  margin: 0 16px 16px;
 }
 .wg-clip-session {
   display: block;
-  margin-top: 0.4em;
-  font-size: 0.75em;
-  color: rgba(255, 255, 255, 0.3);
+  padding: 0 16px 14px;
+  font-size: 0.74em;
+  color: var(--wg-text-muted);
+  font-family: var(--wg-mono);
 }
 
-/* :::replay 逐根回放 */
-.wg-replay {
-  margin: 1.2em 0;
+/* ---------- :::annotation 老师标注 ---------- */
+.wg-annotation {
+  margin: 1.5em 0;
+  padding: 14px 16px;
   border: 1px solid var(--wg-line);
+  border-left: 4px solid var(--wg-brand);
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
+}
+.wg-annotation-invalidation { border-left-color: var(--wg-up); }
+.wg-annotation-rhythm { border-left-color: var(--wg-gold); }
+.wg-annotation-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.wg-annotation-kind {
+  font-size: 0.74em;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 5px;
+  background: var(--wg-brand-soft);
+  color: var(--wg-brand);
+  border: 1px solid var(--wg-brand-line);
+  white-space: nowrap;
+}
+.wg-annotation-invalidation .wg-annotation-kind {
+  background: var(--wg-up-soft);
+  color: var(--wg-up);
+  border-color: var(--wg-up-line);
+}
+.wg-annotation-rhythm .wg-annotation-kind {
+  background: var(--wg-warn-soft);
+  color: var(--wg-warn);
+  border-color: var(--wg-warn-line);
+}
+.wg-annotation-label {
+  font-weight: 650;
+  color: var(--wg-text);
+}
+.wg-annotation-date {
+  margin-left: auto;
+  font-family: var(--wg-mono);
+  font-size: 0.78em;
+  color: var(--wg-text-muted);
+}
+.wg-annotation-quote {
+  margin: 0 0 10px;
+  padding: 10px 13px;
+  background: var(--wg-surface-2);
+  border-radius: var(--wg-radius-sm);
+  color: var(--wg-text-secondary);
+  font-family: var(--wg-serif);
+  font-size: 0.97em;
+  line-height: 1.8;
+}
+.wg-annotation-glossary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.wg-annotation-term {
+  font-size: 0.8em;
+  color: var(--wg-brand);
+  background: var(--wg-brand-soft);
+  border: 1px solid var(--wg-brand-line);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.wg-annotation-foot { margin-top: 10px; }
+.wg-annotation-jump {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 0.86em;
+  font-weight: 600;
+  color: var(--wg-brand);
+  background: var(--wg-brand-soft);
+  border: 1px solid var(--wg-brand-line);
   border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+.wg-annotation-jump:hover { border-color: var(--wg-brand); }
+
+/* ---------- :::replay 逐根回放 ---------- */
+.wg-replay-block { margin: 1.7em 0; }
+.wg-replay-block-head {
+  font-family: var(--wg-serif);
+  font-size: 1.05em;
+  color: var(--wg-text);
+  margin-bottom: 10px;
+}
+.wg-replay-placeholder {
+  padding: 1.6em;
+  text-align: center;
+  color: var(--wg-text-muted);
+  border: 1px dashed var(--wg-line-subtle);
+  border-radius: var(--wg-radius-sm);
+  font-size: 0.9em;
+}
+.wg-replay {
+  margin: 1.7em 0;
+  border: 1px solid var(--wg-line);
+  border-radius: var(--wg-radius);
   overflow: hidden;
   background: var(--wg-surface);
+  box-shadow: var(--wg-shadow);
 }
-.wg-replay-error,
-.wg-replay-empty {
+.wg-replay-error, .wg-replay-empty {
   padding: 2em;
   text-align: center;
   color: var(--wg-text-muted);
@@ -326,39 +607,40 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0.9em 1.1em;
+  padding: 11px 16px;
   border-bottom: 1px solid var(--wg-line);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--wg-surface-2);
 }
 .wg-replay-title {
-  font-weight: 600;
+  font-weight: 650;
   color: var(--wg-text);
 }
 .wg-replay-progress-text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--wg-mono);
   font-size: 0.85em;
   color: var(--wg-brand);
 }
 .wg-replay-chart-wrap {
   position: relative;
-  padding: 10px;
+  padding: 12px 16px;
 }
 .wg-replay-decision-card {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(420px, 90%);
-  padding: 1.1em;
-  border-radius: 8px;
-  background: var(--wg-bg);
-  border: 1px solid var(--wg-line);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  width: min(440px, 92%);
+  padding: 16px 18px;
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-surface);
+  border: 1px solid var(--wg-warn-line);
+  box-shadow: var(--wg-shadow-lg);
 }
 .wg-replay-decision-question {
-  font-weight: 600;
-  margin-bottom: 0.8em;
+  font-weight: 650;
+  margin-bottom: 12px;
   color: var(--wg-text);
+  line-height: 1.6;
 }
 .wg-replay-decision-options {
   display: flex;
@@ -367,80 +649,76 @@
 }
 .wg-replay-option {
   text-align: left;
-  padding: 0.6em 0.9em;
+  padding: 9px 12px;
   border: 1px solid var(--wg-line);
-  border-radius: 6px;
-  background: var(--wg-surface);
+  border-radius: 8px;
+  background: var(--wg-surface-2);
   color: var(--wg-text);
   cursor: pointer;
+  font-size: 0.93em;
+  line-height: 1.6;
+  transition: 0.15s;
 }
-.wg-replay-option:hover:not(:disabled) {
-  border-color: var(--wg-brand);
-}
-.wg-replay-option:disabled {
-  cursor: not-allowed;
-  opacity: 0.85;
-}
+.wg-replay-option:hover:not(:disabled) { border-color: var(--wg-warn); }
+.wg-replay-option:disabled { cursor: default; }
 .wg-replay-option-correct {
-  border-color: var(--wg-down);
+  background: var(--wg-down-soft);
+  border-color: var(--wg-down-line);
   color: var(--wg-down);
 }
 .wg-replay-option-wrong {
-  border-color: var(--wg-up);
+  background: var(--wg-up-soft);
+  border-color: var(--wg-up-line);
   color: var(--wg-up);
 }
 .wg-replay-reveal {
-  margin-top: 0.9em;
-  padding-top: 0.9em;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--wg-line);
 }
 .wg-replay-reveal-text {
-  margin: 0 0 0.7em;
+  margin: 0 0 0.8em;
   color: var(--wg-text-secondary);
-  line-height: 1.55;
+  line-height: 1.7;
+  font-size: 0.95em;
 }
 .wg-replay-unit-link {
-  font-size: 0.85em;
+  font-size: 0.84em;
   color: var(--wg-brand);
-  background: transparent;
-  border: 1px solid var(--wg-brand);
-  border-radius: 4px;
-  padding: 4px 10px;
+  background: var(--wg-brand-soft);
+  border: 1px solid var(--wg-brand-line);
+  border-radius: 8px;
+  padding: 5px 12px;
   cursor: pointer;
 }
 .wg-replay-controls {
   display: flex;
   gap: 8px;
-  padding: 0.7em 1.1em;
+  padding: 10px 16px;
   border-top: 1px solid var(--wg-line);
+  background: var(--wg-surface-2);
 }
 .wg-replay-btn {
-  padding: 0.45em 0.9em;
+  padding: 0.45em 0.95em;
   border: 1px solid var(--wg-line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--wg-surface);
   color: var(--wg-text);
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: 0.88em;
 }
-.wg-replay-btn:hover:not(:disabled) {
-  border-color: var(--wg-brand);
-}
-.wg-replay-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.wg-replay-btn:hover:not(:disabled) { border-color: var(--wg-brand); color: var(--wg-brand); }
+.wg-replay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .wg-replay-btn-active {
+  background: var(--wg-brand);
   border-color: var(--wg-brand);
-  color: var(--wg-brand);
+  color: #fff;
 }
-.wg-replay-progress {
-  padding: 0 1.1em 0.8em;
-}
+.wg-replay-progress { padding: 12px 16px 4px; }
 .wg-replay-progress-track {
   position: relative;
   height: 6px;
-  background: var(--wg-line);
+  background: var(--wg-surface-3);
   border-radius: 3px;
 }
 .wg-replay-progress-fill {
@@ -451,52 +729,64 @@
 }
 .wg-replay-progress-tick {
   position: absolute;
-  top: -3px;
-  width: 12px;
-  height: 12px;
+  top: -4px;
+  width: 13px;
+  height: 13px;
   margin-left: -6px;
   border-radius: 50%;
   border: 2px solid var(--wg-surface);
   background: var(--wg-warn);
   cursor: pointer;
 }
-.wg-replay-progress-tick-answered {
-  background: var(--wg-down);
-}
+.wg-replay-progress-tick-answered { background: var(--wg-down); }
 .wg-replay-filters {
   display: flex;
-  gap: 14px;
-  padding: 0.6em 1.1em;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
   border-top: 1px solid var(--wg-line);
 }
 .wg-replay-filter {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85em;
-  color: var(--wg-text-secondary);
+  padding: 3px 11px;
+  border: 1px solid var(--wg-line);
+  border-radius: 999px;
+  font-size: 0.82em;
+  color: var(--wg-text-muted);
   cursor: pointer;
+  user-select: none;
+  transition: 0.15s;
 }
+.wg-replay-filter input { display: none; }
+.wg-replay-filter:has(input:checked) {
+  color: var(--wg-brand);
+  border-color: var(--wg-brand-line);
+  background: var(--wg-brand-soft);
+}
+.wg-replay-filter:hover { border-color: var(--wg-brand-line); }
 .wg-replay-summary {
-  padding: 1em 1.1em;
-  border-top: 1px solid var(--wg-line);
-  background: rgba(255, 255, 255, 0.03);
+  margin: 12px 16px 16px;
+  padding: 14px 18px;
+  border-radius: var(--wg-radius-sm);
+  border: 1px solid var(--wg-line);
+  background: var(--wg-surface-2);
+  font-size: 0.95em;
+  line-height: 1.8;
 }
 .wg-replay-summary-title {
-  font-weight: 600;
-  margin-bottom: 0.4em;
+  font-weight: 650;
+  margin-bottom: 4px;
   color: var(--wg-text);
 }
-.wg-replay-summary-score {
-  color: var(--wg-text-secondary);
-  margin-bottom: 0.8em;
-}
+.wg-replay-summary-score { color: var(--wg-text-secondary); margin-bottom: 10px; }
 
-/* K 线画布 */
+/* ---------- K 线画布 ---------- */
 .wg-kline-canvas {
   display: block;
   width: 100%;
-  border-radius: 4px;
-  background: var(--wg-bg);
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-canvas-bg);
   cursor: crosshair;
 }
