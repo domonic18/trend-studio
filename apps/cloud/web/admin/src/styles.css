@@ -469,6 +469,36 @@ body {
   }
 }
 
+/* === 课程预览页（M10 原型形态） === */
+.course-preview-frame {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--admin-panel-soft);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+}
+
+.course-preview-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.course-preview-status-tag {
+  margin: 0;
+}
+
+.course-preview-draft-alert {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 991px) {
+  .course-preview-frame {
+    padding: 16px;
+  }
+}
+
 /* ---- 页面布局 ---- */
 
 .overview-alert {

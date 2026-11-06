@@ -1,6 +1,7 @@
 import {
   AppstoreOutlined,
   DashboardOutlined,
+  EyeOutlined,
   FileTextOutlined,
   HistoryOutlined,
   LineChartOutlined,
@@ -30,6 +31,7 @@ const ROLE_LABELS: Record<string, string> = {
 function selectedKey(pathname: string): string {
   if (pathname === '/' || pathname === '') return '/'
   if (pathname.startsWith('/courses')) return '/courses'
+  if (pathname.startsWith('/course-preview')) return '/course-preview'
   if (pathname.startsWith('/segments')) return '/segments'
   if (pathname.startsWith('/pipeline')) return '/pipeline'
   if (pathname.startsWith('/ai/usage')) return '/ai/usage'
@@ -37,6 +39,11 @@ function selectedKey(pathname: string): string {
   if (pathname.startsWith('/system/models')) return '/system/models'
   if (pathname.startsWith('/system/accounts')) return '/system/accounts'
   return '/'
+}
+
+function coursePreviewPath(pathname: string): string {
+  const match = pathname.match(/^\/courses\/([^/]+)/)
+  return match !== null ? `/courses/${match[1]}/preview` : '/courses'
 }
 
 export function Sidebar({
@@ -55,6 +62,8 @@ export function Sidebar({
   const isAdmin = user?.role === 'admin'
   const isOps = isAdmin || user?.role === 'operator'
 
+  const isProducer = user?.role === 'producer'
+
   const items: MenuItem[] = [
     { key: '/', icon: <DashboardOutlined />, label: '概览' },
     {
@@ -62,6 +71,13 @@ export function Sidebar({
       label: collapsed ? undefined : '内容运营',
       children: [
         { key: '/courses', icon: <ReadOutlined />, label: '课程内容' },
+        ...(isProducer
+          ? [{
+            key: '/course-preview',
+            icon: <EyeOutlined />,
+            label: '课程预览',
+          } satisfies MenuItem]
+          : []),
         { key: '/segments', icon: <FileTextOutlined />, label: '片段管理' },
         { key: '/pipeline', icon: <VideoCameraOutlined />, label: '视频建课' },
       ],
@@ -114,7 +130,11 @@ export function Sidebar({
         items={items}
         inlineCollapsed={collapsed}
         onClick={({ key }) => {
-          navigate(key)
+          if (key === '/course-preview') {
+            navigate(coursePreviewPath(location.pathname))
+          } else {
+            navigate(key)
+          }
           onNavigate?.()
         }}
         className="sidebar-menu"

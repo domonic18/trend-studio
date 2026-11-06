@@ -307,6 +307,51 @@ export interface FigureList {
   limit: number
 }
 
+export interface CoursePreview {
+  course: Course
+  chapters: CoursePreviewChapter[]
+}
+
+export interface CoursePreviewChapter {
+  chapterId: string
+  title: string
+  position: number
+  sections: CoursePreviewSection[]
+}
+
+export interface CoursePreviewSection {
+  section: SectionBrief
+  article: ArticleBrief | null
+  widgets: WidgetDetail[]
+  figures: FigureBrief[]
+  caseStocks: CaseStockBrief[]
+}
+
+export interface CaseStockBrief {
+  stockRefId: string
+  name: string
+  exchange: string
+  code: string
+  windowStart: string
+  windowEnd: string
+  events: unknown[]
+  note: string | null
+  status: string
+  position: number
+}
+
+export interface CourseQuote {
+  code: string
+  tradeDate: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  amount: number | null
+  source: string
+}
+
 // === M9 语料级生产：节 / 课件 / 图示预览 ===
 
 export interface Section {

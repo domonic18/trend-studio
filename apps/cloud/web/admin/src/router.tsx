@@ -7,6 +7,7 @@ import { AdminLayout } from './layout/AdminLayout'
 const OverviewPage = lazy(() => import('./pages/Overview/OverviewPage').then(m => ({ default: m.OverviewPage })))
 const ContentPage = lazy(() => import('./pages/Content/ContentPage').then(m => ({ default: m.ContentPage })))
 const SectionPreviewPage = lazy(() => import('./pages/Content/SectionPreviewPage').then(m => ({ default: m.SectionPreviewPage })))
+const CoursePreviewPage = lazy(() => import('./pages/Content/CoursePreviewPage').then(m => ({ default: m.CoursePreviewPage })))
 const SegmentsPage = lazy(() => import('./pages/Segments/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
 const PipelinePage = lazy(() => import('./pages/Pipeline/PipelinePage').then(m => ({ default: m.PipelinePage })))
 const ModelsPage = lazy(() => import('./pages/Models/ModelsPage').then(m => ({ default: m.ModelsPage })))
@@ -81,6 +82,7 @@ export const router = createBrowserRouter([
       { index: true, element: <OverviewPage /> },
       { path: 'courses', element: <ContentPage /> },
       { path: 'courses/:courseId', element: <ContentPage /> },
+      { path: 'courses/:courseId/preview', element: <CoursePreviewPage /> },
       { path: 'courses/:courseId/sections/:sectionId', element: <SectionPreviewPage /> },
       { path: 'segments', element: <SegmentsPage /> },
       { path: 'pipeline', element: <PipelinePage /> },

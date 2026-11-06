@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftOutlined, PictureOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EyeOutlined, PictureOutlined } from '@ant-design/icons'
 import { Button, Card, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -66,7 +66,12 @@ export function SectionPreviewPage() {
         title={data.section.title}
         subtitle={`节预览 · ${data.section.sectionId}`}
         extra={
-          <Button icon={<ArrowLeftOutlined />} onClick={back}>返回课程</Button>
+          <Space>
+            <Button icon={<EyeOutlined />} onClick={() => navigate(`/courses/${courseId}/preview`)}>
+              课程预览
+            </Button>
+            <Button icon={<ArrowLeftOutlined />} onClick={back}>返回课程</Button>
+          </Space>
         }
       />
 

@@ -12,7 +12,9 @@ import type {
   AsrProtocol,
   ContentStatus,
   Course,
+  CoursePreview,
   CoursePublishResult,
+  CourseQuote,
   CourseSummary,
   CourseTree,
   Figure,
@@ -20,12 +22,12 @@ import type {
   LlmModelConfig,
   LlmProtocol,
   LlmPurpose,
+  MediaAssetStatus,
   ModelTestResult,
   GenerationApplyResult,
   GenerationPreview,
   MediaAsset,
   MediaAssetList,
-  MediaAssetStatus,
   PipelineJob,
   PipelineJobDetail,
   PipelineJobKind,
@@ -250,6 +252,27 @@ export async function listSections(courseId: string, chapterId?: string): Promis
     'GET',
     `/v1/admin/content/sections?${params.toString()}`,
   )).sections
+}
+
+/** 管理台课程预览：课程树全量草稿态。 */
+export async function getCoursePreview(courseId: string): Promise<CoursePreview> {
+  return request<CoursePreview>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/preview`,
+  )
+}
+
+/** 管理台课程行情：草稿案例股可见。 */
+export async function getAdminCourseQuotes(
+  courseId: string,
+  codes: string[],
+): Promise<{ pending: boolean; quotes: CourseQuote[] }> {
+  const params = new URLSearchParams()
+  params.set('codes', codes.join(','))
+  return request<{ pending: boolean; quotes: CourseQuote[] }>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/quotes?${params.toString()}`,
+  )
 }
 
 /** 管理台节渲染预览：教材 + 课件 spec/断言全量 + 节级图示。 */

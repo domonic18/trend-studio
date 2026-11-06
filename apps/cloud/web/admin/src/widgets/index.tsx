@@ -91,6 +91,7 @@ const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: Widg
   flashcards: Flashcards,
   checklist: Checklist,
   'timeline-explorer': TimelineExplorer,
+  'bar-replay-decision': BarReplayDecision,
 }
 
 function WidgetBody({
@@ -514,6 +515,28 @@ function Checklist({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | 
           </List.Item>
         )}
       />
+    </div>
+  )
+}
+
+// ===================== 9. bar-replay-decision =====================
+
+function BarReplayDecision({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | null }) {
+  const code = (spec as unknown as Record<string, unknown>).code ?? '-'
+  const window = (spec as unknown as Record<string, unknown>).window as { from?: string; to?: string } | undefined
+  return (
+    <div className="widget-body">
+      <Typography.Paragraph type="secondary">
+        逐根回放课件（学员端完整交互预览）：{String(code)}
+      </Typography.Paragraph>
+      {window ? (
+        <Typography.Paragraph>
+          案例窗口：{window.from ?? '-'} ~ {window.to ?? '-'}
+        </Typography.Paragraph>
+      ) : null}
+      <Typography.Paragraph type="secondary">
+        完整回放与判断闭环请在「课程预览」页查看。
+      </Typography.Paragraph>
     </div>
   )
 }

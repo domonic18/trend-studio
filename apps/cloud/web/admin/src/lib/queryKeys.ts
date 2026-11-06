@@ -64,6 +64,9 @@ export const qk = {
   sections: (courseId: string, chapterId?: string) =>
     ['content', 'sections', courseId, chapterId ?? ''] as const,
   sectionPreview: (sectionId: string) => ['content', 'section-preview', sectionId] as const,
+  coursePreview: (courseId: string) => ['content', 'course-preview', courseId] as const,
+  courseQuotes: (courseId: string, codes: string[]) =>
+    ['content', 'course-quotes', courseId, codes.join(',')] as const,
   segments: (filters: SegmentFilters) => ['segments', filters] as const,
   assets: (courseId: string | null, status?: string) => ['pipeline', 'assets', courseId, status ?? ''] as const,
   jobs: (filters: JobFilters) => ['pipeline', 'jobs', filters] as const,
