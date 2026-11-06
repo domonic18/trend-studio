@@ -38,6 +38,8 @@ version: 0.5.0
 4. **案例股**：`cloud_case_stocks_write` 落本节案例股清单。**必须早于正文**——正文的
    `[[stock:sz000713|丰乐种业]]` 内联锚会校验该股在本节案例股清单内，未落库即
    `400 stock_not_in_list`。
+   每只股票同时定 `period`（`"1d"` 日线 / `"1w"` 周线，缺省 `"1d"`）：**按本节实际讲解的周期写**，
+   讲周线结构就写 `"1w"`。这个值决定案例股面板画日线还是周线图，与正文口径必须一致。
 5. **行情同步**：`cloud_quotes_sync({courseId})` 触发课程级行情缓存。**必须早于正文**——
    正文 `:::annotation` 的交易日 `d` 必须是该股行情缓存的实际交易日，否则
    `400 annotation_date_not_trading_day`。可重跑，幂等。
@@ -58,6 +60,9 @@ version: 0.5.0
    逐个 `cloud_widget_write`；409 assertion_unproven 按 failed 断言修正（≤3 次）。
    同节同 code 的回放课件**只能有一份**——写错了先
    `cloud_widget_delete({sectionId, widgetId})` 删旧再写新，不要留两份让回放入口歧义。
+   `bar-replay-decision` 的 spec 要写 `period`（日线 `"1d"` / 周线 `"1w"`）与 `overlays`
+   （均线位，白名单 M5/M10/M20/M30/M60，≤3 条）：**与本节正文所讲周期、均线口径一致**，
+   否则图上画的线与正文说的线对不上。
 8. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
    `cloud_section_article_write({sectionId, markdown, citations})`；400/409 按错误修正重写。
    正文里的段落级证据用 `[[unit:su_xxx|label]]` 内联锚（见下节「证据锚点」）。

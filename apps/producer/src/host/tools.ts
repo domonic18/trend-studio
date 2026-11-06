@@ -723,7 +723,8 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
     description:
       '提交交互课件 spec（白名单 9 类组件的 JSON，禁止任何可执行代码）。spec 必须携带教学断言 assertions 与 citations；'
       + '服务端做断言程序证明：409 assertion_unproven 附 failed 数组是正常校验回灌——按失败断言修订 spec/参数后重试，最多 3 次后转人工。'
-      + 'M10 v2 新增 `bar-replay-decision`（逐根回放判断），其 specVersion=2，其余组件 specVersion=1。' + ID_NOTE,
+      + 'M10 v2 新增 `bar-replay-decision`（逐根回放判断），其 specVersion=2，其余组件 specVersion=1。'
+      + '`bar-replay-decision` 的 spec 可带 `period`（"1d" 日线 / "1w" 周线，缺省日线）与 `overlays`（均线位白名单 M5/M10/M20/M30/M60，最多 3 条，缺省 M5/M10/M60）——须与正文所讲周期一致。' + ID_NOTE,
     parameters: {
       sectionId: { type: 'string', required: true, description: '节 ID' },
       type: { type: 'string', required: true, description: 'kline-annotator|pattern-quiz|step-reveal|calc-trainer|mcq-quiz|flashcards|checklist|timeline-explorer|bar-replay-decision' },
@@ -884,6 +885,7 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
             name: { type: 'string', required: true, description: '股票名称' },
             exchange: { type: 'string', required: true, enum: ['SZSE', 'SSE', 'BSE'], description: '交易所' },
             code: { type: 'string', required: true, description: '6 位股票代号，保留前导零，如 "000713"' },
+            period: { type: 'string', enum: ['1d', '1w'], description: 'K 线周期：课件讲日线写 "1d"，讲周线写 "1w"（缺省 "1d"）' },
             windowStart: { type: 'string', required: true, description: '案例窗口起，YYYY-MM-DD' },
             windowEnd: { type: 'string', required: true, description: '案例窗口止，YYYY-MM-DD' },
             events: {
