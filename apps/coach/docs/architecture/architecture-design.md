@@ -1,10 +1,10 @@
-# 趋势伴学插件 · 架构设计（v1.8）
+# 趋势伴学插件 · 架构设计（v1.9）
 
-- 状态：v1.8，基于 PRD v1.8 与 dsh 0.2.1-rc.5 实测/源码调研结论；新增 M5.2 随堂测验：章节题库存储、后台编辑与课堂即时评分/解析/复习清单
-- 日期：2026-11-01
-- 上游文档：[产品需求文档](../requirements/product-requirements.md)（M5.2 随堂测验已同步至 v1.8）
+- 状态：v1.9，新增 M10/S1 学员端富媒体课程页：右栏「课程页」tab、共享 `@trend/widgets` 课程视图、按节签发播放会话、课程样式注入（§6.11）
+- 日期：2026-11-06
+- 上游文档：[产品需求文档](../requirements/product-requirements.md)（M5.2 随堂测验已同步至 v1.8，S1 课程页见 §F2 增补）
 - 配套规范：[项目规范](../conventions/project-conventions.md)
-- 版本变更：v1.8 新增 M5.2 随堂测验：`chapter_quizzes`、后台题库读写与发布校验、章节响应可选 `quiz`、客户端本地评分与复习清单；v1.7 新增 M8 阅读层：课程树 `contractVersion=2` 门禁、章节教材按需拉取、知识点详情移除文章、客户端仅渲染 `figure:` 引用并由 `figures` 映射解析签名 URL；v1.6 新增 M4.2 语音提问：`conversation.input.right` 麦克风、浏览器录音与 16kHz 单声道 PCM16 WAV 编码、Remote `transcribeVoice`、云端 `POST /v1/asr/transcribe` 转发 MiniMax、插入 composer 不自动发送、60s 上限与失败降级；v1.5 新增 M4.1 学习场景即时提问（文字/图片 + 自动上下文 + 选中文本）：Remote `setLearnerContext`、Host 内存 store、`systemPrompt.section` 动态注入、composer 桥接与全局选中检测；v1.4 落地退出并注销（`POST /v1/auth/revoke`）、面板跨挂载状态保留、`npm run smoke` 与 CI，并记录 S9 真实云端联调结果；v1.3 落地指标事件同意与上报（`GET/PUT /v1/events/consent` + 三类白名单事件），并记录 S8 真实云端联调结果；v1.2 落地播放会话契约（`POST /v1/playback/sessions`）、媒体 CORS 要求、引用时间点只信 `getSegment`、hls.js 优先于 `canPlayType` 的选择顺序，并记录 S1 端到端验证结果；v1.1 补齐播放语义、HLS 方案、鉴权分期、水印、TTS、指标、显示字段/相邻知识点、`engines.dsh` 与 §17/§18。
+- 版本变更：v1.9 新增 M10/S1 学员端富媒体课程页（§6.11）：客户端零新增云端端点（复用 catalog v3 课程树/节详情/行情/按节播放会话），`course-assemble.ts` 纯装配 + `course-page.ts` 视图，课程级宿主 `CoursePreviewHost`（图示签名地址汇总、按节播放会话、课程级行情），hero chip 改显示概念名；v1.8 新增 M5.2 随堂测验：`chapter_quizzes`、后台题库读写与发布校验、章节响应可选 `quiz`、客户端本地评分与复习清单；v1.7 新增 M8 阅读层：课程树 `contractVersion=2` 门禁、章节教材按需拉取、知识点详情移除文章、客户端仅渲染 `figure:` 引用并由 `figures` 映射解析签名 URL；v1.6 新增 M4.2 语音提问：`conversation.input.right` 麦克风、浏览器录音与 16kHz 单声道 PCM16 WAV 编码、Remote `transcribeVoice`、云端 `POST /v1/asr/transcribe` 转发 MiniMax、插入 composer 不自动发送、60s 上限与失败降级；v1.5 新增 M4.1 学习场景即时提问（文字/图片 + 自动上下文 + 选中文本）：Remote `setLearnerContext`、Host 内存 store、`systemPrompt.section` 动态注入、composer 桥接与全局选中检测；v1.4 落地退出并注销（`POST /v1/auth/revoke`）、面板跨挂载状态保留、`npm run smoke` 与 CI，并记录 S9 真实云端联调结果；v1.3 落地指标事件同意与上报（`GET/PUT /v1/events/consent` + 三类白名单事件），并记录 S8 真实云端联调结果；v1.2 落地播放会话契约（`POST /v1/playback/sessions`）、媒体 CORS 要求、引用时间点只信 `getSegment`、hls.js 优先于 `canPlayType` 的选择顺序，并记录 S1 端到端验证结果；v1.1 补齐播放语义、HLS 方案、鉴权分期、水印、TTS、指标、显示字段/相邻知识点、`engines.dsh` 与 §17/§18。
 
 ---
 
@@ -19,6 +19,7 @@
 - M2 核心链路：课程问答 → 引用 → 视频定位。
 - M4.1 学习上下文：播放器/体系页场景采集、全局选中文本、composer 桥接、Host 内存 store、`systemPrompt.section` 动态注入。
 - M8 阅读层：按章节拉取教材正文、渲染 `figure:` 图示、`contractVersion` 兼容门禁；知识点仍作为检索、播放与进度锚点。
+- M10/S1 学员端富媒体课程页：整本已发布课程按原型形态呈现（目录条 → 章 → 节），与云端管理台预览同一套渲染组件（§6.11）。
 
 **不在范围内**
 
@@ -953,6 +954,46 @@ PUT /v1/admin/content/courses/{courseId}/chapters/{chapterId}/quiz
 
 ---
 
+### 6.11 M10/S1 学员端富媒体课程页
+
+云端 M10 把教材升级为 DSL 富文本（编辑部式版式 + 图示 + 片段 + 案例股实盘），渲染组件包落在 monorepo `packages/widgets`（`@trend/widgets`）。S1 补上**学员端载体**：插件右栏新增「课程页」tab，整本已发布课程按原型形态（目录条 → 章 → 节）呈现，与管理台预览**同一套渲染组件**——预览即学员渲染路径。
+
+**载体与入口**
+
+- 新增 tab kind `trend-coach-course`（`COURSE_ID = dsh-plugin-trend-coach-course`），标题「课程页」；`ctx.sidebarRight.openTab(COURSE_KIND, { params: { courseId } })` 打开。
+- 入口在体系页面板（`catalog.ts`）的课程分支：「打开课程页」按钮（`openCoursePage` prop → 客户端 `openCourse`）。tab 参数 `courseId` 由导航参数兜底解析（`useTabInfo`），平台未下发 props 时同样可用。
+
+**数据来源（零新增云端端点）**
+
+只用学员 catalog 通道（云端只放行已发布内容），页面按需并发拉取：
+
+```http
+GET /v1/catalog/courses/{courseId}                       # 课程树 + 节摘要（contractVersion=3）
+GET /v1/catalog/courses/{courseId}/sections/{sectionId}   # 节详情：正文 + 课件 + 图示签名地址 + 案例股
+GET /v1/catalog/courses/{courseId}/quotes?codes=...       # 案例股行情（按 code）
+POST /v1/catalog/sections/{sectionId}/playback            # 按节签发播放会话
+```
+
+- 节详情并发拉取（`Promise.allSettled`），单节失败不阻断整页；`contractVersion < 3` 的课程无节摘要，页面提示「本课程暂无可读的已发布节」。
+- **播放会话必须按节签发**：学员端播放窗须完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`），故课程级宿主提供 `createPlaybackSessionForSection(sectionId, ...)`；共享 `SectionView` 用自己的 `sectionId` 包一层（管理台预览保留无节签发器，两端行为差异收敛在宿主）。
+
+**装配与宿主**
+
+- `src/client/course-assemble.ts`（纯函数，无 React 依赖，可单测）：`assembleCourseView(course, sections)` 把目录 + 节详情装配成共享 `CoursePreviewView`；`collectSignedFigures(sections)` 按 `figureId` 汇总图示签名地址。
+- `src/client/course-page.ts`（视图）：装配结果交给 `@trend/widgets` 的 `CourseView` 渲染；课程级 `CoursePreviewHost` 三件事——`resolveFigureUrl` 查签名地址汇总表、`createPlaybackSessionForSection` 走按节签发、`loadQuotes` 走课程级行情。
+- hero chip 显示**概念名**而非内部概念 id：节载荷新增 `conceptNames`（按 `concept_refs` 顺序），管理台预览与学员端同源。
+
+**样式注入**
+
+包内 JS 不 import CSS（会炸单文件 bundle）：`@trend/widgets/course.styles` 导出 `courseCss` 文本，客户端运行时注入 `<style>`（`ensureCourseStyles()`，先注入 widgets 样式——课程作用域变量覆盖块在 `widgets.css`）。`.wg-course` 作用域内切原型浅色编辑风，与管理台预览一致。
+
+**已知边界**
+
+- TC-ZONGLUN 课程当前为 `draft`，学员 catalog 放行不到内容——发布（审批 + publish）后才有页面内容。
+- 学员端回放作答只本地反馈（不落库 / 不进 validation / 不进 provenance），与管理台预览同规约。
+
+---
+
 ## 7. 关键设计决策（ADR）
 
 | 编号 | 决策 | 理由 | 代价 |
@@ -1086,6 +1127,8 @@ src/
 └── client/
     ├── index.ts             # Client：Remote spec、面板、播放器、引用拦截
     ├── catalog.ts           # 体系页：课程树、章节教材、图示与进度
+    ├── course-page.ts       # M10/S1：学员端富媒体课程页（视图 + 课程级宿主）
+    ├── course-assemble.ts   # M10/S1：纯函数装配（目录 + 节详情 → 共享课程视图模型）
     ├── chapter-article.ts   # 纯函数：figure 引用解析、映射解析、缓存/刷新判定（M8）
     ├── context-model.ts     # 纯函数：位置桶、时间格式、截断、快照
     ├── learner-context.ts   # 客户端全局学习上下文 store
@@ -1139,6 +1182,8 @@ docs/                        # 需求、架构、规范
 
 **发布前检查**：版本号、peer 精确版本、`files` 清单、无凭据、`npm run smoke`（临时 DSH_HOME 新 profile 安装并启用插件）、PRD/架构/规范同步。
 
+**S1 增补（2026-11-06）**：`test/course-page.test.mjs` 覆盖课程装配纯函数——按章归组与节按 position 排序、`summary`/`conceptNames` 透传与缺省不落空串、正文缺失时 `article=null`、案例股事件只收合法三元组、图示签名地址按 `figureId` 汇总（含缺地址为 `null`）。浏览器内渲染（目录条跳转、hero、图示、K 线、片段卡）由用户走查确认；真机播放会话（按节签发）待课程发布后联调。
+
 ---
 
 ## 15. 里程碑映射
@@ -1153,6 +1198,7 @@ docs/                        # 需求、架构、规范
 | M5 | 互动课堂、Web Speech TTS、白板、测验；M5.1 课堂运行时（§5.7、§6.9）与 M5.2 随堂测验（§6.10）已落地 | 课堂运行时与测验可用；白板/小结/课内问答待后续 |
 | M6 | 安装包、灰度、兼容矩阵、合规 | 发布与运维章节 |
 | M8（云端里程碑对齐） | 阅读层：章节教材懒加载、`contractVersion=2` 门禁、`figure:` 图示渲染与签名 URL 刷新、知识点详情去文章 | §1、§4.3、§5.6、§6.5–§6.6、§9–§10、§13–§17 |
+| M10/S1 | 学员端富媒体课程页：右栏课程页 tab、共享 `@trend/widgets` 课程视图、按节签发播放会话、课程样式注入 | §1、§6.11、§13–§17 |
 
 ---
 

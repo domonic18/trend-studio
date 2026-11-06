@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.18）
+# 趋势课程云端服务 · 架构设计（v0.19）
 
-版本：v0.18（2026-11-06；M10 R3 落地：6 节全量 DSL 重写回灌（`dsl_version=2`）完成，§6.6 实现状态与 M10 阶段表回写；rubric 阈值按 6 正 1 负样本标定——通过线 8 不变，grounded 增「行情数值可核」一票否决子项修 0.4.0 漏检；producer 可读管线作业状态（GET 放 producerGuard，重试/取消仍限 operator/admin）；遗留：云端无图示删除端点）
+版本：v0.19（2026-11-06；M10 S1 学员端富媒体课程页落地：零新增云端端点，学员端复用 catalog v3 课程树/节详情/行情/按节播放会话，共享 `@trend/widgets` 课程视图与管理台预览同源；节载荷增 `summary` 与 `conceptNames`（hero chip 显示概念名）；§6.6.7 记录学员端载体契约）
+v0.18（2026-11-06；M10 R3 落地：6 节全量 DSL 重写回灌（`dsl_version=2`）完成，§6.6 实现状态与 M10 阶段表回写；rubric 阈值按 6 正 1 负样本标定——通过线 8 不变，grounded 增「行情数值可核」一票否决子项修 0.4.0 漏检；producer 可读管线作业状态（GET 放 producerGuard，重试/取消仍限 operator/admin）；遗留：云端无图示删除端点）
 v0.17（2026-11-06；M3b 呈现层 R2/R3 代码落地：DSL v2（`:::annotation`/`:::replay`）服务端校验、`bar-replay-decision` 新题型 spec 与断言证明、`GET /v1/admin/content/courses/{courseId}/preview` 课程预览与 `GET /v1/admin/content/courses/{courseId}/quotes` 草稿行情端点、K 线组件（含成交量/M60/事件锚点/回放遮罩）与管理台课程预览页接入 `@trend/widgets`；`producer` 角色可触发 `quotes-sync`。真产一节已跑通（TC-ZONGLUN「阻尼运动」节，2026-11-06，DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft）；rubric 0.4.0 阈值标定与 6 节回灌仍待。）
 v0.16（2026-11-06；M3b 契约阻断项批次 B6：学员端节级学习契约落地——课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包由 `apps/cloud/web/widgets` 外迁至 monorepo `packages/widgets`（`@trend/widgets`，管理台与学员端共用构建产物））
 v0.15（2026-11-06；M3b 契约阻断项批次 B5：新增 `POST /v1/admin/content/courses/{courseId}/quotes-sync` 行情同步端点（operator/admin，同步执行腾讯前复权日 K，按 `(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes` 学员行情端点（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `{pending:true}`；成交量单位手、成交额恒 null 不估算；详见 §6.6.3））
@@ -632,7 +633,7 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 - **管理台先行**：全部能力先在管理台节预览落地，不耦合学员端；渲染组件以独立包边界实现（monorepo `packages/widgets`，即 `@trend/widgets`，不依赖 admin/portal 私有运行时，二者只作宿主）；学员端启用随 `contractVersion=3`。
 - 存量 6 节教材按 DSL **一次性重写回灌**，不做新旧格式双轨（实施顺序 R1→R3 见 §6.6.6）。
-- **实现状态（2026-11-06）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `@trend/widgets` 渲染组件包与管理台节预览接入；**R2 已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）、K 线组件（含成交量/M60/事件锚点/十字线/缩放平移/回放遮罩）与管理台课程预览页（`GET /v1/admin/content/courses/:courseId/preview`）、§6.6.5 课件新题型 `bar-replay-decision` 与断言证明；**学员端节级契约已落地**——M3b B6：`contractVersion=3` 课程树附带节摘要、`GET /v1/catalog/courses/:courseId/sections/:sectionId` 下发正文/课件/图示签名地址/案例股、`POST /v1/catalog/sections/:sectionId/playback` 校验播放窗完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`）；**R3 已落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 渲染与本地作答隐私护栏、**6 节全量 DSL 重写回灌**（TC-ZONGLUN 全 6 节 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass；43 个标注与回放交易日全部落在行情缓存的实际交易日上；6 节主编自评全 approve）。
+- **实现状态（2026-11-06）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `@trend/widgets` 渲染组件包与管理台节预览接入；**R2 已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）、K 线组件（含成交量/M60/事件锚点/十字线/缩放平移/回放遮罩）与管理台课程预览页（`GET /v1/admin/content/courses/:courseId/preview`）、§6.6.5 课件新题型 `bar-replay-decision` 与断言证明；**学员端节级契约已落地**——M3b B6：`contractVersion=3` 课程树附带节摘要、`GET /v1/catalog/courses/:courseId/sections/:sectionId` 下发正文/课件/图示签名地址/案例股、`POST /v1/catalog/sections/:sectionId/playback` 校验播放窗完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`）；**R3 已落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 渲染与本地作答隐私护栏、**6 节全量 DSL 重写回灌**（TC-ZONGLUN 全 6 节 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass；43 个标注与回放交易日全部落在行情缓存的实际交易日上；6 节主编自评全 approve）；**S1 学员端富媒体课程页已落地**（§6.6.7：零新增云端端点，客户端装配共享 `CoursePreviewView`，播放会话按节签发，节载荷增 `summary`/`conceptNames`）。
 
 **R3 回灌暴露并已修的三处生产缺陷**（真实返工，非演练）：① 云端管线作业查询路由限 operator/admin，producer 读不到自己的作业状态 → GET 两条路由改 `producerGuard`（重试/取消仍限 operator/admin）；② `cloud_case_stocks_write` 的 `items` 形状只写在描述里、schema 里是 `additionalProperties: true`，模型反复把 `events` 写成对象或字符串 → 补全嵌套 `items` schema；③ `cloud_quotes_read` 的渲染只回交易日且截断到 8 根，**OHLCV 根本没进模型**，模型遂绕道外部行情源取价（这是「筹码分布 1」首轮 grounded 不过的根因）→ 渲染改为回全部交易日 + 最近 60 根完整 bar，并写明「价格与成交量只能取自缓存、禁止外部取价」。
 
@@ -773,6 +774,26 @@ R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_li
 其中 `figure_unresolved` 与 `clip_invalid` 随 R1 已落地；`case_stock_invalid` 随 R2 已落地；`annotation_unresolved` 与 `replay_unproven` 随 R3 代码已落地，首个试点节真产验证后冻结。
 
 **实施顺序**：**R1 呈现层（已落地，2026-11-05：DSL 校验 + 渲染组件包 + SVG 模板渲染器 + 媒体卡 + figures 写入端点）** → **R2 实盘层（已落地，2026-11-06：案例股端点 + 行情缓存与同步 + K 线组件含标注层输入 + 课件换皮与新题型）** → R3 质量收敛（`:::annotation`/`:::replay`/`bar-replay-decision` 代码已落地，首个试点节真产已跑通；rubric 0.4.0 + 全部 6 节按 DSL 重写回灌，含 2 节 reject，待推进）。
+
+#### 6.6.7 学员端富媒体课程页（S1，2026-11-06）
+
+管理台课程预览页落地后，学员端补上承载：**整本已发布课程按原型形态（目录条 → 章 → 节）呈现**，与预览页同一套渲染组件（`@trend/widgets` 的 `CourseView`），预览即学员渲染路径。
+
+**零新增云端端点**——只用既有学员 catalog 通道（§6.6.3 / M3b B6）：
+
+| 用途 | 端点 |
+|---|---|
+| 课程树 + 节摘要 | `GET /v1/catalog/courses/{courseId}`（`contractVersion=3` 带 `sections[]`） |
+| 节详情 | `GET /v1/catalog/courses/{courseId}/sections/{sectionId}` |
+| 案例股行情 | `GET /v1/catalog/courses/{courseId}/quotes?codes=` |
+| 按节签发播放会话 | `POST /v1/catalog/sections/{sectionId}/playback` |
+
+- **装配在客户端**：目录 + 逐节详情在客户端装配成共享 `CoursePreviewView`（纯函数 `assembleCourseView`），节详情并发拉取、单节失败不阻断整页。服务端不做课程级聚合端点——节详情已是 published-only 只读面，再加聚合端点只会多一份口径。
+- **播放会话按节签发**：学员端播放窗须完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`，§6.6.2），故共享宿主新增可选 `createPlaybackSessionForSection(sectionId, assetId, from, to)`；共享 `SectionView` 用自身 `sectionId` 包一层，管理台预览保留无节签发器——两端差异收敛在宿主，不侵入渲染组件。
+- **节载荷增两字段**：`summary`（节导语，hero lead）与 `conceptNames`（节关联概念名，按 `concept_refs` 顺序）。此前 hero chip 只能显示内部概念 id（`cpt_…`），不适合面向学员；管理台预览同步同字段，两端一致。
+- **图示签名地址**：随节详情下发，客户端按 `figureId` 汇总成课程级映射供 `resolveFigureUrl` 解析（签名 URL 短时效，页面会话内复用，不逐块重取）。
+- **样式**：包内 JS 不 import CSS（单文件 bundle 会炸），`@trend/widgets/course.styles` 导出 `courseCss` 文本，由宿主运行时注入；`.wg-course` 作用域内切原型浅色编辑风。
+- **边界**：课程为 `draft` 时学员 catalog 放行不到内容（发布 = 审批 + publish），页面如实提示「本课程暂无可读的已发布节」。
 
 
 ## 7. 鉴权与会话
