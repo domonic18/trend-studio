@@ -1,7 +1,7 @@
 # 趋势课程生产插件 · 架构设计
 
-版本：v0.6（2026-11-06）
-状态：与云端架构 v0.18 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
+版本：v0.7（2026-11-06）
+状态：与云端架构 v0.23 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.7 P0 收口：新增 `cloud_figure_delete` 工具与云端 `DELETE .../sections/{id}/figures/{figureId}` 端点——图示写入的覆盖语义（同节同 kind 同 caption，`figure_id` 不变）救不回「废图烧掉配额」与「图示本身不该存在」两类情形，生产端此前唯一的纠错手段是覆盖，等于没有回路；补齐后图示纠错与课件纠错（`cloud_widget_delete`）对称。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
 
 ## 1. 定位与边界
 
@@ -55,6 +55,7 @@ test/                      Host 边界/契约测试（T1 起固化）
 | `cloud_quotes_sync` | `POST .../courses/{courseId}/quotes-sync`（M10 新增） | 触发课程级行情回填/日更；producer 可调用；须在含 `:::annotation`/`:::replay` 的正文写入前执行 |
 | `cloud_quotes_read` | `GET .../courses/{courseId}/quotes`（M10 新增） | 读回行情缓存的**实际交易日**；正文标注 `d` 与回放 `atDate` 只能从这里的 tradeDate 里挑（视频里的日期未必落在缓存窗口内） |
 | `cloud_widget_delete` | `DELETE .../sections/{id}/widgets/{widgetId}`（M10 新增） | 课件纠错回路：同节同 code 的回放课件写错了先删旧再写新（生产端无发布权，纠错不靠覆盖抹掉） |
+| `cloud_figure_delete` | `DELETE .../sections/{id}/figures/{figureId}`（P0 新增） | 图示纠错回路：抽错帧、画歪、或废图烧掉配额时删掉重来——图示写入的覆盖语义（同节同 kind 同 caption）救不回这两类情形；删除不可恢复，正文若已 `:::figure` 引用该 id 须一并改写 |
 | `cloud_provenance` | `POST .../provenance` | 溯源上报（工具内部自动随产物调用，也允许显式调用） |
 
 工具共性：入参 zod 白名单；出参只保留 Agent 需要的字段（不透传原始响应）；云端错误映射稳定码（`bad-request/forbidden/conflict/unavailable`）；幂等键由云端承担。

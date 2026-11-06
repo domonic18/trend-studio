@@ -1,7 +1,7 @@
 # 趋势课程生产插件需求
 
-版本：v0.5（2026-11-06）
-状态：与云端需求 v0.17（C13/C14）与云端清单 v0.14 §3.13/§3.14、云端架构 v0.18 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve）。v0.5 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（全部 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass，43 个标注与回放交易日全部落在行情缓存的实际交易日上，6 节主编自评全 approve，含 1 次真实打回→重写回灌）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）；Skill 工艺包同步升至 `section-production` 0.5.0 / `courseware-design` 0.2.0 / `chapter-authoring` 0.5.0 / `diagram-authoring` 0.2.1 / `quality-rubric` 0.4.1（写入顺序改为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」）。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
+版本：v0.6（2026-11-06）
+状态：与云端需求 v0.20（C13/C14）与云端清单 v0.18 §3.13/§3.14、云端架构 v0.23 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.6 P0 收口：新增 `cloud_figure_delete` 工具（图示纠错回路，与 `cloud_widget_delete` 对称）——图示写入的覆盖语义救不回「废图烧掉配额」与「图示本身不该存在」两类情形，此前生产端无任何图示删除通道。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve）。v0.5 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（全部 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass，43 个标注与回放交易日全部落在行情缓存的实际交易日上，6 节主编自评全 approve，含 1 次真实打回→重写回灌）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）；Skill 工艺包同步升至 `section-production` 0.5.0 / `courseware-design` 0.2.0 / `chapter-authoring` 0.5.0 / `diagram-authoring` 0.2.1 / `quality-rubric` 0.4.1（写入顺序改为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」）。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
 
 ## 1. 背景与目标
 
@@ -43,6 +43,7 @@
 - `cloud_quotes_sync(courseId)`：触发课程级行情回填/日更（M10；producer 可调用，须在写含 `:::annotation` / `:::replay` 的正文前执行）。
 - `cloud_quotes_read(courseId, codes)`：读回行情缓存的实际交易日（M10；正文标注 `d` 与回放 `atDate` 只能取自返回的 tradeDate）。
 - `cloud_widget_delete(sectionId, widgetId)`：删除本节一份课件（M10；生产端纠错回路，删旧再写新）。
+- `cloud_figure_delete(sectionId, figureId)`：删除本节一张图示（P0；生产端图示纠错回路——覆盖写救不回废图与废配额，删除不可恢复，正文若已 `:::figure` 引用该 id 须一并改写）。
 - 全部工具：入参出参 Host 边界校验、凭据经 credentials、超时映射、错误稳定码。
 
 ### F2 编排（T2–T3，P0）

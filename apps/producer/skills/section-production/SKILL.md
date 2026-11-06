@@ -1,7 +1,7 @@
 ---
 name: section-production
 description: 逐节生产编排（阶段 3）：研究→读证据→案例股→图示→写作→课件→主编评审的单节工作流与收敛规则
-version: 0.5.0
+version: 0.5.1
 ---
 
 # 逐节生产编排
@@ -56,6 +56,9 @@ version: 0.5.0
    **必须早于正文**——正文的 `:::figure figureId=...` 容器块会校验该 figure 属于本节，
    未落库即 `400 figure_ref_unknown`。每节 diagram ≤2、keyframe ≤6，超配额
    `409 figure_quota_exceeded`，`sec` 不落 source unit `400 sec_not_grounded`。
+   **写错了要删**：同节同 kind 同 caption 重写是覆盖（`figure_id` 不变），但覆盖救不回
+   「废图烧掉配额」与「这张图不该存在」——用 `cloud_figure_delete({sectionId, figureId})`
+   删掉重来（不可恢复；正文若已 `:::figure` 引用该 id，须一并改写正文）。
 7. **回放课件（必须早于正文）**：本节要用的 `bar-replay-decision` 先落库。正文 `:::replay`
    按 `code` 解析本节唯一一份回放课件——课件未落库就写正文必然 `400 replay_widget_unknown`
    （同 code 两份则 `400 replay_widget_ambiguous`）。其余题型（mcq-quiz / checklist /
