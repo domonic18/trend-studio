@@ -24,11 +24,27 @@ function normalizeScalar(value: unknown): unknown {
   if (typeof value !== 'string') return value
   if (value === 'true') return true
   if (value === 'false') return false
+  // 带前导零的数字串是标识符（股票代号 002079）而非数量，强转会丢信息。
+  if (/^-?0\d/.test(value)) return value
   if (/^-?\d+(\.\d+)?$/.test(value)) {
     const num = Number(value)
     return num
   }
   return value
+}
+
+/**
+ * 案例股的 6 位代号常被模型输出成 JSON 数字（300168）——数字化会丢掉前导零（002079 → 2079）。
+ * 这里把数字代号补回 6 位字符串，其余字段原样透传。
+ */
+export function normalizeCaseStocks(value: unknown): unknown {
+  if (!Array.isArray(value)) return value
+  return value.map(stock => {
+    if (typeof stock !== 'object' || stock === null) return stock
+    const code = (stock as Record<string, unknown>).code
+    if (typeof code !== 'number' || !Number.isInteger(code)) return stock
+    return { ...(stock as Record<string, unknown>), code: String(code).padStart(6, '0') }
+  })
 }
 
 export function registerCloudTools(ctx: Context, client: TrendCloudClient, runner: UnderstandingRunner): void {
@@ -702,13 +718,14 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
   ctx.tools.register(defineTool({
     name: 'cloud_widget_write',
     description:
-      '提交交互课件 spec（白名单 8 类组件的 JSON，禁止任何可执行代码）。spec 必须携带教学断言 assertions 与 citations；'
-      + '服务端做断言程序证明：409 assertion_unproven 附 failed 数组是正常校验回灌——按失败断言修订 spec/参数后重试，最多 3 次后转人工。' + ID_NOTE,
+      '提交交互课件 spec（白名单 9 类组件的 JSON，禁止任何可执行代码）。spec 必须携带教学断言 assertions 与 citations；'
+      + '服务端做断言程序证明：409 assertion_unproven 附 failed 数组是正常校验回灌——按失败断言修订 spec/参数后重试，最多 3 次后转人工。'
+      + 'M10 v2 新增 `bar-replay-decision`（逐根回放判断），其 specVersion=2，其余组件 specVersion=1。' + ID_NOTE,
     parameters: {
       sectionId: { type: 'string', required: true, description: '节 ID' },
-      type: { type: 'string', required: true, description: 'kline-annotator|pattern-quiz|step-reveal|calc-trainer|mcq-quiz|flashcards|checklist|timeline-explorer' },
-      specVersion: { type: 'number', required: true, description: '当前固定为 1' },
-      spec: { type: 'object', required: true, additionalProperties: true, description: '组件 spec（逐类型 schema 见架构 §6.5.5 v1）' },
+      type: { type: 'string', required: true, description: 'kline-annotator|pattern-quiz|step-reveal|calc-trainer|mcq-quiz|flashcards|checklist|timeline-explorer|bar-replay-decision' },
+      specVersion: { type: 'number', required: true, description: '1（v1 组件）或 2（bar-replay-decision）' },
+      spec: { type: 'object', required: true, additionalProperties: true, description: '组件 spec（逐类型 schema 见架构 §6.5.5 v1 / §6.6.5 v2）' },
       assertions: { type: 'object', required: true, additionalProperties: true, description: '教学断言对象（必带断言按组件强制）' },
       citations: { type: 'array', required: true, description: 'source unit ID 数组（≥1）', items: { type: 'string' } },
     },
@@ -740,6 +757,43 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
         }, exec.signal)
       } catch (error) {
         throw toToolError(error, '提交课件 spec')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cloud_widget_delete',
+    description:
+      '删除本节的一份课件（生产端纠错回路）：同节同 code 的回放课件写错了，先删旧再写新。'
+      + '只能删本节的课件，删别的节会 404/403；删后不可恢复，需要重写。' + ID_NOTE,
+    parameters: {
+      sectionId: { type: 'string', required: true, description: '节 ID' },
+      widgetId: { type: 'string', required: true, description: '课件 ID（cloud_widget_write / cloud_section_preview 返回值）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          deleted: { type: 'boolean', required: true },
+          widgetId: { type: 'string', required: true },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `课件已删除: ${value.widgetId}`,
+      }],
+    },
+    async execute(args, exec) {
+      const { sectionId, widgetId } = args as Record<string, unknown>
+      try {
+        await client.deleteWidget({
+          sectionId: String(sectionId),
+          widgetId: String(widgetId),
+        }, exec.signal)
+        return { deleted: true, widgetId: String(widgetId) }
+      } catch (error) {
+        throw toToolError(error, '删除课件')
       }
     },
   }))
@@ -854,9 +908,10 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
     async execute(args, exec) {
       const { sectionId, stocks } = args as { sectionId: string; stocks: unknown }
       try {
+        // 案例股字段全是字符串，不做数值归一化——股票代号 "002079"/"300168" 会被误转成数字。
         return await client.writeSectionCaseStocks({
           sectionId: String(sectionId),
-          stocks: deepNormalizeTypes(stocks),
+          stocks: normalizeCaseStocks(stocks),
         }, exec.signal)
       } catch (error) {
         throw toToolError(error, '写入案例股清单')
@@ -940,6 +995,122 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
         }
       } catch (error) {
         throw toToolError(error, '执行理解阶段')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cloud_quotes_sync',
+    description:
+      '触发课程行情同步：按本节案例股清单从行情源拉取日 K 并写入课程级缓存。'
+      + '行情同步必须在正文写入前完成——正文里的 `:::annotation` 所引交易日 `d` 必须是缓存中的交易日，'
+      + '否则 `cloud_section_article_write` 会返回 400 annotation_date_not_trading_day。可重跑，幂等。' + ID_NOTE,
+    parameters: {
+      courseId: { type: 'string', required: true, description: '课程 ID' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          job: { type: 'object', required: true, additionalProperties: true },
+          upserted: { type: 'number', required: true },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `行情同步已触发: ${value.upserted} 条 bars 入库 (${(value.job as { status: string }).status})`,
+      }],
+    },
+    async execute(args, exec) {
+      const { courseId } = args as { courseId: string }
+      try {
+        return await client.syncQuotes({ courseId }, exec.signal)
+      } catch (error) {
+        throw toToolError(error, '触发行情同步')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cloud_quotes_read',
+    description:
+      '读课程案例股行情缓存（草稿可见）：返回每只案例股的日K（tradeDate/open/high/low/close/volume）。'
+      + '正文 `:::annotation` 的 `d` 与 `bar-replay-decision` 的 `atDate` 只能取自这里返回的 tradeDate——'
+      + '视频里出现的日期未必落在缓存窗口内，硬填会返回 400 annotation_date_not_trading_day。'
+      + 'pending=true 表示该课程还没有行情缓存，先跑 cloud_quotes_sync。' + ID_NOTE,
+    parameters: {
+      courseId: { type: 'string', required: true, description: '课程 ID' },
+      codes: {
+        type: 'array',
+        description: '6 位数字代号数组（最多 10 只）；省略则返回课程全部案例股',
+        items: { type: 'string' },
+      },
+      from: { type: 'string', description: '起始交易日 YYYY-MM-DD' },
+      to: { type: 'string', description: '截止交易日 YYYY-MM-DD' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          pending: { type: 'boolean', required: true },
+          quotes: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', required: true },
+                tradeDate: { type: 'string', required: true },
+                open: { type: 'number', required: true },
+                high: { type: 'number', required: true },
+                low: { type: 'number', required: true },
+                close: { type: 'number', required: true },
+                volume: { type: 'number', required: true },
+                amount: { oneOf: [{ type: 'number' }, { type: 'null' }], required: true },
+                source: { type: 'string', required: true },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => {
+        const lines = [UNTRUSTED_NOTICE]
+        if (value.pending) {
+          lines.push('行情缓存为空：先跑 cloud_quotes_sync 再写正文。')
+          return [{ type: 'text', text: lines.join('\n') }]
+        }
+        const byCode = new Map<string, string[]>()
+        for (const quote of value.quotes) {
+          const dates = byCode.get(quote.code) ?? []
+          dates.push(quote.tradeDate)
+          byCode.set(quote.code, dates)
+        }
+        lines.push(`行情缓存 ${value.quotes.length} 根 bar，覆盖 ${byCode.size} 只:`)
+        for (const [code, dates] of byCode) {
+          lines.push(`- ${code}: ${String(dates.length)} 个交易日，${dates[0]} ~ ${dates[dates.length - 1]}（可选 d：${dates.slice(-8).join(', ')}）`)
+        }
+        return [{ type: 'text', text: lines.join('\n') }]
+      },
+    },
+    async execute(args, exec) {
+      const { courseId, codes, from, to } = args as {
+        courseId: string
+        codes?: string[]
+        from?: string
+        to?: string
+      }
+      try {
+        return await client.readQuotes({
+          courseId,
+          ...(codes === undefined ? {} : { codes }),
+          ...(from === undefined ? {} : { from }),
+          ...(to === undefined ? {} : { to }),
+        }, exec.signal)
+      } catch (error) {
+        throw toToolError(error, '读取案例股行情缓存')
       }
     },
   }))

@@ -41,6 +41,8 @@ version: 0.4.0
 | `:::warn title="..."` | 讲师明确反对的做法 | 正文 1–500 字 |
 | `:::figure figureId=fig_xxx caption="..." unitId=su_xxx` | 配图（SVG 模板图或 keyframe） | 无正文；figureId 来自 `cloud_figure_write` 返回 |
 | `:::clip assetId=asset_xxx from=150 to=186 caption="..." unitId=su_xxx` | 教学时刻片段 | 无正文；窗 ≤60s、每节 ≤3、须完整落在 unit 内 |
+| `:::annotation unitId=su_xxx assetId=asset_xxx code=sz000713 kind=structure atMs=123456` | 老师在 K 线上某日的标注 | body JSON：`{"d":"YYYY-MM-DD","label":"…","quote":"…","glossary":["术语"]}`；`d` 必须是行情交易日；每节 ≤12 |
+| `:::replay code=sz000713 caption="逐根回放…"` | 内嵌逐根回放判断组件 | 无正文；`code` 对应本节唯一的 `bar-replay-decision` 课件；每节 ≤2 |
 
 - 个股内联锚：`[[stock:sz000713|丰乐种业]]`（代号带 `sz/sh/bj` 前缀），须在本节案例股清单内。
 - 证据内联锚：`[[unit:su_0123456789abcdef|均线方向证据]]`（label ≤50 字，可留空），
@@ -48,6 +50,18 @@ version: 0.4.0
 - 属性白名单：写了未声明的属性即 `400`；结构化 body 必须是合法 JSON。
 - 选型纪律：**一段文字能说清的不要塞卡片**；容器块服务于「要记住的结论」，不是排版装饰。每节容器块总数控制在个位数。
 - 语法与逐组件 schema 的唯一契约源是云端架构 §6.6.1；写完在管理台节预览页回看渲染结果。
+
+## 老师标注（`:::annotation`）与逐根回放（`:::replay`）
+
+- **标注**用于「老师在 K 线某日画了一条线/圈了一个形态/说了一句点评」的场景；
+  把老师的原话放进 `quote`，把点评日期放进 `d`，把涉及术语放进 `glossary`。
+  `kind` 三选一：`structure`（结构/形态）、`invalidation`（失效/止损）、`rhythm`（节奏/时机）。
+  `atMs` 是原片中的说话时刻（毫秒），用于学员端「跳回原片」。
+- **回放**用于「让学员逐根看行情并做判断」的交互场景；正文只放入口，真正的判断题与
+  reveal 文本写在 `bar-replay-decision` 课件里。`:::replay` 的 `code` 必须与本节某个
+  `bar-replay-decision` 课件的 `code` 唯一对应，否则 `400 replay_widget_unknown/ambiguous`。
+- 两种 v2 块都必须在 `cloud_quotes_sync` 之后写入：标注的交易日 `d` 需要行情缓存验证，
+  回放需要行情 bars 作为渲染输入。
 
 ## Grounded 规则（三层校验第 2 层的通过条件）
 

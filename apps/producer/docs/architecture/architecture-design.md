@@ -1,7 +1,7 @@
 # 趋势课程生产插件 · 架构设计
 
-版本：v0.4（2026-11-05）
-状态：与云端架构 v0.10 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
+版本：v0.5（2026-11-06）
+状态：与云端架构 v0.17 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve），rubric 0.4.0 阈值标定与 6 节回灌仍待。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
 
 ## 1. 定位与边界
 
@@ -52,6 +52,9 @@ test/                      Host 边界/契约测试（T1 起固化）
 | `cloud_transcript` | `GET .../media-assets/{id}/transcript`（既有） | 转写原文；评审引用窗口核对、片段窗定位 |
 | `cloud_figure_write` | `POST .../sections/{id}/figures`（M10 新增） | 节级图示：`keyframe`（按秒选帧）/ `diagram`（SVG 模板 spec `{template, params}`，模板白名单见云端 §6.6.4）；补齐原全链路无图示写入端点的断链 |
 | `cloud_case_stocks_write` | `PUT .../sections/{id}/case-stocks`（M10 新增） | 节级案例股清单（名称/交易所·代号/案例窗口/事件锚点+unitId/用途注记）；云端复检（日期落窗、unitId 回溯） |
+| `cloud_quotes_sync` | `POST .../courses/{courseId}/quotes-sync`（M10 新增） | 触发课程级行情回填/日更；producer 可调用；须在含 `:::annotation`/`:::replay` 的正文写入前执行 |
+| `cloud_quotes_read` | `GET .../courses/{courseId}/quotes`（M10 新增） | 读回行情缓存的**实际交易日**；正文标注 `d` 与回放 `atDate` 只能从这里的 tradeDate 里挑（视频里的日期未必落在缓存窗口内） |
+| `cloud_widget_delete` | `DELETE .../sections/{id}/widgets/{widgetId}`（M10 新增） | 课件纠错回路：同节同 code 的回放课件写错了先删旧再写新（生产端无发布权，纠错不靠覆盖抹掉） |
 | `cloud_provenance` | `POST .../provenance` | 溯源上报（工具内部自动随产物调用，也允许显式调用） |
 
 工具共性：入参 zod 白名单；出参只保留 Agent 需要的字段（不透传原始响应）；云端错误映射稳定码（`bad-request/forbidden/conflict/unavailable`）；幂等键由云端承担。
@@ -63,7 +66,7 @@ test/                      Host 边界/契约测试（T1 起固化）
 - **预算**：每阶段设步数/工具调用上限；子代理每节设重写上限（默认 3）；超限写人工待办（工具输出中返回明确原因）。
 - **并行**：逐节生产用 subagent spawn 并行，每节隔离上下文；主编评审批量汇总后执行。
 - **呈现层生产（M10；产出内容与验收口径见需求 F7）**：逐节子代理一次产出 DSL 教材正文 + 媒体锚点声明 + 课件 spec，经三层校验入 draft；图示与案例股分别经 `cloud_figure_write` / `cloud_case_stocks_write` 落库，校验归云端。案例股依赖画面理解（转写口播通常零股票名），须待 source units 的 `visual` 可用后再提取。存量 6 节按 DSL 一次性重写回灌，不做新旧双轨。
-- **老师标注与逐根回放生产（M10 v2 草案，R3 试点）**：候选标注由写作子代理从 source units 抽取，随教材正文 `:::annotation` 落 draft、门禁②人工确认；回放 widget `bar-replay-decision` spec 起草（判断点只落 widget spec 不在 DSL 标注 body 重复；`atDate` 严格递增且早于标注 `d`、均须交易日；`bars` 不入 spec）；正文 `:::replay` 按 code 内嵌不带 widgetId。契约见云端架构 v0.10 §6.6.1/§6.6.5（ADR C33/C34），无新增工具。
+- **老师标注与逐根回放生产（M10 v2 批次，2026-11-05 采纳，代码/工艺已落地 2026-11-06）**：候选标注由写作子代理从 source units 抽取，随教材正文 `:::annotation` 落 draft、门禁②人工确认；回放 widget `bar-replay-decision` spec 起草（判断点只落 widget spec 不在 DSL 标注 body 重复；`atDate` 严格递增且早于标注 `d`、均须交易日；`bars` 不入 spec）；正文 `:::replay` 按 code 内嵌不带 widgetId。契约见云端架构 v0.17 §6.6.1/§6.6.5（ADR C33/C34），无新增工具；新增 `cloud_quotes_sync` 工具支撑行情回填前置。
 
 ## 5. 模型接入
 
@@ -79,10 +82,10 @@ M10 扩充（随 R1–R3 迭代）：
 
 | 包 | M10 变化 |
 |---|---|
-| `chapter-authoring` | 内置 DSL 写作规范与用例（7 容器块 + 1 个股内联锚的选用时机、媒体锚点声明规则）；v2 批次增 `:::annotation`/`:::replay` 写法与用例（标注三分类、`d` 用交易日期、判断点归 widget spec） |
+| `chapter-authoring` | 内置 DSL 写作规范与用例（7 容器块 + 1 个股内联锚的选用时机、媒体锚点声明规则）；v2 批次 `:::annotation`/`:::replay` 写法与用例已落地（标注三分类、`d` 用交易日期、判断点归 widget spec、写作顺序约束） |
 | `diagram-authoring` | 从 Mermaid 产出改为 SVG 模板参数化 spec（模板白名单 4 类，云端 §6.6.4；标注文字必须逐字核对术语与数字） |
-| `courseware-design` | 新增 `image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 三类题型工艺（spec 草案随试点冻结）；既有 8 类 spec/断言口径不变 |
-| `quality-rubric` | 0.3.0 → 0.4.0：`grounded` 扩义到媒体、个股与老师标注/判断点锚点（配图帧、片段窗、事件锚点、标注 quote/atMs、回放 revealText 均为可回溯引用） |
+| `courseware-design` | 新增 `image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 三类题型工艺；`bar-replay-decision` spec/断言口径已落地，其余待试点冻结 |
+| `quality-rubric` | 0.3.0 → 0.4.0：`grounded` 扩义到媒体、个股与老师标注/判断点锚点（配图帧、片段窗、事件锚点、标注 quote/atMs、回放 revealText 均为可回溯引用）；阈值待首个试点节标定 |
 
 ## 7. 安全与隐私
 
@@ -92,4 +95,4 @@ M10 扩充（随 R1–R3 迭代）：
 
 ## 8. 里程碑与开放问题
 
-里程碑 T1–T5 见 AGENTS.md（T5：单节按富文本 DSL 重写含配图卡/片段卡/案例股锚点通过门禁②，媒体锚点全部可回溯；R3 试点增老师标注与逐根回放 v2 批次冻结）；接口级待冻结项统一维护在云端清单 §8（新题型断言词表含回放三条、rubric 0.4.0 阈值、行情源容灾等），本仓库不另立清单。
+里程碑 T1–T5 见 AGENTS.md（T5：单节按富文本 DSL 重写含配图卡/片段卡/案例股锚点通过门禁②，媒体锚点全部可回溯；v2 批次代码已落地，首个试点节真产运行后冻结）；接口级待冻结项统一维护在云端清单 §8（新题型断言词表含回放三条、rubric 0.4.0 阈值、行情源容灾等），本仓库不另立清单。

@@ -5,7 +5,7 @@ import {
   normalizeKeyframes,
   planUnderstandingChunks,
 } from '../lib/host/orchestrator.js'
-import { deepNormalizeTypes } from '../lib/host/tools.js'
+import { deepNormalizeTypes, normalizeCaseStocks } from '../lib/host/tools.js'
 
 function seg(idx, startSec, endSec, text = 'x') {
   return { idx, startMs: startSec * 1000, endMs: endSec * 1000, text }
@@ -82,4 +82,22 @@ test('deepNormalizeTypes：松散 object 内字符串化的数字/布尔归位',
     },
     model: 'MiniMax-M3.1-Flash',
   })
+})
+
+test('deepNormalizeTypes：带前导零的数字串是标识符，不做数值归一化', () => {
+  const out = deepNormalizeTypes({ code: '002079', close: '13.56', flag: 'false' })
+  assert.deepEqual(out, { code: '002079', close: 13.56, flag: false })
+})
+
+test('normalizeCaseStocks：数字代号补回 6 位字符串', () => {
+  const out = normalizeCaseStocks([
+    { name: '苏州固锝', exchange: 'SZSE', code: 2079 },
+    { name: '万达信息', exchange: 'SZSE', code: 300168 },
+    { name: '字符串代号', exchange: 'SZSE', code: '002770' },
+  ])
+  assert.deepEqual(out, [
+    { name: '苏州固锝', exchange: 'SZSE', code: '002079' },
+    { name: '万达信息', exchange: 'SZSE', code: '300168' },
+    { name: '字符串代号', exchange: 'SZSE', code: '002770' },
+  ])
 })

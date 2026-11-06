@@ -48,7 +48,7 @@
 
 | 阶段 | 交付 | 出口 |
 |---|---|---|
-| T1 | 工具集与云契约联调：frames / source-units 写读 / provenance / pipeline 状态查询；Host 边界校验。**代码已落地**（cloud_* 16 工具 + zod 契约 + 凭据 + 稳定码映射，2026-11-06）；契约测试过、真机联调待总论卷素材 | "总论"卷阶段 0–1 跑通（云端 ingest 就绪前提下） |
+| T1 | 工具集与云契约联调：frames / source-units 写读 / provenance / pipeline 状态查询；Host 边界校验。**代码已落地**（cloud_* 20 工具 + zod 契约 + 凭据 + 稳定码映射，2026-11-06）；契约测试过、真机联调待总论卷素材 | "总论"卷阶段 0–1 跑通（云端 ingest 就绪前提下） |
 | T2 | 课程综合编排：架构师流程、概念归一、目录校验、门禁①审批。**前置已就绪**（2026-11-04）：理解模型定版 MiniMax-M3.1-Flash（问题 24 关闭）、`cloud_transcript` 工具、分块规划/断点差集编排器、`transcript-understanding` 工艺包 | 骨架+概念图谱+术语表经人工批准落库 |
 | T3 | 逐节生产：子代理并行、三层校验、图示 spec（keyframe 选帧 / SVG 模板 diagram）、课件 spec 起草与断言随附 | 单章（节教材+图示+课件）全量通过校验入 draft |
 | T4 | 主编评审（门禁②）+ 溯源全覆盖 + P0 端到端 | 与云端 M9 出口对齐：总论卷发布可检索，rubric 盲评占优 M8 |
@@ -62,8 +62,10 @@ pnpm --filter dsh-plugin-trend-producer install
 pnpm --filter dsh-plugin-trend-producer typecheck
 pnpm --filter dsh-plugin-trend-producer test
 # 产出可独立安装的 tarball（staging 内嵌 @trend/contracts）：apps/producer/*.tgz
-pnpm --filter dsh-plugin-trend-producer pack
+# 必须 run pack：`pnpm pack` 是 pnpm 内建命令，会绕过打包脚本、产出缺 @trend/contracts 的坏包
+pnpm --filter dsh-plugin-trend-producer run pack
 # 安装到试验 profile：dsh plugin --profile <name> add -w <tarball 路径>
+# profile 已用同路径 file: 依赖时 pnpm 不复查 tarball 内容，须 --force 重装（会修 lockfile 里的 integrity）
 ```
 
 ## 目录

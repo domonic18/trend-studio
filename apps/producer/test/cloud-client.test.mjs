@@ -13,7 +13,7 @@ function fakeAuth(handlers) {
       const match = handlers.find(handler => handler.match(path, init))
       if (match === undefined) throw new Error(`unexpected request: ${init.method} ${path}`)
       const { status, payload } = typeof match.reply === 'function' ? match.reply(path, init) : match.reply
-      const body = JSON.stringify(payload)
+      const body = payload === undefined ? '' : JSON.stringify(payload)
       return new Response(status === 204 ? null : body, {
         status,
         headers: { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) },
@@ -86,6 +86,36 @@ test('课件断言证明失败：409 附业务码与 failed 数组，工具错�
   const toolError = toToolError(error, '提交课件 spec')
   assert.match(toolError.message, /\[conflict\]/)
   assert.match(toolError.message, /noBreakBelow/)
+})
+
+test('deleteWidget：DELETE 课件端点，204 无正文不当作解析失败', async () => {
+  const auth = fakeAuth([
+    {
+      match: (path, init) =>
+        path === '/v1/admin/content/sections/sec_0123456789abcdef/widgets/wgt_0123456789abcdef' && init.method === 'DELETE',
+      reply: { status: 204, payload: undefined },
+    },
+  ])
+  await new TrendCloudClient(auth).deleteWidget({
+    sectionId: 'sec_0123456789abcdef',
+    widgetId: 'wgt_0123456789abcdef',
+  })
+  assert.equal(auth.calls[0].method, 'DELETE')
+})
+
+test('deleteWidget：课件不在该节 → 404 映射稳定码', async () => {
+  const auth = fakeAuth([
+    {
+      match: path => path.includes('/widgets/'),
+      reply: { status: 404, payload: { error: { code: 'widget_not_found', message: 'widget not found in section' } } },
+    },
+  ])
+  const error = await new TrendCloudClient(auth)
+    .deleteWidget({ sectionId: 'sec_0123456789abcdef', widgetId: 'wgt_0123456789abcdef' })
+    .then(() => null, error => error)
+  assert.ok(error instanceof UpstreamError)
+  assert.equal(error.status, 404)
+  assert.match(toToolError(error, '删除课件').message, /\[unavailable\]/)
 })
 
 test('非 2xx 无错误体：状态码映射稳定码', async () => {
@@ -322,6 +352,7 @@ test('sectionPreview：GET 节预览，回读教材正文与课件 spec', async 
               status: 'draft',
               version: 1,
               createdAt: '2026-11-05T00:00:00.000Z',
+              citations: ['su_0123456789abcdef'],
             },
           ],
           figures: [],

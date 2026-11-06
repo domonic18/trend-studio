@@ -26,22 +26,29 @@ version: 0.4.0
 4. **案例股**：`cloud_case_stocks_write` 落本节案例股清单。**必须早于正文**——正文的
    `[[stock:sz000713|丰乐种业]]` 内联锚会校验该股在本节案例股清单内，未落库即
    `400 stock_not_in_list`。
-5. **图示**：按 `diagram-authoring` 选型——diagram 路产出 `{template, params}`，keyframe 路从
+5. **行情同步**：`cloud_quotes_sync({courseId})` 触发课程级行情缓存。**必须早于正文**——
+   正文 `:::annotation` 的交易日 `d` 必须是该股行情缓存的实际交易日，否则
+   `400 annotation_date_not_trading_day`。可重跑，幂等。
+   同步完用 `cloud_quotes_read({courseId, codes})` 读回缓存，**`d` / `atDate` 只能从返回的
+   tradeDate 里挑**——视频里出现的日期未必落在缓存窗口内（缓存只回溯最近约 320 根日K）。
+6. **图示**：按 `diagram-authoring` 选型——diagram 路产出 `{template, params}`，keyframe 路从
    units 的 keyframes.sec 选讲解帧——逐个 `cloud_figure_write({sectionId, ...})` 落库拿 `figureId`。
    **必须早于正文**——正文的 `:::figure figureId=...` 容器块会校验该 figure 属于本节，
    未落库即 `400 figure_ref_unknown`。每节 diagram ≤2、keyframe ≤6，超配额
    `409 figure_quota_exceeded`，`sec` 不落 source unit `400 sec_not_grounded`。
-6. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
+7. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
    `cloud_section_article_write({sectionId, markdown, citations})`；400/409 按错误修正重写。
    正文里的段落级证据用 `[[unit:su_xxx|label]]` 内联锚（见下节「证据锚点」）。
-7. **课件**：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
+8. **课件**：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
    409 assertion_unproven 按 failed 断言修正（≤3 次）。
-8. **主编评审**：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
+   同节同 code 的回放课件**只能有一份**（正文 `:::replay` 按 code 解析）——写错了先
+   `cloud_widget_delete({sectionId, widgetId})` 删旧再写新，不要留两份让回放入口歧义。
+9. **主编评审**：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
    再按 `quality-rubric` 打分——**不靠记忆评分**；verdict=reject 按修改指令重写对应部分
    （≤3 轮），仍不过转人工待办并如实汇报。
-9. **溯源**：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
-   评审结果另报一条 `content.rubric_review`（`summary` 带 scores/verdict/failed/comments，
-   `targetId` 为 sectionId）。
+10. **溯源**：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
+    评审结果另报一条 `content.rubric_review`（`summary` 带 scores/verdict/failed/comments，
+    `targetId` 为 sectionId）。
 
 ## 证据锚点（`[[unit:su_xxx|label]]`）
 

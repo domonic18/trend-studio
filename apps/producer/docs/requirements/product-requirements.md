@@ -1,7 +1,7 @@
 # 趋势课程生产插件需求
 
-版本：v0.3（2026-11-05）
-状态：与云端需求 v0.9（C13/C14）对齐；接口契约以云端清单 v0.8 §3.13/§3.14 与云端架构 v0.10 §6.5/§6.6 为准，本文只定义插件侧职责与验收。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
+版本：v0.4（2026-11-06）
+状态：与云端需求 v0.16（C13/C14）与云端清单 v0.14 §3.13/§3.14、云端架构 v0.17 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve），rubric 0.4.0 阈值标定与 6 节回灌仍待。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
 
 ## 1. 背景与目标
 
@@ -40,6 +40,9 @@
 - `cloud_pipeline_status(assetId)`：ingest/转写/帧轨道就绪状态查询。
 - `cloud_figure_write(sectionId, figure)`：节级图示写入（keyframe 选帧 / SVG 模板 diagram spec），支撑配图卡（M10）。
 - `cloud_case_stocks_write(sectionId, stocks)`：节级案例股清单写入（名称/代号/案例窗口/事件锚点），云端复检后落库（M10）。
+- `cloud_quotes_sync(courseId)`：触发课程级行情回填/日更（M10；producer 可调用，须在写含 `:::annotation` / `:::replay` 的正文前执行）。
+- `cloud_quotes_read(courseId, codes)`：读回行情缓存的实际交易日（M10；正文标注 `d` 与回放 `atDate` 只能取自返回的 tradeDate）。
+- `cloud_widget_delete(sectionId, widgetId)`：删除本节一份课件（M10；生产端纠错回路，删旧再写新）。
 - 全部工具：入参出参 Host 边界校验、凭据经 credentials、超时映射、错误稳定码。
 
 ### F2 编排（T2–T3，P0）
@@ -69,7 +72,7 @@
 - 片段：声明教学时刻（概念源头、判读现场等）的片段窗写入片段卡，窗须完整落在对应 source unit 内。
 - 案例股：产出节级案例股清单（名称/交易所·代号/案例窗口/事件锚点+unitId），经 `cloud_case_stocks_write` 落库，代号须经行情缓存核对存在。
 - 图示 spec：`diagram-authoring` 从 Mermaid 产出改为 SVG 模板参数化 spec（模板白名单见云端架构 §6.6.4），标注文字必须正确。
-- 老师标注与逐根回放（DSL/课件 v2 草案批次，2026-11-05 采纳）：产出候选标注（结构点/证伪点/节奏点 + 原话 + `d` 交易日期 + 术语）随教材正文以 `:::annotation` 落 draft、经门禁②人工确认；产出 `bar-replay-decision` widget spec（判断点只落 widget spec，不在 DSL 标注 body 重复声明）；正文以 `:::replay` 按 code 内嵌（不带 widgetId）。
+- 老师标注与逐根回放（DSL/课件 v2 批次，2026-11-05 采纳，**代码/工艺已落地 2026-11-06**）：产出候选标注（结构点/证伪点/节奏点 + 原话 + `d` 交易日期 + 术语）随教材正文以 `:::annotation` 落 draft、经门禁②人工确认；产出 `bar-replay-decision` widget spec（判断点只落 widget spec，不在 DSL 标注 body 重复声明）；正文以 `:::replay` 按 code 内嵌（不带 widgetId）。写作顺序约束：案例股 → `cloud_quotes_sync` → 图示/课件 → 含 v2 DSL 块的正文。契约见云端架构 v0.17 §6.6.1/§6.6.5。
 
 > 配图与案例股的落库工具 `cloud_figure_write` / `cloud_case_stocks_write` 已接线，T5 可全量落库。
 
@@ -96,9 +99,9 @@
 - T2：骨架+概念图谱+术语表经门禁①批准落库。
 - T3：单章（节教材+图示+课件）全量通过三层校验入 draft。
 - T4：门禁②通过；总论卷可发布可检索；rubric 盲评占优 M8 产物；溯源账本完整。
-- T5：单节按富文本 DSL 重写（含配图卡/片段卡/案例股锚点）通过门禁②（rubric 0.4.0）；媒体锚点与事件锚点全部可回溯。v2 批次（R3 试点）：老师标注与逐根回放（`:::annotation`/`:::replay`/`bar-replay-decision`）随首个试点节冻结，回放断言证明通过。
+- T5：单节按富文本 DSL 重写（含配图卡/片段卡/案例股锚点）通过门禁②（rubric 0.4.0）；媒体锚点与事件锚点全部可回溯。v2 批次（`:::annotation`/`:::replay`/`bar-replay-decision`）代码/工艺已落地，首个试点节真产运行后冻结。
 
 ## 6. 关联文档
 
-- 云端需求 v0.9（C13/C14）/ 清单 v0.8 §3.13（M9 语料生产）与 §3.14（M10 呈现层）/ 架构 v0.10 §6.5（M9 生产）与 §6.6（M10 呈现层）——路径见 AGENTS.md
+- 云端需求 v0.16（C13/C14）/ 清单 v0.14 §3.13（M9 语料生产）与 §3.14（M10 呈现层）/ 架构 v0.17 §6.5（M9 生产）与 §6.6（M10 呈现层）——路径见 AGENTS.md
 - [架构设计](./architecture-design.md)、[项目规范](./conventions/project-conventions.md)、[Skill 包格式](../../skills/README.md)

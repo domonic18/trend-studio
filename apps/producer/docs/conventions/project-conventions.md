@@ -2,7 +2,7 @@
 
 ## API 与契约
 
-- 接口契约人读真相源在 cloud 应用：对接清单 v0.8 §3.13（M9 语料生产）与 §3.14（M10 呈现层） + 需求 v0.9 C13/C14；机器真相在 `packages/contracts`（@trend/contracts zod 单一真相）。字段变更先改云端文档与契约包（同批），再改本仓库实现；`src/host/contracts.ts` 仅是绑定 InputError/InvalidResponseError 的适配壳。
+- 接口契约人读真相源在 cloud 应用：对接清单 v0.14 §3.13（M9 语料生产）与 §3.14（M10 呈现层） + 需求 v0.16 C13/C14；机器真相在 `packages/contracts`（@trend/contracts zod 单一真相）。字段变更先改云端文档与契约包（同批），再改本仓库实现；`src/host/contracts.ts` 仅是绑定 InputError/InvalidResponseError 的适配壳。
 - 工具入参一律 zod 白名单校验；云端响应在 Host 边界校验，结构不合法报错不静默。
 - 错误映射稳定码：`bad-request / forbidden / conflict / unavailable / internal`；`409 assertion_unproven` 等业务回灌按校验失败路径处理。
 

@@ -22,9 +22,12 @@ version: 0.1.0
 | 术语记忆卡 | `flashcards` | front/back + conceptRef |
 | 操作清单自检 | `checklist` | 条目 + conceptRef |
 | 概念依赖浏览 | `timeline-explorer` | 节点概念 + 依赖边 |
+| **逐根回放判断（M10 v2）** | **`bar-replay-decision`** | **真实行情 bars + 老师决策点** |
 
 - 一个节 1–3 个课件；优先覆盖本节核心概念的可练习性，装饰性课件不做。
 - `generated` 文生图与课件无关（那是图示域）；课件图表数据**一律用确定性生成器**声明。
+- `bar-replay-decision` 是唯一使用真实行情的组件，**不需要生成器**；行情由云端按 `code` 从
+  课程缓存自动取得。
 
 ## kline-annotator 撰写要点（证明器视角）
 
@@ -53,6 +56,27 @@ version: 0.1.0
 
 - 必带断言：edgeRefsExist+acyclicPrerequisite；节点/边引用的概念 ∈ concepts；
   prerequisite 子图不得成环（依赖序按 glossary 的 prerequisite 列）。
+
+## bar-replay-decision（M10 v2）
+
+- 用途：让学员逐根看真实行情，在关键 bar 出现时做判断（买/卖/观望/止损等）。
+- `specVersion=2`；`spec` 形状（架构 §6.6.5）：
+  - `code`: 案例股代码（`sz|sh|bj`+6 位），必须在本节案例股清单内。
+  - `window`: `{from, to}` 案例窗口（YYYY-MM-DD），必须落在该股行情缓存实际范围内。
+  - `overlays`: 可选，默认 `["M60"]`；目前只支持 `M60`。
+  - `annotations`: 老师标注点数组，每条 `{unitId, atMs, kind, d, label}`，用于回放进度条刻度；
+    `kind`∈`structure|invalidation|rhythm`，`d` 必须是交易日。
+  - `decisions`: 判断点数组，每条 `{atDate, question, options[{label}], correct, revealText, unitId, atMs}`；
+    `options` 2–4 个，`correct` 为正确选项索引；`atDate` 递增（revealMonotonic）。
+  - `citations`: ≥1 条支撑本课件教学的 source unit。
+- **必带断言**：`decisionPointsGrounded`、`revealMonotonic`、`annotationTermsGrounded`、`answerUnique`。
+  - `decisionPointsGrounded`: 每个 `decisions[].atDate` 都是交易日且在 window 内；`unitId/atMs` 可回溯。
+  - `revealMonotonic`: `decisions` 按 `atDate` 严格递增，不能倒流。
+  - `annotationTermsGrounded`: 标注里出现的术语必须 ∈ 本课程 concepts（含别名）。
+  - `answerUnique`: 每道题有且只有一个正确答案。
+- 写入顺序：必须先 `cloud_case_stocks_write` 落案例股 → `cloud_quotes_sync` 同步行情 →
+  再写 `bar-replay-decision`；否则 window 或交易日校验会失败。
+- 与正文配合：正文用 `:::replay code=... caption="..."` 引入该回放；`code` 在本节必须唯一。
 
 ## citations 与溯源
 

@@ -18,6 +18,10 @@ import {
   parseOutput,
   pipelineStatusInput,
   pipelineStatusOutput,
+  quotesSyncInput,
+  quotesSyncOutput,
+  quotesReadInput,
+  quotesListOutput,
   transcriptOutput,
   provenanceEntry,
   provenanceOutput,
@@ -35,6 +39,7 @@ import {
   sourceUnitsReadOutput,
   sourceUnitsWriteInput,
   sourceUnitsWriteOutput,
+  widgetDeleteInput,
   widgetWriteInput,
   widgetWriteOutput,
   type CaseStocksWriteOutput,
@@ -45,6 +50,8 @@ import {
   type FramesOutput,
   type PipelineStatusOutput,
   type ProvenanceOutput,
+  type QuotesSyncOutput,
+  type QuotesListOutput,
   type SectionArticleWriteOutput,
   type SectionPreviewOutput,
   type SectionsListOutput,
@@ -97,6 +104,28 @@ export class TrendCloudClient {
 
   private async put(path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
     return this.send(path, 'PUT', body, signal)
+  }
+
+  /** DELETE 端点返回 204 无正文：单独一条不解析 body 的通道。 */
+  private async sendVoid(path: string, signal?: AbortSignal): Promise<void> {
+    const response = await this.auth.request(path, { method: 'DELETE', headers: {} }, signal)
+    if (!response.ok) {
+      const raw = await response.text()
+      let payload: unknown = null
+      try {
+        payload = raw === '' ? null : JSON.parse(raw)
+      } catch {
+        payload = null
+      }
+      const { code, message, detail } = errorPayload(payload)
+      throw new UpstreamError(
+        response.status,
+        code,
+        detail,
+        message === '' ? `云端请求失败（HTTP ${response.status}）` : message,
+      )
+    }
+    await response.body?.cancel()
   }
 
   async pipelineStatus(input: unknown, signal?: AbortSignal): Promise<PipelineStatusOutput> {
@@ -223,6 +252,15 @@ export class TrendCloudClient {
     return parseOutput(widgetWriteOutput, payload, 'widgetWrite')
   }
 
+  /** 课件删除：生产端纠错回路——同节同 code 的回放课件写错了，删旧再写新。 */
+  async deleteWidget(input: unknown, signal?: AbortSignal): Promise<void> {
+    const body = parseInput(widgetDeleteInput, input, 'widgetDelete')
+    await this.sendVoid(
+      `${CONTENT_BASE}/sections/${body.sectionId}/widgets/${body.widgetId}`,
+      signal,
+    )
+  }
+
   /** 节预览读回：主编评审（门禁②）要看到教材正文、课件 spec 与图示，不能只写不读。 */
   async sectionPreview(input: unknown, signal?: AbortSignal): Promise<SectionPreviewOutput> {
     const query = parseInput(sectionPreviewInput, input, 'sectionPreview')
@@ -240,6 +278,27 @@ export class TrendCloudClient {
     const body = parseInput(caseStocksWriteInput, input, 'caseStocksWrite')
     const payload = await this.put(`${CONTENT_BASE}/sections/${body.sectionId}/case-stocks`, { stocks: body.stocks }, signal)
     return parseOutput(caseStocksWriteOutput, payload, 'caseStocksWrite')
+  }
+
+  /** M10 v2：触发课程行情同步（案例股清单驱动，幂等 upsert）。必须在正文写入前执行。 */
+  async syncQuotes(input: unknown, signal?: AbortSignal): Promise<QuotesSyncOutput> {
+    const query = parseInput(quotesSyncInput, input, 'quotesSync')
+    const payload = await this.post(`${CONTENT_BASE}/courses/${encodeURIComponent(query.courseId)}/quotes-sync`, {}, signal)
+    return parseOutput(quotesSyncOutput, payload, 'quotesSync')
+  }
+
+  /** M10 v2：读案例股行情缓存（草稿可见）。正文标注的交易日只能取自这里返回的 tradeDate。 */
+  async readQuotes(input: unknown, signal?: AbortSignal): Promise<QuotesListOutput> {
+    const query = parseInput(quotesReadInput, input, 'quotesRead')
+    const params = new URLSearchParams()
+    if (query.codes !== undefined) params.set('codes', query.codes.join(','))
+    if (query.from !== undefined) params.set('from', query.from)
+    if (query.to !== undefined) params.set('to', query.to)
+    const payload = await this.get(
+      `${CONTENT_BASE}/courses/${encodeURIComponent(query.courseId)}/quotes?${params.toString()}`,
+      signal,
+    )
+    return parseOutput(quotesListOutput, payload, 'quotesRead')
   }
 
   async reportProvenance(input: unknown, signal?: AbortSignal): Promise<ProvenanceOutput> {
