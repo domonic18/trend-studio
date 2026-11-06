@@ -200,6 +200,14 @@
   color: var(--wg-text-muted);
 }
 
+.wg-case-period {
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  border: 1px solid var(--wg-line);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
 .wg-case-events {
   list-style: none;
   padding: 0;

@@ -1,6 +1,6 @@
 /**
  * K 线画布图表类：纯 canvas，无第三方库。
- * 支持滚轮缩放（光标锚定）、拖拽平移、十字线读数、M60 收盘均线、
+ * 支持滚轮缩放（光标锚定）、拖拽平移、十字线读数、多周期收盘均线（M5/M10/M20/M30/M60）、
  * 成交量副图、事件锚点三角标记与点选定位、双击复位。
  * 涨跌色按国内习惯红涨绿跌。
  */
@@ -48,12 +48,35 @@ export interface KlineChartOptions {
 const MIN_VISIBLE = 20
 const MAX_VISIBLE = 240
 const DEFAULT_VISIBLE = 60
-const MA_PERIOD = 60
 const PAD_LEFT = 8
 const PAD_RIGHT = 56
 const PAD_TOP = 8
 const PAD_BOTTOM = 20
 const VOLUME_RATIO = 0.3
+
+/** 均线位：讲师口径常用 M5/M10/M20/M30/M60，颜色按周期固定。 */
+export const MA_PERIODS = [5, 10, 20, 30, 60] as const
+export const DEFAULT_OVERLAYS = ['M5', 'M10', 'M60']
+
+const MA_COLORS: Record<number, string> = {
+  5: '#8c8c8c',
+  10: '#1677ff',
+  20: '#13c2c2',
+  30: '#eb2f96',
+  60: '#fa8c16',
+}
+
+/** 解析 overlays 里的均线位（`M5` → 5）；非 M 开头或非正整数的忽略。 */
+export function parseOverlayPeriods(overlays: string[]): number[] {
+  const periods: number[] = []
+  for (const overlay of overlays) {
+    const matched = /^M(\d+)$/.exec(overlay.trim())
+    if (matched === null) continue
+    const period = Number(matched[1])
+    if (Number.isInteger(period) && period > 0) periods.push(period)
+  }
+  return [...new Set(periods)].sort((a, b) => a - b)
+}
 
 interface PriceScale {
   min: number
@@ -89,7 +112,7 @@ export class KlineChart {
     this.canvas = canvas
     this.mode = options.mode ?? 'chart'
     this.revealCount = options.revealCount ?? 0
-    this.overlays = options.overlays ?? ['M60']
+    this.overlays = options.overlays ?? DEFAULT_OVERLAYS
     this.windowStart = options.windowStart
     this.windowEnd = options.windowEnd
     this.volumeHeightRatio = options.volumeHeightRatio ?? VOLUME_RATIO
@@ -303,6 +326,33 @@ export class KlineChart {
     return { min: paddedMin, max: paddedMax, y }
   }
 
+  /** 右上角均线图例：色块 + 周期名，与画线颜色一一对应。 */
+  private drawOverlayLegend(ctx: CanvasRenderingContext2D, colors: KlineColors): void {
+    const periods = parseOverlayPeriods(this.overlays)
+    if (periods.length === 0) return
+    ctx.font = '11px system-ui, sans-serif'
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'top'
+    const right = PAD_LEFT + this.plotWidth() - 6
+    let x = right
+    const items = periods.map(period => {
+      const label = `M${period}`
+      const width = ctx.measureText(label).width + 12
+      x -= width
+      return { period, label, x }
+    })
+    ctx.fillStyle = colors.surface
+    ctx.globalAlpha = 0.75
+    ctx.fillRect(x - 4, PAD_TOP, right - x + 10, 16)
+    ctx.globalAlpha = 1
+    for (const item of items) {
+      ctx.fillStyle = MA_COLORS[item.period] ?? colors.ma
+      ctx.fillRect(item.x, PAD_TOP + 6, 8, 2)
+      ctx.fillStyle = colors.text
+      ctx.fillText(item.label, item.x + 12, PAD_TOP + 1)
+    }
+  }
+
   private render(): void {
     const colors = this.resolveColors()
     const ratio = window.devicePixelRatio || 1
@@ -405,21 +455,21 @@ export class KlineChart {
       }
     }
 
-    // M60 收盘均线
-    if (this.overlays.includes('M60')) {
-      ctx.strokeStyle = colors.ma
-      ctx.lineWidth = 1.4
+    // 收盘均线（多周期）
+    for (const period of parseOverlayPeriods(this.overlays)) {
+      ctx.strokeStyle = MA_COLORS[period] ?? colors.ma
+      ctx.lineWidth = period >= 60 ? 1.6 : 1.2
       ctx.beginPath()
       let started = false
       for (let offset = 0; offset < visibleBars.length; offset += 1) {
         const index = this.start + offset
-        if (index < MA_PERIOD - 1) continue
+        if (index < period - 1) continue
         let sum = 0
-        for (let back = 0; back < MA_PERIOD; back += 1) {
+        for (let back = 0; back < period; back += 1) {
           sum += this.bars[index - back]?.close ?? 0
         }
         const cx = PAD_LEFT + perBar * (offset + 0.5)
-        const py = yPrice(sum / MA_PERIOD)
+        const py = yPrice(sum / period)
         if (started) ctx.lineTo(cx, py)
         else {
           ctx.moveTo(cx, py)
@@ -429,6 +479,8 @@ export class KlineChart {
       ctx.stroke()
       ctx.lineWidth = 1
     }
+
+    this.drawOverlayLegend(ctx, colors)
 
     // 日期刻度
     ctx.fillStyle = colors.text

@@ -17,11 +17,13 @@ export function bareStockCode(code: string): string {
  * bars 不带 code 时（宿主未提供标的信息）不过滤，保持兼容。
  */
 export function selectReplayBars(bars: KlineBar[], code: string, window: ReplayWindow): KlineBar[] {
+  return selectByCode(bars, code).filter(bar => bar.tradeDate >= window.from && bar.tradeDate <= window.to)
+}
+
+/** 只按标的取 bar（不做窗口过滤）：周线聚合要先在完整序列上合，再按窗口取交集。 */
+export function selectByCode(bars: KlineBar[], code: string): KlineBar[] {
   const bare = bareStockCode(code)
   const coded = bars.filter(bar => typeof bar.code === 'string' && bar.code !== '')
   const scoped = bare === '' ? bars : coded.length > 0 ? coded.filter(bar => bar.code === bare) : bars
-  return scoped
-    .filter(bar => bar.tradeDate >= window.from && bar.tradeDate <= window.to)
-    .slice()
-    .sort((a, b) => (a.tradeDate > b.tradeDate ? 1 : -1))
+  return scoped.slice().sort((a, b) => (a.tradeDate > b.tradeDate ? 1 : -1))
 }

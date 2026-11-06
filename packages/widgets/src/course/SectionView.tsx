@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArticleRenderer } from '../article.js'
 import { Kline } from '../kline/Kline.js'
+import {
+  PERIOD_LABEL,
+  filterPeriodWindow,
+  findPeriodIndex,
+  toPeriodBars,
+  type KlinePeriod,
+  type PeriodBar,
+} from '../kline/period.js'
 import { LearnerWidgetPlayer } from '../learner/WidgetPlayer.js'
 import type { CaseStockView, CoursePreviewHost, CourseQuote, KlineBar, SectionView as SectionViewModel } from './types.js'
 import { exchangeLabel, toBars } from './types.js'
+
+/** 事件锚点落到周期 bar 上：周线时日内日期归到该周收盘 bar。 */
+function periodEventDate(bars: PeriodBar[], tradeDate: string): string {
+  const index = findPeriodIndex(bars, tradeDate)
+  return bars[index]?.tradeDate ?? tradeDate
+}
 
 export function SectionView({ section, host }: { section: SectionViewModel; host: CoursePreviewHost }) {
   const { section: meta, article, widgets, figures, caseStocks } = section
@@ -147,22 +161,30 @@ function CaseStockDetail({
   bars: KlineBar[]
   pending: boolean
 }) {
+  const period: KlinePeriod = stock.period ?? '1d'
+  const periodBars = useMemo(() => {
+    const all = toPeriodBars(bars, period)
+    return period === '1w'
+      ? filterPeriodWindow(all, { from: stock.windowStart, to: stock.windowEnd })
+      : all.filter(bar => bar.tradeDate >= stock.windowStart && bar.tradeDate <= stock.windowEnd)
+  }, [bars, period, stock.windowStart, stock.windowEnd])
   const events = useMemo(
     () =>
       stock.events.map(
         (e): import('../kline/kline-chart.js').KlineEvent => ({
-          date: e.date,
+          date: periodEventDate(periodBars, e.date),
           label: e.label,
           unitId: e.unitId,
         }),
       ),
-    [stock.events],
+    [stock.events, periodBars],
   )
   return (
     <div className="wg-case-detail">
       <div className="wg-case-meta">
         <span className="wg-case-name">{stock.name}</span>
         <span className="wg-case-exchange">{exchangeLabel(stock.exchange)}</span>
+        <span className="wg-case-period">{PERIOD_LABEL[period]}</span>
         <span className="wg-case-window">
           {stock.windowStart} ~ {stock.windowEnd}
         </span>
@@ -171,7 +193,7 @@ function CaseStockDetail({
         <div className="wg-case-pending">等待行情同步…</div>
       ) : null}
       <Kline
-        bars={bars}
+        bars={periodBars}
         events={events}
         windowStart={stock.windowStart}
         windowEnd={stock.windowEnd}

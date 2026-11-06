@@ -1,12 +1,21 @@
 import * as React from 'react'
 import { Kline, type KlineBar, type KlineEvent } from '../kline/Kline.js'
+import { DEFAULT_OVERLAYS } from '../kline/kline-chart.js'
+import {
+  PERIOD_LABEL,
+  filterPeriodWindow,
+  findPeriodIndex,
+  toPeriodBars,
+  type KlinePeriod,
+  type PeriodBar,
+} from '../kline/period.js'
 import type {
   BarReplayAnnotationKind as AnnotationKind,
   BarReplayDecisionSpec as ReplayDecision,
   BarReplaySpec,
 } from '../spec-types.js'
 import { formatPosition } from './format.js'
-import { selectReplayBars } from './select-bars.js'
+import { selectByCode } from './select-bars.js'
 
 export interface BarReplayDecisionProps {
   code: string
@@ -34,6 +43,7 @@ function parseSpec(raw: unknown): BarReplaySpec | null {
   return {
     code: s.code,
     window: s.window,
+    period: s.period,
     overlays: s.overlays,
     annotations: s.annotations,
     decisions: s.decisions,
@@ -41,23 +51,43 @@ function parseSpec(raw: unknown): BarReplaySpec | null {
   }
 }
 
-function useWindowedBars(bars: KlineBar[], code: string, window: { from: string; to: string }): KlineBar[] {
-  return React.useMemo(() => selectReplayBars(bars, code, window), [bars, code, window.from, window.to])
+/** 取回放用的周期 bar：先按标的取全序列，再按周期聚合，最后按案例窗口取交集。 */
+function usePeriodBars(
+  bars: KlineBar[],
+  code: string,
+  period: KlinePeriod,
+  window: { from: string; to: string },
+): PeriodBar[] {
+  return React.useMemo(() => {
+    const daily = selectByCode(bars, code)
+    const periodBars = toPeriodBars(daily, period)
+    return period === '1w'
+      ? filterPeriodWindow(periodBars, window)
+      : periodBars.filter(bar => bar.tradeDate >= window.from && bar.tradeDate <= window.to)
+  }, [bars, code, period, window.from, window.to])
 }
 
-function decisionIndex(decisions: ReplayDecision[], bars: KlineBar[]): Map<number, ReplayDecision> {
+function decisionIndex(decisions: ReplayDecision[], bars: PeriodBar[]): Map<number, ReplayDecision> {
   const map = new Map<number, ReplayDecision>()
   for (const d of decisions) {
-    const idx = bars.findIndex((b) => b.tradeDate === d.atDate)
+    const idx = findPeriodIndex(bars, d.atDate)
     if (idx >= 0) map.set(idx, d)
   }
   return map
 }
 
+/** 标注锚点落到周期 bar 上：周线时日内日期归到该周收盘 bar。 */
+function periodEventDate(bars: PeriodBar[], tradeDate: string): string {
+  const index = findPeriodIndex(bars, tradeDate)
+  const bar = index >= 0 ? bars[index] : undefined
+  return bar?.tradeDate ?? tradeDate
+}
+
 export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDecisionProps): React.ReactElement {
   const parsed = parseSpec(spec)
   const timeWindow = parsed?.window ?? { from: '', to: '' }
-  const windowedBars = useWindowedBars(bars, code, timeWindow)
+  const period: KlinePeriod = parsed?.period ?? '1d'
+  const windowedBars = usePeriodBars(bars, code, period, timeWindow)
   const decisions = parsed?.decisions ?? []
   const annotations = parsed?.annotations ?? []
   const decisionMap = React.useMemo(() => decisionIndex(decisions, windowedBars), [decisions, windowedBars])
@@ -114,12 +144,12 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
         .filter((a) => filterKinds.has(a.kind))
         .map(
           (a): KlineEvent => ({
-            date: a.d,
+            date: periodEventDate(windowedBars, a.d),
             label: `${KIND_ICON[a.kind]} ${KIND_LABEL[a.kind]}：${a.label}`,
             unitId: a.unitId,
           }),
         ),
-    [annotations, filterKinds],
+    [annotations, filterKinds, windowedBars],
   )
 
   const handleStep = (): void => {
@@ -203,7 +233,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
   if (total === 0) {
     return (
       <div className="wg-replay wg-replay-empty">
-        案例窗口内无行情数据（{code}）
+        案例窗口内无{PERIOD_LABEL[period]}行情数据（{code}）
       </div>
     )
   }
@@ -211,7 +241,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
   return (
     <div className="wg-replay">
       <header className="wg-replay-head">
-        <span className="wg-replay-title">逐根回放：{code}</span>
+        <span className="wg-replay-title">逐根回放：{code} · {PERIOD_LABEL[period]}</span>
         <span className="wg-replay-progress-text">{Math.round(progress * 100)}%</span>
       </header>
 
@@ -222,7 +252,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
           mode="replay"
           revealCount={revealed}
           height={280}
-          overlays={parsed.overlays}
+          overlays={parsed.overlays ?? DEFAULT_OVERLAYS}
         />
         {current && (
           <div className="wg-replay-decision-card">

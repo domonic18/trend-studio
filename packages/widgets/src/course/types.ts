@@ -74,6 +74,8 @@ export interface CaseStockView {
   name: string
   exchange: 'SZSE' | 'SSE' | 'BSE'
   code: string
+  /** K 线周期：课程讲日线画日线，讲周线画周线。缺省日线。 */
+  period?: KlinePeriod
   windowStart: string
   windowEnd: string
   events: CaseStockEvent[]
@@ -101,6 +103,7 @@ export interface CourseQuote {
 }
 
 import type { ArticleHost } from '../types.js'
+import type { KlinePeriod } from '../kline/period.js'
 
 export interface CoursePreviewHost extends ArticleHost {
   loadQuotes: (codes: string[]) => Promise<{ pending: boolean; quotes: CourseQuote[] }>

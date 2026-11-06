@@ -88,6 +88,8 @@ export interface BarReplayDecisionSpec {
 export interface BarReplaySpec {
   code: string
   window: { from: string; to: string }
+  /** K 线周期：课件讲日线画日线，讲周线画周线（周线由日线聚合）。缺省日线。 */
+  period?: '1d' | '1w'
   overlays?: string[]
   annotations?: BarReplayAnnotation[]
   decisions: BarReplayDecisionSpec[]
