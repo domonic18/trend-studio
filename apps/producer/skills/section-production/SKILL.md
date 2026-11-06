@@ -1,7 +1,7 @@
 ---
 name: section-production
 description: 逐节生产编排（阶段 3）：研究→读证据→案例股→图示→写作→课件→主编评审的单节工作流与收敛规则
-version: 0.5.1
+version: 0.6.0
 ---
 
 # 逐节生产编排
@@ -122,6 +122,15 @@ version: 0.5.1
 - 主编自评：<各维分数>，verdict=<approve|reject>
 - 遗留：<人工待办或无；发布待 operator/admin 审批>
 ```
+
+## 正文版本升级回灌（呈现层扩容时）
+
+DSL 升版（如 v2→v3）后存量节要跟上，走**增量回灌**：保留既有内容，只补新块。
+
+- **既有内容逐字保留**：`[[unit:]]` 锚、`[[stock:]]` 锚，以及 `:::board`/`:::bignum`/`:::cmp`/`:::timeline`/`:::clip`/`:::figure`/`:::annotation`/`:::replay` 各块的属性与 body JSON 一个字符都不许改；既有 `:::warn` **只加 `variant`，body 不动**。
+- **新增块的事实先读证据**：新增块涉及的事实先经 `cloud_source_units_read` 读回转写原文与视觉描述，不得自造。
+- **写回后逐块核对**：把回灌前的锚集、figureId、annotation 属性、replay code 与回灌后逐项比对，一个都不能少——升级只许增不许改。
+- 回灌同样经 `cloud_section_article_write` 写入，溯源报 `content.section_edit`。
 
 ## 纪律
 
