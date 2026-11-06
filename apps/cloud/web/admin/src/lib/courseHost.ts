@@ -1,5 +1,6 @@
 import { createAssetPlaybackSession, getAdminCourseQuotes, getFigureCandidateBlob } from '../api'
 import type { CoursePreviewHost, FigureMeta, PlaybackSessionTicket } from '@trend/widgets/course'
+import type { KlinePeriod } from '@trend/widgets/kline'
 
 /** 为课程预览页构造宿主适配：figure blob URL 生命周期、片段会话、行情加载。 */
 export function createCourseHost(
@@ -26,8 +27,8 @@ export function createCourseHost(
       return session as PlaybackSessionTicket
     },
 
-    loadQuotes: async (codes: string[]) => {
-      return getAdminCourseQuotes(courseId, codes)
+    loadQuotes: async (codes: string[], period: KlinePeriod) => {
+      return getAdminCourseQuotes(courseId, codes, period)
     },
 
     revokeFigureUrls: () => {

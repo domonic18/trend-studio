@@ -5,7 +5,12 @@
  *   {"code":0,"data":{"sz000001":{"qfqday":[["2026-10-22","11.410","11.300","11.420","11.260","1297649.000"]]}}}
  * 行字段序为 [日期, 开, 收, 高, 低, 成交量(手)]——开收在前、高低在后，解析不可颠倒。
  * 该接口不含成交额，故下游 amount 为 null（源不可得，不估算）。
+ *
+ * 周线（qfqweek）同样可得，且单次回溯上限同为约 640 根——按周计即约 12 年，
+ * 远深于日线的约 2.6 年，故「讲周线就存周线」在数据深度上成立。
  */
+
+import { type KlinePeriod } from '@trend/contracts'
 
 /** 复权口径标识：写库 source 列与接口返回共用。 */
 export const TENCENT_QUOTE_SOURCE = 'tencent-qfq'
@@ -21,8 +26,8 @@ export interface QuoteBar {
   volume: number
 }
 
-/** 拉取器：入参为带市场前缀的 symbol（sz000001 / sh600519 / bj430047），出参为前复权日K序列。 */
-export type QuoteFetcher = (symbol: string) => Promise<QuoteBar[]>
+/** 拉取器：入参为带市场前缀的 symbol（sz000001 / sh600519 / bj430047），出参为前复权序列。 */
+export type QuoteFetcher = (symbol: string, period: KlinePeriod) => Promise<QuoteBar[]>
 
 export type QuotesErrorKind = 'unavailable' | 'invalid_response' | 'rate_limited'
 
@@ -66,11 +71,15 @@ function parseRow(row: unknown): QuoteBar | null {
 }
 
 /**
- * 解析腾讯日K 报文为 bar 序列（纯函数，便于用真实报文夹具单测）。
- * `qfqday` 为前复权日线；个别标的回落到不复权 `day`，两者字段序一致。
+ * 解析腾讯 K 线报文为 bar 序列（纯函数，便于用真实报文夹具单测）。
+ * 日线取 `qfqday`、周线取 `qfqweek`；个别标的回落到不复权 `day`/`week`，两者字段序一致。
  */
-export function parseTencentDailyKline(text: string, symbol: string): QuoteBar[] {
-  let payload: { code?: unknown; data?: Record<string, { qfqday?: unknown; day?: unknown }> }
+export function parseTencentKline(
+  text: string,
+  symbol: string,
+  period: KlinePeriod = '1d',
+): QuoteBar[] {
+  let payload: { code?: unknown; data?: Record<string, { qfqday?: unknown; qfqweek?: unknown; day?: unknown; week?: unknown }> }
   try {
     payload = JSON.parse(text) as typeof payload
   } catch {
@@ -78,7 +87,10 @@ export function parseTencentDailyKline(text: string, symbol: string): QuoteBar[]
   }
   if (payload.code !== 0) throw new QuotesError('invalid_response')
   const entry = payload.data?.[symbol]
-  const rows = entry?.qfqday ?? entry?.day
+  const rows =
+    period === '1w'
+      ? (entry?.qfqweek ?? entry?.week)
+      : (entry?.qfqday ?? entry?.day)
   if (!Array.isArray(rows)) throw new QuotesError('invalid_response')
   const bars: QuoteBar[] = []
   for (const row of rows) {
@@ -88,22 +100,31 @@ export function parseTencentDailyKline(text: string, symbol: string): QuoteBar[]
   return bars
 }
 
+/** 日线解析（契约别名，保持既有调用点不变）。 */
+export function parseTencentDailyKline(text: string, symbol: string): QuoteBar[] {
+  return parseTencentKline(text, symbol, '1d')
+}
+
 export interface TencentQuoteFetcherOptions {
   baseUrl?: string
   timeoutMs?: number
   /** 失败重试次数（总尝试次数 = retries + 1）。 */
   retries?: number
-  /** 回溯 bar 数（腾讯上限约 640）。 */
+  /** 回溯 bar 数（腾讯日K/周K 上限均约 640）。 */
   count?: number
 }
+
+/** 腾讯 K 线报文的周期参数：日线 day、周线 week。 */
+const TENCENT_PERIOD_PARAM: Record<KlinePeriod, string> = { '1d': 'day', '1w': 'week' }
 
 export function createTencentQuoteFetcher(options: TencentQuoteFetcherOptions = {}): QuoteFetcher {
   const baseUrl = (options.baseUrl ?? 'https://web.ifzq.gtimg.cn').replace(/\/+$/, '')
   const timeoutMs = options.timeoutMs ?? 10_000
   const retries = options.retries ?? 2
-  const count = options.count ?? 320
-  return async (symbol: string): Promise<QuoteBar[]> => {
-    const url = `${baseUrl}/appstock/app/fqkline/get?param=${symbol},day,,,${count},qfq`
+  const count = options.count ?? 640
+  return async (symbol: string, period: KlinePeriod = '1d'): Promise<QuoteBar[]> => {
+    const param = `${symbol},${TENCENT_PERIOD_PARAM[period]},,,${count},qfq`
+    const url = `${baseUrl}/appstock/app/fqkline/get?param=${param}`
     let lastError: unknown
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
@@ -113,7 +134,7 @@ export function createTencentQuoteFetcher(options: TencentQuoteFetcherOptions = 
         })
         if (response.status === 429) throw new QuotesError('rate_limited')
         if (!response.ok) throw new QuotesError('unavailable')
-        return parseTencentDailyKline(await response.text(), symbol)
+        return parseTencentKline(await response.text(), symbol, period)
       } catch (error) {
         lastError = error
       }

@@ -47,6 +47,7 @@ import type {
   UserRole,
   UserStatus,
 } from './types'
+import type { KlinePeriod } from '@trend/widgets/kline'
 
 const TOKEN_KEY = 'trend-coach-admin-token'
 
@@ -262,13 +263,15 @@ export async function getCoursePreview(courseId: string): Promise<CoursePreview>
   )
 }
 
-/** 管理台课程行情：草稿案例股可见。 */
+/** 管理台课程行情：草稿案例股可见；按周期取（1d 日线 / 1w 周线）。 */
 export async function getAdminCourseQuotes(
   courseId: string,
   codes: string[],
+  period: KlinePeriod,
 ): Promise<{ pending: boolean; quotes: CourseQuote[] }> {
   const params = new URLSearchParams()
   params.set('codes', codes.join(','))
+  params.set('period', period)
   return request<{ pending: boolean; quotes: CourseQuote[] }>(
     'GET',
     `/v1/admin/content/courses/${encodeURIComponent(courseId)}/quotes?${params.toString()}`,

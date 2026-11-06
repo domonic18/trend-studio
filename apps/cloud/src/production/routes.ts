@@ -8,7 +8,7 @@ import { badRequest, tooManyRequests } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, intField, jsonObjectField, optionalStringField, stringField } from '../http/validation.js'
 import { signKeyframeUrl } from '../media/keyframe-sign.js'
-import { readQuotes, parseQuoteCodes, parseQuoteDate } from '../quotes/read.js'
+import { readQuotes, parseQuoteCodes, parseQuoteDate, parseQuotePeriod } from '../quotes/read.js'
 import type { PlaybackService } from '../playback/service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { parseSectionId, parseSourceUnitId, ProductionService } from './service.js'
@@ -204,10 +204,12 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     const codes = queryText(query, 'codes')
     const from = queryText(query, 'from')
     const to = queryText(query, 'to')
+    const period = queryText(query, 'period')
     return reply.send(await service.getCourseQuotes(courseId, {
       ...(codes === undefined ? {} : { codes: parseQuoteCodes(codes) }),
       ...(from === undefined ? {} : { from: parseQuoteDate(from, 'from') }),
       ...(to === undefined ? {} : { to: parseQuoteDate(to, 'to') }),
+      ...(period === undefined ? {} : { period: parseQuotePeriod(period) }),
     }))
   })
 

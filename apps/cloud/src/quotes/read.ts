@@ -1,6 +1,7 @@
 /** 课程行情读取（M10 v2）：管理台预览可见草稿案例股，学员端仅已发布课程。 */
 
 import type { QuotesItem } from '@trend/contracts/catalog'
+import { KLINE_PERIODS, type KlinePeriod } from '@trend/contracts'
 import type { Pool } from 'pg'
 import { HttpError } from '../errors.js'
 
@@ -8,8 +9,12 @@ const CODE = /^[0-9]{6}$/
 const TRADE_DATE = /^\d{4}-\d{2}-\d{2}$/
 /** 单次请求最多 10 只（课程案例股约 10 只）。 */
 export const MAX_QUOTE_CODES = 10
-/** 每只最多返回的 bar 数（同步回溯 320 根，同量级）。 */
-export const MAX_QUOTE_BARS_PER_CODE = 320
+/**
+ * 每只最多返回的 bar 数：与腾讯同步深度同量级。
+ * 日线接口回溯上限约 641 根、周线约 640 根，故统一按 640 截断。
+ * 周线一根即一周，640 根 ≈ 12 年，周线 M60 与 2015/2019/2021 的历史窗口都算得出来。
+ */
+export const MAX_QUOTE_BARS_PER_CODE = 640
 
 export type CatalogQuote = QuotesItem
 
@@ -22,6 +27,8 @@ export interface QuoteQuery {
   codes?: string[]
   from?: string
   to?: string
+  /** 取哪一周期的行情；缺省日线。 */
+  period?: KlinePeriod
 }
 
 export interface ReadQuotesOptions {
@@ -41,6 +48,15 @@ export function parseQuoteCodes(raw: string): string[] {
 export function parseQuoteDate(raw: string, field: string): string {
   if (!TRADE_DATE.test(raw)) throw new HttpError(400, `${field} must be YYYY-MM-DD`)
   return raw
+}
+
+/** 周期参数校验：只认 1d / 1w，缺省日线。 */
+export function parseQuotePeriod(raw: string | undefined): KlinePeriod {
+  if (raw === undefined) return '1d'
+  if (!(KLINE_PERIODS as readonly string[]).includes(raw)) {
+    throw new HttpError(400, `period must be one of ${KLINE_PERIODS.join('/')}`)
+  }
+  return raw as KlinePeriod
 }
 
 interface QuoteRow {
@@ -72,6 +88,7 @@ export async function readQuotes(
   query: QuoteQuery,
   options: ReadQuotesOptions,
 ): Promise<CatalogQuotes> {
+  const period: KlinePeriod = query.period ?? '1d'
   const courseFilter = options.publishedOnly ? "AND status = 'published'" : "AND status <> 'archived'"
   const { rows: courseRows } = await pool.query<{ course_id: string }>(
     `SELECT course_id FROM courses WHERE course_id = $1 ${courseFilter}`,
@@ -97,12 +114,13 @@ export async function readQuotes(
                 row_number() OVER (PARTITION BY code ORDER BY trade_date DESC) AS rn
            FROM course_stock_quotes
           WHERE code = ANY($1::text[])
+            AND period = $5
             AND ($2::date IS NULL OR trade_date >= $2::date)
             AND ($3::date IS NULL OR trade_date <= $3::date)
        ) ranked
       WHERE rn <= $4
       ORDER BY code, trade_date`,
-    [wanted, query.from ?? null, query.to ?? null, MAX_QUOTE_BARS_PER_CODE],
+    [wanted, query.from ?? null, query.to ?? null, MAX_QUOTE_BARS_PER_CODE, period],
   )
   const quotes: CatalogQuote[] = rows.map(row => ({
     code: row.code,
@@ -114,11 +132,12 @@ export async function readQuotes(
     volume: toNumber(row.volume),
     amount: row.amount === null ? null : toNumber(row.amount),
     source: row.source,
+    period,
   }))
   if (quotes.length > 0) return { pending: false, quotes }
   const { rows: anyRows } = await pool.query<{ code: string }>(
-    'SELECT code FROM course_stock_quotes WHERE code = ANY($1::text[]) LIMIT 1',
-    [wanted],
+    'SELECT code FROM course_stock_quotes WHERE code = ANY($1::text[]) AND period = $2 LIMIT 1',
+    [wanted, period],
   )
   return { pending: anyRows.length === 0, quotes }
 }

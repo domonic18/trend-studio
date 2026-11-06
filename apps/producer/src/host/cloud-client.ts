@@ -294,6 +294,7 @@ export class TrendCloudClient {
     if (query.codes !== undefined) params.set('codes', query.codes.join(','))
     if (query.from !== undefined) params.set('from', query.from)
     if (query.to !== undefined) params.set('to', query.to)
+    if (query.period !== undefined) params.set('period', query.period)
     const payload = await this.get(
       `${CONTENT_BASE}/courses/${encodeURIComponent(query.courseId)}/quotes?${params.toString()}`,
       signal,

@@ -5,8 +5,9 @@
  */
 
 import { z } from 'zod'
+import { KLINE_PERIODS } from './enums.js'
 
-/** 行情条目：腾讯前复权日K 原始口径。 */
+/** 行情条目：腾讯前复权 K 线原始口径（周期原生：1d 日线 / 1w 周线）。 */
 export const quotesItem = z.object({
   code: z.string().regex(/^[0-9]{6}$/),
   tradeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -16,10 +17,12 @@ export const quotesItem = z.object({
   close: z.number(),
   /** 成交量，单位手（1 手 = 100 股）。 */
   volume: z.number().int().nonnegative(),
-  /** 成交额（元）；腾讯前复权日K 不含成交额，为 null。 */
+  /** 成交额（元）；腾讯前复权 K 线不含成交额，为 null。 */
   amount: z.number().nullable(),
   /** 复权口径来源（tencent-qfq）。 */
   source: z.string().min(1).max(32),
+  /** 该 bar 的周期：日线 1d / 周线 1w。 */
+  period: z.enum(KLINE_PERIODS).default('1d'),
 }).strict()
 
 export const quotesListOutput = z.object({
@@ -72,11 +75,13 @@ export const catalogFigureOutput = z.object({
   url: z.string().min(1).nullable(),
 }).strict()
 
-/** v3 节详情里的案例股：代号、名称与事件窗。 */
+/** v3 节详情里的案例股：代号、名称、周期与事件窗。 */
 export const catalogCaseStockOutput = z.object({
   code: z.string().regex(/^[0-9]{6}$/),
   name: z.string().min(1).max(50),
   exchange: z.enum(['SZSE', 'SSE', 'BSE']),
+  /** 该案例股讲解的周期：日线 1d / 周线 1w；K 线按此周期取。 */
+  period: z.enum(KLINE_PERIODS).default('1d'),
   windowStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   windowEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   events: z.array(z.unknown()),

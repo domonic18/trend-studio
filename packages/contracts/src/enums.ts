@@ -57,6 +57,6 @@ export type AnnotationKind = (typeof ANNOTATION_KINDS)[number]
 /** 课程级 K 线叠加常量（架构 §6.6.5）：均线位，新增需同步渲染器。 */
 export const COURSE_OVERLAYS = ['M5', 'M10', 'M20', 'M30', 'M60'] as const
 
-/** K 线周期口径：课程讲日线画日线，讲周线画周线（周线由日线聚合）。 */
+/** K 线周期口径：课程讲日线画日线，讲周线画周线（行情按周期原生存放）。 */
 export const KLINE_PERIODS = ['1d', '1w'] as const
 export type KlinePeriod = (typeof KLINE_PERIODS)[number]

@@ -84,6 +84,7 @@ interface CaseStockRow {
   code: string
   name: string
   exchange: string
+  period: string
   window_start: Date | string
   window_end: Date | string
   events: unknown[]
@@ -233,7 +234,7 @@ export async function readSection(
   })
 
   const { rows: caseStockRows } = await pool.query<CaseStockRow>(
-    `SELECT code, name, exchange, window_start, window_end, events
+    `SELECT code, name, exchange, period, window_start, window_end, events
        FROM section_case_stocks
       WHERE section_id = $1 AND status = 'published'
       ORDER BY position, code
@@ -247,6 +248,7 @@ export async function readSection(
     code: row.code,
     name: row.name,
     exchange: row.exchange as CatalogCaseStockOutput['exchange'],
+    period: row.period === '1w' ? '1w' : '1d',
     windowStart: toDate(row.window_start),
     windowEnd: toDate(row.window_end),
     events: row.events,

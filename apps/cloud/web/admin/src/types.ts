@@ -3,6 +3,7 @@ export type UserRole = 'student' | 'operator' | 'admin' | 'producer'
 export type UserStatus = 'active' | 'disabled'
 
 import type { WidgetAssertions, WidgetSpec, WidgetType } from '@trend/widgets/spec-types'
+import type { KlinePeriod } from '@trend/widgets/kline'
 
 export interface SessionUser {
   userId: string
@@ -352,6 +353,8 @@ export interface CourseQuote {
   volume: number
   amount: number | null
   source: string
+  /** 该 bar 的周期：日线 1d / 周线 1w。 */
+  period: KlinePeriod
 }
 
 // === M9 语料级生产：节 / 课件 / 图示预览 ===

@@ -147,6 +147,8 @@ export const quotesReadInput = z.object({
   codes: z.array(z.string().regex(STOCK_CODE_PLAIN)).max(10).optional(),
   from: z.string().regex(DATE_STR).optional(),
   to: z.string().regex(DATE_STR).optional(),
+  /** K 线周期：1d 日线 / 1w 周线，缺省日线。缓存按周期分存，跨周期读为空。 */
+  period: z.enum(KLINE_PERIODS).optional(),
 }).strict()
 
 export const keyframeFrame = z.object({

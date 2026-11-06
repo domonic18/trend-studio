@@ -8,7 +8,7 @@ export const CASE_STOCK_BATCH_LIMIT = 10
 const CODE = /^[0-9]{6}$/
 const UNIT_ID = /^su_[0-9a-f]{16}$/
 const EXCHANGES = ['SZSE', 'SSE', 'BSE'] as const
-/** K 线周期：课程讲日线画日线，讲周线画周线（周线由日线聚合）。 */
+/** K 线周期：课程讲日线画日线，讲周线画周线（行情按周期原生存放）。 */
 const PERIODS = ['1d', '1w'] as const
 
 export type CaseStockExchange = (typeof EXCHANGES)[number]

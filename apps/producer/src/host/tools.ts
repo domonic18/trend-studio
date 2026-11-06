@@ -1066,11 +1066,13 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
   ctx.tools.register(defineTool({
     name: 'cloud_quotes_read',
     description:
-      '读课程案例股行情缓存（草稿可见）：返回每只案例股的日K（tradeDate/open/high/low/close/volume）。'
+      '读课程案例股行情缓存（草稿可见）：返回每只案例股的 K 线（tradeDate/open/high/low/close/volume）。'
       + '正文 `:::annotation` 的 `d` 与 `bar-replay-decision` 的 `atDate` 只能取自这里返回的 tradeDate——'
       + '视频里出现的日期未必落在缓存窗口内，硬填会返回 400 annotation_date_not_trading_day。'
       + '**正文里的价格与成交量只能取自这里返回的 bar，禁止自行抓取外部行情源**（缓存与渲染层用的是同一份数据，'
       + '外部源会与之漂移）。要看更早的 bar 用 from/to 缩小窗口再读一次。'
+      + '缓存按周期分存（1d 日线 / 1w 周线），period 须与案例股声明一致——日线只回溯到 2024-03 前后，'
+      + '早于该年的历史窗口读周线。'
       + 'pending=true 表示该课程还没有行情缓存，先跑 cloud_quotes_sync。' + ID_NOTE,
     parameters: {
       courseId: { type: 'string', required: true, description: '课程 ID' },
@@ -1081,6 +1083,11 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
       },
       from: { type: 'string', description: '起始交易日 YYYY-MM-DD' },
       to: { type: 'string', description: '截止交易日 YYYY-MM-DD' },
+      period: {
+        type: 'string',
+        enum: ['1d', '1w'],
+        description: 'K 线周期：1d 日线 / 1w 周线，缺省 1d。缓存按周期分存，须与案例股声明的 period 一致，跨周期读为空',
+      },
     },
     output: {
       schema: {
@@ -1102,6 +1109,7 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
                 volume: { type: 'number', required: true },
                 amount: { oneOf: [{ type: 'number' }, { type: 'null' }], required: true },
                 source: { type: 'string', required: true },
+                period: { type: 'string', enum: ['1d', '1w'], required: true },
               },
               additionalProperties: false,
             },
@@ -1124,8 +1132,10 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
         lines.push(`行情缓存 ${value.quotes.length} 根 bar，覆盖 ${byCode.size} 只。`
           + `每只回看最近 ${MAX_RENDER_BARS} 根；要更早的 bar 请用 from/to 缩小窗口再读一次。`)
         for (const [code, quotes] of byCode) {
-          lines.push(`- ${code}：${quotes.length} 个交易日，${quotes[0].tradeDate} ~ ${quotes[quotes.length - 1].tradeDate}`)
-          lines.push(`  可选 d / atDate（全部交易日）：${quotes.map(quote => quote.tradeDate).join(',')}`)
+          const period = quotes[0]?.period ?? '1d'
+          const unit = period === '1w' ? '交易周' : '交易日'
+          lines.push(`- ${code}（${period} ${unit}）：${quotes.length} 个${unit}，${quotes[0].tradeDate} ~ ${quotes[quotes.length - 1].tradeDate}`)
+          lines.push(`  可选 d / atDate（全部${unit}）：${quotes.map(quote => quote.tradeDate).join(',')}`)
           lines.push('  bar（日期,开,高,低,收,成交量）：')
           for (const quote of quotes.slice(-MAX_RENDER_BARS)) {
             lines.push(`  ${quote.tradeDate},${quote.open},${quote.high},${quote.low},${quote.close},${quote.volume}`)
@@ -1135,11 +1145,12 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
       },
     },
     async execute(args, exec) {
-      const { courseId, codes, from, to } = args as {
+      const { courseId, codes, from, to, period } = args as {
         courseId: string
         codes?: string[]
         from?: string
         to?: string
+        period?: '1d' | '1w'
       }
       try {
         return await client.readQuotes({
@@ -1147,6 +1158,7 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
           ...(codes === undefined ? {} : { codes }),
           ...(from === undefined ? {} : { from }),
           ...(to === undefined ? {} : { to }),
+          ...(period === undefined ? {} : { period }),
         }, exec.signal)
       } catch (error) {
         throw toToolError(error, '读取案例股行情缓存')
