@@ -10,6 +10,7 @@ import {
   conceptWriteOutput,
   conceptsListInput,
   conceptsListOutput,
+  figureDeleteInput,
   figureWriteInput,
   figureWriteOutput,
   framesInput,
@@ -272,6 +273,12 @@ export class TrendCloudClient {
     const body = parseInput(figureWriteInput, input, 'figureWrite')
     const payload = await this.post(`${CONTENT_BASE}/sections/${body.sectionId}/figures`, body, signal)
     return parseOutput(figureWriteOutput, payload, 'figureWrite')
+  }
+
+  /** 图示删除：生产端纠错回路——抽错帧或烧掉配额时，删掉重来。 */
+  async deleteFigure(input: unknown, signal?: AbortSignal): Promise<void> {
+    const body = parseInput(figureDeleteInput, input, 'figureDelete')
+    await this.sendVoid(`${CONTENT_BASE}/sections/${body.sectionId}/figures/${body.figureId}`, signal)
   }
 
   async writeSectionCaseStocks(input: unknown, signal?: AbortSignal): Promise<CaseStocksWriteOutput> {

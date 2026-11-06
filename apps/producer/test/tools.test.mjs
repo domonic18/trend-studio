@@ -23,6 +23,9 @@ test('全部 cloud_* 工具的 schema 可被 dsh schema DSL 编译（插件能�
     'cloud_section_preview',
     'cloud_section_article_write',
     'cloud_widget_write',
+    'cloud_widget_delete',
+    'cloud_figure_write',
+    'cloud_figure_delete',
     'cloud_source_units_read',
     'cloud_provenance',
   ]) {
@@ -73,8 +76,33 @@ test('cloud_source_units_read：入参透传到 client，证据原文进 render 
   assert.match(rendered[0].text, /均线方向向上/)
 })
 
-test('cloud_source_units_read：入参不合法时在 execute 前被拒（不发请求）', async () => {
+test('cloud_figure_delete：入参透传到 client 并回执 deleted', async () => {
   const registered = []
+  const seen = []
+  const ctx = {
+    tools: {
+      register(tool) {
+        registered.push(tool)
+      },
+    },
+  }
+  const client = {
+    async deleteFigure(input) {
+      seen.push(input)
+    },
+  }
+  registerCloudTools(ctx, client, {})
+  const tool = registered.find(item => item.name === 'cloud_figure_delete')
+  const result = await tool.execute(
+    { sectionId: 'sec_0123456789abcdef', figureId: 'fig_0123456789abcdef' },
+    { signal: undefined },
+  )
+  assert.deepEqual(seen[0], { sectionId: 'sec_0123456789abcdef', figureId: 'fig_0123456789abcdef' })
+  assert.equal(result.deleted, true)
+  assert.match(tool.output.render({}, result)[0].text, /fig_0123456789abcdef/)
+})
+
+test('cloud_source_units_read：入参不合法时在 execute 前被拒（不发请求）', async () => {  const registered = []
   let called = 0
   const ctx = {
     tools: {

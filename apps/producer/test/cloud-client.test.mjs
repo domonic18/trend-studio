@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { TrendCloudClient } from '../lib/host/cloud-client.js'
-import { InvalidResponseError, UpstreamError, toToolError } from '../lib/errors.js'
+import { InputError, InvalidResponseError, UpstreamError, toToolError } from '../lib/errors.js'
 
 /** fakeAuth：记录请求并按脚本回放响应（对齐学员插件 fakeAuth 测试法）。 */
 function fakeAuth(handlers) {
@@ -116,6 +116,45 @@ test('deleteWidget：课件不在该节 → 404 映射稳定码', async () => {
   assert.ok(error instanceof UpstreamError)
   assert.equal(error.status, 404)
   assert.match(toToolError(error, '删除课件').message, /\[unavailable\]/)
+})
+
+test('deleteFigure：DELETE 图示端点，204 无正文不当作解析失败', async () => {
+  const auth = fakeAuth([
+    {
+      match: (path, init) =>
+        path === '/v1/admin/content/sections/sec_0123456789abcdef/figures/fig_0123456789abcdef' && init.method === 'DELETE',
+      reply: { status: 204, payload: undefined },
+    },
+  ])
+  await new TrendCloudClient(auth).deleteFigure({
+    sectionId: 'sec_0123456789abcdef',
+    figureId: 'fig_0123456789abcdef',
+  })
+  assert.equal(auth.calls[0].method, 'DELETE')
+})
+
+test('deleteFigure：图示不在该节 → 404 映射稳定码', async () => {
+  const auth = fakeAuth([
+    {
+      match: path => path.includes('/figures/'),
+      reply: { status: 404, payload: { error: { code: 'figure_not_found', message: 'figure not found in section' } } },
+    },
+  ])
+  const error = await new TrendCloudClient(auth)
+    .deleteFigure({ sectionId: 'sec_0123456789abcdef', figureId: 'fig_0123456789abcdef' })
+    .then(() => null, error => error)
+  assert.ok(error instanceof UpstreamError)
+  assert.equal(error.status, 404)
+  assert.match(toToolError(error, '删除图示').message, /\[unavailable\]/)
+})
+
+test('deleteFigure：figureId 非法 → 入参校验先于网络调用', async () => {
+  const auth = fakeAuth([])
+  const error = await new TrendCloudClient(auth)
+    .deleteFigure({ sectionId: 'sec_0123456789abcdef', figureId: 'fig_短' })
+    .then(() => null, error => error)
+  assert.ok(error instanceof InputError)
+  assert.equal(auth.calls.length, 0)
 })
 
 test('非 2xx 无错误体：状态码映射稳定码', async () => {

@@ -868,6 +868,43 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
   }))
 
   ctx.tools.register(defineTool({
+    name: 'cloud_figure_delete',
+    description:
+      '删除本节的一张图示（生产端纠错回路）：抽错帧、画歪了，或 keyframe/diagram 配额被废图占满时，删掉重来。'
+      + '只能删本节的图示，删别的节会 404/403；删后不可恢复（正文 :::figure 引用会失效，需一并改写）。' + ID_NOTE,
+    parameters: {
+      sectionId: { type: 'string', required: true, description: '节 ID' },
+      figureId: { type: 'string', required: true, description: '图示 ID（cloud_figure_write / cloud_section_preview 返回值）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          deleted: { type: 'boolean', required: true },
+          figureId: { type: 'string', required: true },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `图示已删除: ${value.figureId}`,
+      }],
+    },
+    async execute(args, exec) {
+      const { sectionId, figureId } = args as Record<string, unknown>
+      try {
+        await client.deleteFigure({
+          sectionId: String(sectionId),
+          figureId: String(figureId),
+        }, exec.signal)
+        return { deleted: true, figureId: String(figureId) }
+      } catch (error) {
+        throw toToolError(error, '删除图示')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'cloud_case_stocks_write',
     description:
       '写入/覆盖节级案例股清单（每批 1–10 只）。云端复检代号、窗口日期、事件 date 落窗、unitId 可回溯；'
