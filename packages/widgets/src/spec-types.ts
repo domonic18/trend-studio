@@ -65,6 +65,35 @@ export interface WidgetSpec {
   patternMatchesAnswer?: GeneratorId
 }
 
+export type BarReplayAnnotationKind = 'structure' | 'invalidation' | 'rhythm'
+
+export interface BarReplayAnnotation {
+  unitId: string
+  atMs: number
+  kind: BarReplayAnnotationKind
+  d: string
+  label: string
+}
+
+export interface BarReplayDecisionSpec {
+  atDate: string
+  question: string
+  options: { label: string }[]
+  correct: number
+  revealText: string
+  unitId: string
+  atMs: number
+}
+
+export interface BarReplaySpec {
+  code: string
+  window: { from: string; to: string }
+  overlays?: string[]
+  annotations?: BarReplayAnnotation[]
+  decisions: BarReplayDecisionSpec[]
+  citations: string[]
+}
+
 export interface WidgetAssertions {
   trendlineTouches?: { min: number }
   slopeRange?: [number, number]
@@ -81,4 +110,7 @@ export interface WidgetAssertions {
   itemsNonEmpty?: boolean
   edgeRefsExist?: boolean
   acyclicPrerequisite?: boolean
+  revealMonotonic?: boolean
+  decisionPointsGrounded?: boolean
+  annotationTermsGrounded?: boolean
 }

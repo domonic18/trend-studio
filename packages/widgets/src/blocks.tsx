@@ -194,7 +194,7 @@ function AnnotationBlock({ attrs, bodyLines, host }: { attrs: Record<string, str
         {unitId !== '' ? <UnitBadge unitId={unitId} /> : null}
       </header>
       <blockquote className="wg-annotation-quote">{body.quote}</blockquote>
-      {body.glossary.length > 0 ? (
+      {body.glossary !== undefined && body.glossary.length > 0 ? (
         <div className="wg-annotation-glossary">
           {body.glossary.map(term => <span key={term} className="wg-annotation-term">{term}</span>)}
         </div>

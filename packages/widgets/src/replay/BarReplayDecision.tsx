@@ -1,5 +1,10 @@
 import * as React from 'react'
 import { Kline, type KlineBar, type KlineEvent } from '../kline/Kline.js'
+import type {
+  BarReplayAnnotationKind as AnnotationKind,
+  BarReplayDecisionSpec as ReplayDecision,
+  BarReplaySpec,
+} from '../spec-types.js'
 import { formatPosition } from './format.js'
 
 export interface BarReplayDecisionProps {
@@ -7,35 +12,6 @@ export interface BarReplayDecisionProps {
   bars: KlineBar[]
   spec: unknown
   onUnitClick?: (unitId: string, atMs?: number) => void
-}
-
-type AnnotationKind = 'structure' | 'invalidation' | 'rhythm'
-
-interface ReplayAnnotation {
-  unitId: string
-  atMs: number
-  kind: AnnotationKind
-  d: string
-  label: string
-}
-
-interface ReplayDecision {
-  atDate: string
-  question: string
-  options: { label: string }[]
-  correct: number
-  revealText: string
-  unitId: string
-  atMs: number
-}
-
-interface BarReplaySpec {
-  code: string
-  window: { from: string; to: string }
-  overlays?: string[]
-  annotations?: ReplayAnnotation[]
-  decisions: ReplayDecision[]
-  citations: string[]
 }
 
 const KIND_LABEL: Record<AnnotationKind, string> = {

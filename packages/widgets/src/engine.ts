@@ -1,6 +1,7 @@
 /** 课件渲染引擎：忠实移植云端确定性逻辑（generators/provers/formulas），使管理台预览可玩且与云端评分同源。 */
 
 import type {
+  BarReplaySpec,
   FormulaId,
   GeneratorId,
   TrendlineSolution,
@@ -290,7 +291,17 @@ function proofFor(
       return closesHoldAbove(candles, (spec.solution as TrendlineSolution).trendline)
     }
     case 'answerUnique': {
-      const options = spec.options!
+      // bar-replay-decision 没有 options/answerId：正确项由 decisions[].correct 唯一指定，
+      // 断言口径是「每道题有且只有一个正确答案」——correct 必须落在该题选项区间内。
+      if (type === 'bar-replay-decision') {
+        const decisions = (spec as unknown as Partial<BarReplaySpec>).decisions ?? []
+        return decisions.length > 0 && decisions.every(decision =>
+          Number.isInteger(decision.correct)
+          && decision.correct >= 0
+          && decision.correct < decision.options.length)
+      }
+      const options = spec.options
+      if (options === undefined) return false
       return options.some(option => option.id === spec.answerId)
         && new Set(options.map(option => option.id)).size === options.length
     }
@@ -370,6 +381,27 @@ function proofFor(
         return true
       }
       return [...adjacency.keys()].every(visit)
+    }
+    case 'revealMonotonic': {
+      const barSpec = spec as unknown as Partial<BarReplaySpec>
+      const decisions = barSpec.decisions ?? []
+      const annotations = barSpec.annotations ?? []
+      if (decisions.length === 0) return false
+      const decisionDates = decisions.map(decision => decision.atDate).sort()
+      for (let i = 1; i < decisionDates.length; i++) {
+        if (decisionDates[i]! <= decisionDates[i - 1]!) return false
+      }
+      const annotationDates = annotations.map(annotation => annotation.d).sort()
+      if (annotationDates.length < decisions.length) return false
+      for (let i = 0; i < decisions.length; i++) {
+        if (decisions[i]!.atDate >= annotationDates[i]!) return false
+      }
+      return true
+    }
+    case 'decisionPointsGrounded':
+    case 'annotationTermsGrounded': {
+      // 需要单元时间窗、案例窗口、交易日与课程概念集，预览态无此上下文（云端写入时已证明）。
+      return 'n/a'
     }
     default:
       return false
