@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArticleRenderer } from '../article.js'
 import { Kline } from '../kline/Kline.js'
+import { MaPicker } from '../kline/MaPicker.js'
+import { DEFAULT_OVERLAYS } from '../kline/kline-chart.js'
 import {
   PERIOD_LABEL,
   filterPeriodWindow,
@@ -203,6 +205,8 @@ function CaseStockDetail({
   pending: boolean
 }) {
   const period: KlinePeriod = stock.period ?? '1d'
+  const [overlays, setOverlays] = useState<string[]>(DEFAULT_OVERLAYS)
+  const [focusDate, setFocusDate] = useState<string | undefined>(undefined)
   const allBars = useMemo(() => periodBarsOf(bars, period), [bars, period])
   const viewBars = useMemo(() => {
     return period === '1w'
@@ -229,6 +233,7 @@ function CaseStockDetail({
         <span className="wg-case-window">
           {stock.windowStart} ~ {stock.windowEnd}
         </span>
+        <MaPicker value={overlays} onChange={setOverlays} />
       </div>
       {pending && bars.length === 0 ? (
         <div className="wg-case-pending">等待行情同步…</div>
@@ -239,14 +244,23 @@ function CaseStockDetail({
         events={events}
         windowStart={viewBars[0]?.tradeDate ?? stock.windowStart}
         windowEnd={viewBars[viewBars.length - 1]?.tradeDate ?? stock.windowEnd}
-        height={260}
+        overlays={overlays}
+        focusDate={focusDate}
+        height={300}
       />
       {stock.events.length > 0 ? (
         <ul className="wg-case-events">
           {stock.events.map((e, i) => (
             <li key={i}>
-              <span className="wg-case-event-date">{e.date}</span>
-              <span className="wg-case-event-label">{e.label}</span>
+              <button
+                type="button"
+                className={`wg-case-event${focusDate === e.date ? ' active' : ''}`}
+                onClick={() => setFocusDate(e.date)}
+                title="定位到该交易日"
+              >
+                <span className="wg-case-event-date">{e.date}</span>
+                <span className="wg-case-event-label">{e.label}</span>
+              </button>
             </li>
           ))}
         </ul>

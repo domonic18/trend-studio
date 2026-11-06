@@ -13,6 +13,8 @@ export interface KlineProps {
   onEventClick?: (event: KlineEvent) => void
   mode?: 'chart' | 'replay'
   revealCount?: number
+  /** 定位到该交易日（图表平移使其居中），用于事件列表点选。 */
+  focusDate?: string
 }
 
 export function Kline({
@@ -26,6 +28,7 @@ export function Kline({
   onEventClick,
   mode = 'chart',
   revealCount,
+  focusDate,
 }: KlineProps): React.ReactElement {
   const ref = React.useRef<HTMLCanvasElement | null>(null)
   const chartRef = React.useRef<KlineChart | null>(null)
@@ -54,6 +57,11 @@ export function Kline({
       chartRef.current.setRevealCount(revealCount)
     }
   }, [revealCount, mode])
+
+  React.useEffect(() => {
+    if (focusDate === undefined) return
+    chartRef.current?.focusOn(focusDate)
+  }, [focusDate])
 
   return React.createElement('canvas', {
     ref,

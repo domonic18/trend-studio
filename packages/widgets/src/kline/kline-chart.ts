@@ -170,6 +170,16 @@ export class KlineChart {
     this.schedule()
   }
 
+  /** 平移到指定交易日并居中：事件列表点选定位用。 */
+  focusOn(tradeDate: string): void {
+    if (this.mode === 'replay') return
+    const index = this.bars.findIndex(bar => bar.tradeDate === tradeDate)
+    if (index === -1) return
+    const half = Math.floor(this.visible / 2)
+    this.start = this.clampStart(index - half)
+    this.schedule()
+  }
+
   destroy(): void {
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('mousedown', this.onMouseDown)

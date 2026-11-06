@@ -1,5 +1,6 @@
 export { Kline } from './Kline.js'
 export { KlineChart, DEFAULT_OVERLAYS, parseOverlayPeriods } from './kline-chart.js'
+export { MaPicker } from './MaPicker.js'
 export {
   PERIOD_LABEL,
   filterPeriodWindow,
