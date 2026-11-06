@@ -153,7 +153,9 @@ export function SectionPreviewPage() {
               <Empty description="本节约无课件" />
             ) : (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {data.widgets.map(w => <WidgetPlayer key={w.widgetId} widget={w} />)}
+                {data.widgets.map(w => (
+                  <WidgetPlayer key={w.widgetId} widget={w} resolveFigureUrl={host.resolveFigureUrl} />
+                ))}
               </Space>
             )}
           </Card>

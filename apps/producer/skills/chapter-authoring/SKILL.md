@@ -38,7 +38,10 @@ version: 0.5.0
 | `:::bignum` | 关键数字（价位、比例、天数） | body 是 JSON：`{"items":[{"label","value","note"?}]}`，1–3 项 |
 | `:::cmp mode=card\|table` | 两个概念/两种形态对照 | body 是 JSON：`{"title"?,"left":{"head","items[]"},"right":{…}}`；`mode` 默认 card |
 | `:::timeline` | 阶段推进 | body 是 JSON：`{"events":[{"date","title","desc"?}]}`，3–8 个，日期 YYYY-MM-DD |
-| `:::warn title="..."` | 讲师明确反对的做法 | 正文 1–500 字 |
+| `:::warn title="..." variant=def\|rule\|misuse\|risk` | 概念定义 / 要点 / 误用 / 风险 | 正文 1–500 字；`variant` 缺省 `risk` |
+| `:::think title="..."` | 折叠的「先想一想」 | 正文 1–800 字；默认收起，学员点开才展开 |
+| `:::sidenote title="..." src="..." unitId=su_xxx` | 术语边注 | 正文 1–500 字；`title`/`src`/`unitId` 均可省 |
+| `:::cards` | 目标卡网格（1–4 张） | body 是 JSON：`{"items":[{"num"?,"title","desc"?}]}` |
 | `:::figure figureId=fig_xxx caption="..." unitId=su_xxx` | 配图（SVG 模板图或 keyframe） | 无正文；figureId 来自 `cloud_figure_write` 返回 |
 | `:::clip assetId=asset_xxx from=150 to=186 caption="..." unitId=su_xxx` | 教学时刻片段 | 无正文；窗 ≤60s、每节 ≤3、须完整落在 unit 内 |
 | `:::annotation unitId=su_xxx assetId=asset_xxx code=sz000713 kind=structure atMs=123456` | 老师在 K 线上某日的标注 | body JSON：`{"d":"YYYY-MM-DD","label":"…","quote":"…","glossary":["术语"]}`；`d` 必须是行情交易日；每节 ≤12 |

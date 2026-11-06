@@ -66,6 +66,9 @@ version: 0.5.0
    `bar-replay-decision` 的 spec 要写 `period`（日线 `"1d"` / 周线 `"1w"`）与 `overlays`
    （均线位，白名单 M5/M10/M20/M30/M60，≤3 条）：**与本节正文所讲周期、均线口径一致**，
    否则图上画的线与正文说的线对不上。
+   `image-juxtaposition` 同样要早于正文（它可能引用本节图示的 `figureId`），
+   且**必须晚于第 6 步的图示落库**——`figureId` 侧未落库会 409 assertion_unproven。
+   `branching-scenario` 是纯文本决策树，不依赖任何顺序。
 8. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
    `cloud_section_article_write({sectionId, markdown, citations})`；400/409 按错误修正重写。
    正文里的段落级证据用 `[[unit:su_xxx|label]]` 内联锚（见下节「证据锚点」）。

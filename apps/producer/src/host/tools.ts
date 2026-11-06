@@ -721,14 +721,16 @@ export function registerCloudTools(ctx: Context, client: TrendCloudClient, runne
   ctx.tools.register(defineTool({
     name: 'cloud_widget_write',
     description:
-      '提交交互课件 spec（白名单 9 类组件的 JSON，禁止任何可执行代码）。spec 必须携带教学断言 assertions 与 citations；'
+      '提交交互课件 spec（白名单 11 类组件的 JSON，禁止任何可执行代码）。spec 必须携带教学断言 assertions 与 citations；'
       + '服务端做断言程序证明：409 assertion_unproven 附 failed 数组是正常校验回灌——按失败断言修订 spec/参数后重试，最多 3 次后转人工。'
-      + 'M10 v2 新增 `bar-replay-decision`（逐根回放判断），其 specVersion=2，其余组件 specVersion=1。'
-      + '`bar-replay-decision` 的 spec 可带 `period`（"1d" 日线 / "1w" 周线，缺省日线）与 `overlays`（均线位白名单 M5/M10/M20/M30/M60，最多 3 条，缺省 M5/M10/M60）——须与正文所讲周期一致。' + ID_NOTE,
+      + 'M10 v2 新增 `bar-replay-decision`（逐根回放判断）、`image-juxtaposition`（前后对比滑块）、`branching-scenario`（分支情景练习），这三类 specVersion=2，其余组件 specVersion=1。'
+      + '`bar-replay-decision` 的 spec 可带 `period`（"1d" 日线 / "1w" 周线，缺省日线）与 `overlays`（均线位白名单 M5/M10/M20/M30/M60，最多 3 条，缺省 M5/M10/M60）——须与正文所讲周期一致。'
+      + '`image-juxtaposition` 的 spec：left/right 各为 {"figureId":"fig_…"} 或 {"generator":"uptrend|downtrend|range|uptrend-platform|downtrend-platform","seed":<整数>,"bars":20..300}；labels/captions 各含 left/right；captions 必须含课程术语。'
+      + '`branching-scenario` 的 spec：scenario 情境陈述、entryId 入口节点 id、nodes 决策树（每节点 id 唯一、prompt 提问、options 2–4 项且每项含 label/next/feedback，next 必须是已有节点 id，末节点无 options）、optimalPath 最优路径节点 id 数组、citations。' + ID_NOTE,
     parameters: {
       sectionId: { type: 'string', required: true, description: '节 ID' },
-      type: { type: 'string', required: true, description: 'kline-annotator|pattern-quiz|step-reveal|calc-trainer|mcq-quiz|flashcards|checklist|timeline-explorer|bar-replay-decision' },
-      specVersion: { type: 'number', required: true, description: '1（v1 组件）或 2（bar-replay-decision）' },
+      type: { type: 'string', required: true, description: 'kline-annotator|pattern-quiz|step-reveal|calc-trainer|mcq-quiz|flashcards|checklist|timeline-explorer|bar-replay-decision|image-juxtaposition|branching-scenario' },
+      specVersion: { type: 'number', required: true, description: '1（v1 组件）或 2（bar-replay-decision / image-juxtaposition / branching-scenario）' },
       spec: { type: 'object', required: true, additionalProperties: true, description: '组件 spec（逐类型 schema 见架构 §6.5.5 v1 / §6.6.5 v2）' },
       assertions: { type: 'object', required: true, additionalProperties: true, description: '教学断言对象（必带断言按组件强制）' },
       citations: { type: 'array', required: true, description: 'source unit ID 数组（≥1）', items: { type: 'string' } },

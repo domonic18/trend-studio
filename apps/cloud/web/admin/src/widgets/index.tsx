@@ -21,6 +21,12 @@ import {
   type Candle,
 } from '@trend/widgets/engine'
 import type { WidgetAssertions, WidgetSpec, WidgetType } from '@trend/widgets/spec-types'
+import { BranchingScenario } from '@trend/widgets/branching'
+import { ImageJuxtaposition, type ResolveFigureUrl } from '@trend/widgets/compare'
+import type {
+  BranchingScenarioSpec,
+  ImageJuxtapositionSpec,
+} from '@trend/widgets/spec-types'
 import type { WidgetDetail } from '../types'
 
 const FORMULA_LABELS: Record<string, string> = {
@@ -29,7 +35,13 @@ const FORMULA_LABELS: Record<string, string> = {
   'drawdown-recovery': '回本% = 回撤% ÷ (100−回撤%) × 100',
 }
 
-export function WidgetPlayer({ widget }: { widget: WidgetDetail }) {
+export function WidgetPlayer({
+  widget,
+  resolveFigureUrl,
+}: {
+  widget: WidgetDetail
+  resolveFigureUrl?: ResolveFigureUrl
+}) {
   const spec = widget.spec as WidgetSpec | null
   const assertions = widget.assertions as WidgetAssertions | null
   const type = widget.type as WidgetType
@@ -57,7 +69,7 @@ export function WidgetPlayer({ widget }: { widget: WidgetDetail }) {
         <ProofBadge type={type} spec={spec} assertions={assertions} />
       }
     >
-      <WidgetBody type={type} spec={spec} assertions={assertions} />
+      <WidgetBody type={type} spec={spec} assertions={assertions} resolveFigureUrl={resolveFigureUrl} />
     </Card>
   )
 }
@@ -82,7 +94,13 @@ function ProofBadge({
   return <Tag color="red" bordered={false}>失败：{proof.failed.join(', ')}</Tag>
 }
 
-const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: WidgetAssertions | null }) => JSX.Element> = {
+interface RendererProps {
+  spec: WidgetSpec
+  assertions: WidgetAssertions | null
+  resolveFigureUrl?: ResolveFigureUrl
+}
+
+const RENDERERS: Record<WidgetType, (props: RendererProps) => JSX.Element> = {
   'kline-annotator': KlineAnnotator,
   'pattern-quiz': PatternQuiz,
   'step-reveal': StepReveal,
@@ -92,20 +110,24 @@ const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: Widg
   checklist: Checklist,
   'timeline-explorer': TimelineExplorer,
   'bar-replay-decision': BarReplayDecision,
+  'image-juxtaposition': ImageJuxtapositionWidget,
+  'branching-scenario': BranchingScenarioWidget,
 }
 
 function WidgetBody({
   type,
   spec,
   assertions,
+  resolveFigureUrl,
 }: {
   type: WidgetType
   spec: WidgetSpec
   assertions: WidgetAssertions | null
+  resolveFigureUrl?: ResolveFigureUrl
 }) {
   const Renderer = RENDERERS[type]
   if (Renderer === undefined) return <Empty description={`未知课件类型：${type}`} />
-  return <Renderer spec={spec} assertions={assertions} />
+  return <Renderer spec={spec} assertions={assertions} resolveFigureUrl={resolveFigureUrl} />
 }
 
 // ===================== K 线图（SVG） =====================
@@ -544,7 +566,7 @@ function BarReplayDecision({ spec }: { spec: WidgetSpec; assertions: WidgetAsser
 // ===================== 8. timeline-explorer =====================
 
 function TimelineExplorer({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | null }) {
-  const nodes = spec.nodes ?? []
+  const nodes = (spec.nodes ?? []) as { conceptRef: string }[]
   const edges = spec.edges ?? []
   const names = nodes.map(n => n.conceptRef)
   const boxW = 120
@@ -596,6 +618,46 @@ function TimelineExplorer({ spec }: { spec: WidgetSpec; assertions: WidgetAssert
           )
         })}
       </svg>
+    </div>
+  )
+}
+
+// ===================== 9. image-juxtaposition =====================
+
+function ImageJuxtapositionWidget({
+  spec,
+  resolveFigureUrl,
+}: {
+  spec: WidgetSpec
+  assertions: WidgetAssertions | null
+  resolveFigureUrl?: ResolveFigureUrl
+}) {
+  const juxtapose = spec as unknown as ImageJuxtapositionSpec
+  return (
+    <div className="widget-body">
+      <Typography.Paragraph type="secondary">
+        拖动滑块比对前后两幅画面；两侧可为课程图示或确定性合成 K 线。
+      </Typography.Paragraph>
+      <ImageJuxtaposition spec={juxtapose} resolveFigureUrl={resolveFigureUrl} />
+    </div>
+  )
+}
+
+// ===================== 10. branching-scenario =====================
+
+function BranchingScenarioWidget({
+  spec,
+}: {
+  spec: WidgetSpec
+  assertions: WidgetAssertions | null
+}) {
+  const branching = spec as unknown as BranchingScenarioSpec
+  return (
+    <div className="widget-body">
+      <Typography.Paragraph type="secondary">
+        逐节点作答，走完全程后对照最优路径；作答只在本机，不落库。
+      </Typography.Paragraph>
+      <BranchingScenario spec={branching} />
     </div>
   )
 }

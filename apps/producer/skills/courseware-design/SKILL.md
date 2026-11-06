@@ -1,13 +1,13 @@
 ---
 name: courseware-design
-description: 课件设计工艺：8 类白名单组件选型与 spec/assertions 撰写规范（断言证明的供给侧）
-version: 0.2.0
+description: 课件设计工艺：11 类白名单组件选型与 spec/assertions 撰写规范（断言证明的供给侧）
+version: 0.3.0
 ---
 
 # 课件设计工艺
 
 消费者：节 Author 子代理（每节 1–3 个课件）。输出：`cloud_widget_write` 可通过的
-`{type, specVersion:1, spec, assertions, citations}`。云端断言证明器是确定性程序：
+`{type, specVersion, spec, assertions, citations}`。云端断言证明器是确定性程序：
 **spec 与 assertions 写不合规 = 409 回灌**，本工艺是首次写对的最短路径。
 
 ## 选型规则（按教学目的选组件，不硬凑）
@@ -23,11 +23,15 @@ version: 0.2.0
 | 操作清单自检 | `checklist` | 条目 + conceptRef |
 | 概念依赖浏览 | `timeline-explorer` | 节点概念 + 依赖边 |
 | **逐根回放判断（M10 v2）** | **`bar-replay-decision`** | **真实行情 bars + 老师决策点** |
+| **前后对比（M10 v3）** | **`image-juxtaposition`** | **课程图示 figureId 或生成器合成 K 线** |
+| **分支情景练习（M10 v3）** | **`branching-scenario`** | **决策树节点 + 逐节点反馈** |
 
 - 一个节 1–3 个课件；优先覆盖本节核心概念的可练习性，装饰性课件不做。
 - `generated` 文生图与课件无关（那是图示域）；课件图表数据**一律用确定性生成器**声明。
 - `bar-replay-decision` 是唯一使用真实行情的组件，**不需要生成器**；行情由云端按 `code` 从
   课程缓存自动取得。
+- `image-juxtaposition` 与 `branching-scenario` 都是 `specVersion=2`；前者两侧画面可引用本节
+  图示（`figureId`），后者是纯文本决策树，**都不依赖行情**。
 
 ## kline-annotator 撰写要点（证明器视角）
 
@@ -84,6 +88,37 @@ version: 0.2.0
 - **必须早于正文**：正文 `:::replay code=... caption="..."` 按 code 解析本节唯一一份回放课件，
   课件未落库就写正文会 `400 replay_widget_unknown`（同 code 两份则 `400 replay_widget_ambiguous`）。
   `code` 在本节必须唯一。
+
+## image-juxtaposition（M10 v3）
+
+- 用途：把「同一只票在某个结构点前后」或「错误做法 vs 正确做法」并排给学员，拖动滑块比对。
+- `specVersion=2`；`spec` 形状：
+  - `left` / `right`: 两侧画面，**二选一**且不可混写——
+    `{"figureId":"fig_…"}`（引用本节已落库的图示）或
+    `{"generator":"uptrend|downtrend|range|uptrend-platform|downtrend-platform","seed":<整数>,"bars":20..300}`（合成 K 线）。
+  - `labels`: `{left, right}` 两侧角标短标签（画面上的浮层文字）。
+  - `captions`: `{left, right}` 两侧说明文字，**每条必须包含至少一个课程术语**（否则 409）。
+  - `citations`: ≥1 条支撑本课件教学的 source unit。
+- **必带断言**：`pairSidesValid`（figureId 侧必须在本节图示清单内；生成器侧参数合法）、
+  `captionsGrounded`（两条 caption 都含课程术语）。
+- 写入顺序：`figureId` 侧必须先 `cloud_figure_write` 落图示，否则 409；
+  生成器侧不依赖任何写入顺序。
+
+## branching-scenario（M10 v3）
+
+- 用途：把「这根长阳是启动还是诱多」这类判断题做成有分支的决策树，学员逐节点作答。
+- `specVersion=2`；`spec` 形状：
+  - `scenario`: 情境陈述（学员看到的题面）。
+  - `entryId`: 入口节点 id，必须是某个 `nodes[].id`。
+  - `nodes`: 决策树节点数组；每节点 `{id, prompt, options?}`，
+    `id` 全树唯一；非末节点 `options` **2–4 项**，每项 `{label, next, feedback}`，
+    `next` 必须是树中已存在的节点 id，`feedback` 是选该项后的即时反馈（不能为空）。
+    末节点无 `options`（即无后续分支的终点）。
+  - `optimalPath`: 最优路径的节点 id 数组，首元素必须是 `entryId`，每一步都要有边可达。
+  - `citations`: ≥1 条支撑本课件教学的 source unit。
+- **必带断言**：`graphAcyclic`（决策树不得成环）、`allPathsTerminate`（每条路径都能走到末节点）、
+  `optimalPathReachable`（最优路径真实可达）、`feedbackNonEmpty`（每项反馈非空）。
+- 作答只在本机内存，不落库、不进 validation、不进 provenance——反馈文本写在课件里即可。
 
 ## spec 白名单的已知回灌点（都是 400，不是断言问题）
 
