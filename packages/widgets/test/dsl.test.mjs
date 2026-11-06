@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { rewriteStockAnchors, splitArticle } from '../lib/dsl.js'
+import { rewriteStockAnchors, splitArticle, splitInlineAnchors } from '../lib/dsl.js'
 
 test('前端 DSL 切分：markdown 游程与容器块交替', () => {
   const markdown = [
@@ -49,4 +49,22 @@ test('个股锚重写：[[stock:code|label]] → stock-anchor: 链接', () => {
   assert.equal(rewritten, '参考 [格力电器](stock-anchor:sz000651) 走势。')
   const untouched = rewriteStockAnchors('普通 [链接](https://example.com) 不受影响。')
   assert.equal(untouched, '普通 [链接](https://example.com) 不受影响。')
+})
+
+test('内联锚切分：块正文里的证据锚与个股锚被拆出，不残留原始标记', () => {
+  const parts = splitInlineAnchors('技术是辅助[[unit:su_67c397083dc0314d|道与术的分工]]，参考[[stock:sz000070|特发信息]]。')
+  assert.deepEqual(parts, [
+    { kind: 'text', text: '技术是辅助' },
+    { kind: 'unit', unitId: 'su_67c397083dc0314d', label: '道与术的分工' },
+    { kind: 'text', text: '，参考' },
+    { kind: 'stock', code: 'sz000070', label: '特发信息' },
+    { kind: 'text', text: '。' },
+  ])
+  assert.equal(parts.some(p => p.kind === 'text' && p.text.includes('[[')), false)
+})
+
+test('内联锚切分：无锚文本原样返回，缺标签时回退 unitId 截短', () => {
+  assert.deepEqual(splitInlineAnchors('普通正文。'), [{ kind: 'text', text: '普通正文。' }])
+  const bare = splitInlineAnchors('[[unit:su_67c397083dc0314d]]')
+  assert.deepEqual(bare, [{ kind: 'unit', unitId: 'su_67c397083dc0314d', label: 'su_67c39' }])
 })

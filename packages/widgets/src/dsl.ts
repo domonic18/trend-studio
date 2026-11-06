@@ -60,6 +60,33 @@ function parseAttrs(raw: string): Record<string, string> {
   return attrs
 }
 
+export type InlineAnchor =
+  | { kind: 'text'; text: string }
+  | { kind: 'stock'; code: string; label: string }
+  | { kind: 'unit'; unitId: string; label: string }
+
+/**
+ * 切出正文里的内联锚标记。markdown 游程走 react-markdown 链接重写，
+ * 而 DSL 块正文是纯文本，需自行识别标记，否则 `[[unit:…]]` 会原样漏出。
+ */
+export function splitInlineAnchors(text: string): InlineAnchor[] {
+  const parts: InlineAnchor[] = []
+  let cursor = 0
+  for (const match of text.matchAll(/\[\[(stock|unit):([^\]|]*)(?:\|([^\]]*))?\]\]/g)) {
+    const index = match.index ?? 0
+    if (index > cursor) parts.push({ kind: 'text', text: text.slice(cursor, index) })
+    const label = match[3] ?? ''
+    if (match[1] === 'stock') parts.push({ kind: 'stock', code: match[2] ?? '', label })
+    else {
+      const unitId = match[2] ?? ''
+      parts.push({ kind: 'unit', unitId, label: label !== '' ? label : unitId.slice(0, 8) })
+    }
+    cursor = index + match[0].length
+  }
+  if (cursor < text.length) parts.push({ kind: 'text', text: text.slice(cursor) })
+  return parts
+}
+
 /**
  * 内联锚预替换为 react-markdown 可渲染的链接：
  * - `[[stock:code|label]]` → `stock-anchor:code`（个股徽章）

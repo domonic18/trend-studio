@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AnchorText } from './anchors.js'
 import { ClipCard } from './clip.js'
 import { BarReplayDecision } from './replay/BarReplayDecision.js'
 import type { ArticleHost } from './types.js'
@@ -33,7 +34,7 @@ function BoardBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyL
   return (
     <section className="wg-board">
       <header className="wg-block-head"><UnitBadge unitId={attrs.unitId ?? ''} /></header>
-      <p className="wg-board-text">{bodyLines.join('\n').trim()}</p>
+      <p className="wg-board-text"><AnchorText text={bodyLines.join('\n').trim()} /></p>
     </section>
   )
 }
@@ -77,8 +78,8 @@ function CmpBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLin
           <tbody>
             {Array.from({ length: Math.max(body.left.items.length, body.right.items.length) }, (_, i) => (
               <tr key={i}>
-                <td>{body.left.items[i] ?? ''}</td>
-                <td>{body.right.items[i] ?? ''}</td>
+                <td><AnchorText text={body.left.items[i] ?? ''} /></td>
+                <td><AnchorText text={body.right.items[i] ?? ''} /></td>
               </tr>
             ))}
           </tbody>
@@ -93,7 +94,7 @@ function CmpCardSide({ side }: { side: CmpSide }) {
     <div className="wg-cmp-side">
       <h5 className="wg-cmp-head">{side.head}</h5>
       <ul className="wg-cmp-items">
-        {side.items.map((item, index) => <li key={index}>{item}</li>)}
+        {side.items.map((item, index) => <li key={index}><AnchorText text={item} /></li>)}
       </ul>
     </div>
   )
@@ -121,7 +122,7 @@ function WarnBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLi
   return (
     <section className="wg-warn">
       <h4 className="wg-warn-title">⚠ {attrs.title ?? ''}</h4>
-      <p className="wg-warn-text">{bodyLines.join('\n').trim()}</p>
+      <p className="wg-warn-text"><AnchorText text={bodyLines.join('\n').trim()} /></p>
     </section>
   )
 }

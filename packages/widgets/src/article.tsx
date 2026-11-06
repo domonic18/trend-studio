@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { DslBlockView } from './blocks.js'
+import { StockAnchor, UnitAnchor } from './anchors.js'
 import { rewriteStockAnchors, splitArticle } from './dsl.js'
 import type { ArticleHost } from './types.js'
 
@@ -62,20 +63,6 @@ function MarkdownRun({ text, host }: { text: string; host: ArticleHost }) {
         {rewriteStockAnchors(text)}
       </ReactMarkdown>
     </div>
-  )
-}
-
-/** R1 仅高亮展示；点击定位随 R2 案例股表。 */
-function StockAnchor({ code, label }: { code: string; label: string }) {
-  return <span className="wg-stock-anchor" data-code={code}>{label}</span>
-}
-
-/** 证据锚：指向语料 unit。学员端只展示标识，点击由宿主接管。 */
-function UnitAnchor({ unitId, label }: { unitId: string; label: string }) {
-  return (
-    <span className="wg-unit-anchor" data-unit-id={unitId} title={`证据 ${unitId}`}>
-      {label}
-    </span>
   )
 }
 
