@@ -5,10 +5,10 @@
 
 import { z } from 'zod'
 import { ASSET_ID, DATE_STR, FIGURE_ID_REF, SOURCE_UNIT_ID, STOCK_CODE } from './ids.js'
-import { ANNOTATION_KINDS, DSL_DIRECTIVE_VERSIONS, type DslDirectiveName } from './enums.js'
+import { ANNOTATION_KINDS, DSL_DIRECTIVE_VERSIONS, WARN_VARIANTS, type DslDirectiveName } from './enums.js'
 
-/** 服务端最高支持的正文版本（v1 正文零改动，服务端同时接受 1/2）。 */
-export const DSL_VERSION = 2
+/** 服务端最高支持的正文版本（v1/v2 正文零改动，服务端同时接受 1/2/3）。 */
+export const DSL_VERSION = 3
 
 export type BodyKind = 'text' | 'json' | 'empty'
 
@@ -71,7 +71,10 @@ export const COMPONENT_SPECS: Record<DslDirectiveName, ComponentSpec> = {
     }),
   },
   warn: {
-    attrs: [{ key: 'title', required: true, codePointMax: 50 }],
+    attrs: [
+      { key: 'title', required: true, codePointMax: 50 },
+      { key: 'variant', required: false, enum: WARN_VARIANTS },
+    ],
     body: 'text',
     textBody: { min: 1, max: 500 },
   },
@@ -115,6 +118,31 @@ export const COMPONENT_SPECS: Record<DslDirectiveName, ComponentSpec> = {
       { key: 'caption', required: true, codePointMax: 200 },
     ],
     body: 'empty',
+  },
+  think: {
+    attrs: [{ key: 'title', required: true, codePointMax: 50 }],
+    body: 'text',
+    textBody: { min: 1, max: 800 },
+  },
+  sidenote: {
+    attrs: [
+      { key: 'title', required: false, codePointMax: 50 },
+      { key: 'src', required: false, codePointMax: 120 },
+      { key: 'unitId', required: false, pattern: SOURCE_UNIT_ID },
+    ],
+    body: 'text',
+    textBody: { min: 1, max: 500 },
+  },
+  cards: {
+    attrs: [],
+    body: 'json',
+    bodySchema: z.strictObject({
+      items: z.array(z.strictObject({
+        num: z.string().trim().min(1).max(10).optional(),
+        title: z.string().trim().min(1).max(80),
+        desc: z.string().trim().min(1).max(300).optional(),
+      })).min(1).max(4),
+    }),
   },
 }
 

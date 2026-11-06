@@ -5,11 +5,11 @@
 
 import { z } from 'zod'
 import {
-  APPROVAL_ID, ASSET_ID, CASE_STOCK_REF_ID, CONCEPT_EDGE_ID, CONCEPT_ID, DATE_STR, FIGURE_ID_STRICT,
+  APPROVAL_ID, ASSET_ID, CASE_STOCK_REF_ID, CONCEPT_EDGE_ID, CONCEPT_ID, DATE_STR, FIGURE_ID_REF, FIGURE_ID_STRICT,
   SECTION_ID, SOURCE_UNIT_ID, STOCK_CODE, STOCK_CODE_PLAIN, TRANSCRIPT_ID, WIDGET_ID,
 } from './ids.js'
 import {
-  ANNOTATION_KINDS, COURSE_OVERLAYS, FIGURE_TEMPLATE_NAMES, KLINE_PERIODS, PROVENANCE_TASK_KEYS, WIDGET_TYPES,
+  ANNOTATION_KINDS, COURSE_OVERLAYS, FIGURE_TEMPLATE_NAMES, GENERATOR_IDS, KLINE_PERIODS, PROVENANCE_TASK_KEYS, WIDGET_TYPES,
 } from './enums.js'
 
 const assetId = z.string().regex(ASSET_ID, 'assetId 格式不合法')
@@ -286,6 +286,59 @@ export const BAR_REPLAY_DECISION_ASSERTIONS = [
   'revealMonotonic',
   'annotationTermsGrounded',
   'answerUnique',
+] as const
+
+/** M10 v3：image-juxtaposition 前后对比滑块（架构 §6.6.5）。两侧各为课程画面或合成 K 线。 */
+const juxtapositionSide = z.union([
+  z.strictObject({ figureId: z.string().regex(FIGURE_ID_REF, 'figureId 格式不合法') }),
+  z.strictObject({
+    generator: z.enum(GENERATOR_IDS),
+    seed: z.number().int().nonnegative().max(2_147_483_647),
+    bars: z.number().int().min(20).max(300),
+  }),
+])
+
+export const imageJuxtapositionSpec = z.strictObject({
+  left: juxtapositionSide,
+  right: juxtapositionSide,
+  labels: z.strictObject({
+    left: z.string().trim().min(1).max(60),
+    right: z.string().trim().min(1).max(60),
+  }),
+  captions: z.strictObject({
+    left: z.string().trim().min(1).max(300),
+    right: z.string().trim().min(1).max(300),
+  }),
+  citations: z.array(sourceUnitId).min(1).max(20),
+}).strict()
+
+export const IMAGE_JUXTAPOSITION_ASSERTIONS = [
+  'pairSidesValid',
+  'captionsGrounded',
+] as const
+
+/** M10 v3：branching-scenario 分支情景练习（架构 §6.6.5）。节点无 options 即终点。 */
+export const branchingScenarioSpec = z.strictObject({
+  scenario: z.string().trim().min(1).max(800),
+  entryId: z.string().trim().min(1).max(40),
+  nodes: z.array(z.strictObject({
+    id: z.string().trim().min(1).max(40),
+    prompt: z.string().trim().min(1).max(500),
+    options: z.array(z.strictObject({
+      label: z.string().trim().min(1).max(200),
+      next: z.string().trim().min(1).max(40),
+      feedback: z.string().trim().min(1).max(500),
+    })).min(2).max(4).optional(),
+  })).min(1).max(20),
+  optimalPath: z.array(z.string().trim().min(1).max(40)).min(1).max(20),
+  citations: z.array(sourceUnitId).min(1).max(20),
+}).strict()
+
+export const BRANCHING_SCENARIO_ASSERTIONS = [
+  'graphAcyclic',
+  'allPathsTerminate',
+  'optimalPathReachable',
+  'feedbackNonEmpty',
 ] as const
 
 /** 课件删除（生产端纠错回路）：同节同 code 的回放课件写错时删旧再写。 */

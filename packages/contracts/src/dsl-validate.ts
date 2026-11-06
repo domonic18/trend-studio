@@ -45,6 +45,9 @@ export const CLIP_WINDOW_MAX_SEC = 60
 export const UNIT_ANCHOR_LABEL_MAX = 50
 export const ANNOTATION_MAX_PER_SECTION = 12
 export const REPLAY_MAX_PER_SECTION = 2
+export const THINK_MAX_PER_SECTION = 3
+export const SIDENOTE_MAX_PER_SECTION = 8
+export const CARDS_MAX_PER_SECTION = 2
 
 export async function validateArticleDsl(parsed: DslParseResult, ctx: DslValidateCtx, sink: DslErrorSink): Promise<void> {
   const clipBlocks = parsed.blocks.filter(block => block.directive === 'clip')
@@ -63,6 +66,24 @@ export async function validateArticleDsl(parsed: DslParseResult, ctx: DslValidat
   if (replayBlocks.length > REPLAY_MAX_PER_SECTION) {
     sink.conflict('replay_quota_exceeded', `article contains more than ${REPLAY_MAX_PER_SECTION} replay blocks`, {
       found: replayBlocks.length,
+    })
+  }
+  const thinkBlocks = parsed.blocks.filter(block => block.directive === 'think')
+  if (thinkBlocks.length > THINK_MAX_PER_SECTION) {
+    sink.conflict('think_quota_exceeded', `article contains more than ${THINK_MAX_PER_SECTION} think blocks`, {
+      found: thinkBlocks.length,
+    })
+  }
+  const sidenoteBlocks = parsed.blocks.filter(block => block.directive === 'sidenote')
+  if (sidenoteBlocks.length > SIDENOTE_MAX_PER_SECTION) {
+    sink.conflict('sidenote_quota_exceeded', `article contains more than ${SIDENOTE_MAX_PER_SECTION} sidenote blocks`, {
+      found: sidenoteBlocks.length,
+    })
+  }
+  const cardsBlocks = parsed.blocks.filter(block => block.directive === 'cards')
+  if (cardsBlocks.length > CARDS_MAX_PER_SECTION) {
+    sink.conflict('cards_quota_exceeded', `article contains more than ${CARDS_MAX_PER_SECTION} cards blocks`, {
+      found: cardsBlocks.length,
     })
   }
   for (const block of parsed.blocks) await validateBlock(block, ctx, sink)

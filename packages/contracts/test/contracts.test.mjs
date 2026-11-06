@@ -7,6 +7,8 @@ import {
   quotesSyncInput, quotesSyncOutput, quotesItem, quotesListOutput,
   catalogSectionSummary, catalogSectionOutput, catalogPlaybackOutput,
   dslVersionOf, DSL_VERSION, barReplayDecisionSpec, BAR_REPLAY_DECISION_ASSERTIONS,
+  imageJuxtapositionSpec, IMAGE_JUXTAPOSITION_ASSERTIONS,
+  branchingScenarioSpec, BRANCHING_SCENARIO_ASSERTIONS,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -344,7 +346,113 @@ test('DSL v2：正文版本按用到的组件取最大值', () => {
   assert.equal(dslVersionOf(['board', 'annotation']), 2)
   assert.equal(dslVersionOf(['replay']), 2)
   assert.equal(dslVersionOf([]), 1)
-  assert.equal(DSL_VERSION, 2)
+})
+
+test('DSL v3：新增三块与 warn 变体，正文版本升到 3', () => {
+  assert.equal(dslVersionOf(['think', 'sidenote', 'cards']), 3)
+  assert.equal(dslVersionOf(['board', 'think']), 3)
+  assert.equal(dslVersionOf(['warn']), 2)
+  assert.equal(DSL_VERSION, 3)
+})
+
+test('DSL v3：:::think / :::sidenote / :::cards 属性与 body 形状', () => {
+  const fail = throwsWith()
+  checkAttrs('think', { title: '先想一想' }, 1, fail)
+  assert.throws(() => checkAttrs('think', {}, 1, fail), /required/)
+  assert.throws(() => checkAttrs('think', { title: 'x', extra: 'y' }, 1, fail), /not allowed/)
+
+  checkAttrs('sidenote', { title: '阻尼运动', src: '原片 08:42' }, 1, fail)
+  checkAttrs('sidenote', { unitId: UNIT }, 1, fail)
+  assert.throws(() => checkAttrs('sidenote', { unitId: 'bad' }, 1, fail), /invalid/)
+
+  const cards = parseBody('cards', ['{"items":[{"num":"01","title":"能说清趋势的定义","desc":"用自己的话复述"}]}'], fail)
+  assert.equal(cards.items[0].num, '01')
+  assert.throws(() => parseBody('cards', ['{"items":[]}'], fail), /invalid/)
+  assert.throws(() => parseBody('cards', ['{"items":[{"title":"x","unknown":1}]}'], fail), /invalid/)
+})
+
+test('DSL v3：:::warn variant 只接受四型', () => {
+  const fail = throwsWith()
+  checkAttrs('warn', { title: '风险提示' }, 1, fail)
+  checkAttrs('warn', { title: '定义', variant: 'def' }, 1, fail)
+  checkAttrs('warn', { title: '定位', variant: 'rule' }, 1, fail)
+  checkAttrs('warn', { title: '误用', variant: 'misuse' }, 1, fail)
+  checkAttrs('warn', { title: '风险', variant: 'risk' }, 1, fail)
+  assert.throws(() => checkAttrs('warn', { title: 'x', variant: 'info' }, 1, fail), /must be one of/)
+})
+
+test('DSL v3：think/sidenote/cards 配额超限走 409 通道', async () => {
+  const sink = V2_SINK()
+  const manyThink = Array.from({ length: 4 }, (_, i) => `:::think title=想${i}\n内容\n:::`).join('\n\n')
+  await assert.rejects(
+    () => validateArticleDsl(parseArticleDsl(manyThink, sink), v2Ctx(), sink),
+    /think_quota_exceeded/,
+  )
+  assert.deepEqual(sink.hits[0], ['conflict', 'think_quota_exceeded'])
+
+  const noteSink = V2_SINK()
+  const manyNotes = Array.from({ length: 9 }, (_, i) => `:::sidenote title=注${i}\n内容\n:::`).join('\n\n')
+  await assert.rejects(
+    () => validateArticleDsl(parseArticleDsl(manyNotes, noteSink), v2Ctx(), noteSink),
+    /sidenote_quota_exceeded/,
+  )
+
+  const cardsSink = V2_SINK()
+  const manyCards = Array.from({ length: 3 }, (_, i) => `:::cards\n{"items":[{"title":"卡${i}"}]}\n:::`).join('\n\n')
+  await assert.rejects(
+    () => validateArticleDsl(parseArticleDsl(manyCards, cardsSink), v2Ctx(), cardsSink),
+    /cards_quota_exceeded/,
+  )
+})
+
+test('DSL v3：sidenote 的 unitId 必须落在课程语料内', async () => {
+  const sink = V2_SINK()
+  const md = `:::sidenote title=术语 unitId=${UNIT}\n术语解释\n:::`
+  await assert.rejects(
+    () => validateArticleDsl(parseArticleDsl(md, sink), v2Ctx({ units: new Map() }), sink),
+    /unit_ref_unknown/,
+  )
+})
+
+test('M10 v3：image-juxtaposition spec 形状与必带断言', () => {
+  const spec = {
+    left: { figureId: 'fig_abc123' },
+    right: { generator: 'uptrend', seed: 7, bars: 60 },
+    labels: { left: '正确：结构破坏后先证伪', right: '误判：把反弹当趋势延续' },
+    captions: { left: '老师标注：高点抬高', right: '学员误判：追涨' },
+    citations: [UNIT],
+  }
+  assert.equal(imageJuxtapositionSpec.safeParse(spec).success, true)
+  assert.equal(imageJuxtapositionSpec.safeParse({ ...spec, left: { generator: 'uptrend' } }).success, false)
+  assert.equal(imageJuxtapositionSpec.safeParse({ ...spec, extra: 1 }).success, false)
+  assert.equal(imageJuxtapositionSpec.safeParse({ ...spec, citations: [] }).success, false)
+  assert.deepEqual([...IMAGE_JUXTAPOSITION_ASSERTIONS], ['pairSidesValid', 'captionsGrounded'])
+})
+
+test('M10 v3：branching-scenario spec 形状与必带断言', () => {
+  const spec = {
+    scenario: '一根大阳线之后，你怎么判断？',
+    entryId: 'n1',
+    nodes: [
+      { id: 'n1', prompt: '先做什么？', options: [
+        { label: '看结构', next: 'n2', feedback: '方向优先' },
+        { label: '看指标', next: 'n3', feedback: '指标是结果不是原因' },
+      ] },
+      { id: 'n2', prompt: '结构成立吗？' },
+      { id: 'n3', prompt: '回到起点。' },
+    ],
+    optimalPath: ['n1', 'n2'],
+    citations: [UNIT],
+  }
+  assert.equal(branchingScenarioSpec.safeParse(spec).success, true)
+  assert.equal(branchingScenarioSpec.safeParse({ ...spec, nodes: [] }).success, false)
+  assert.equal(branchingScenarioSpec.safeParse({ ...spec, optimalPath: [] }).success, false)
+  assert.deepEqual([...BRANCHING_SCENARIO_ASSERTIONS], [
+    'graphAcyclic',
+    'allPathsTerminate',
+    'optimalPathReachable',
+    'feedbackNonEmpty',
+  ])
 })
 
 test('DSL v2：bar-replay-decision spec 形状与必带断言', () => {
