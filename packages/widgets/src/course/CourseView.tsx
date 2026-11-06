@@ -4,6 +4,7 @@ import type { ChapterView, CoursePreviewHost, CoursePreviewView } from './types.
 
 export function CourseView({ view, host }: { view: CoursePreviewView; host: CoursePreviewHost }) {
   const [activeSection, setActiveSection] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
 
   useEffect(() => {
     const handler = () => {
@@ -16,10 +17,22 @@ export function CourseView({ view, host }: { view: CoursePreviewView; host: Cour
         }
       }
       setActiveSection(current)
+
+      const main = document.querySelector('.wg-course-main')
+      if (main !== null) {
+        const rect = main.getBoundingClientRect()
+        const scrollable = rect.height - window.innerHeight
+        const done = Math.min(Math.max(-rect.top, 0), Math.max(scrollable, 0))
+        setProgress(scrollable > 0 ? done / scrollable : 0)
+      }
     }
     window.addEventListener('scroll', handler, { passive: true })
+    window.addEventListener('resize', handler)
     handler()
-    return () => window.removeEventListener('scroll', handler)
+    return () => {
+      window.removeEventListener('scroll', handler)
+      window.removeEventListener('resize', handler)
+    }
   }, [])
 
   return (
@@ -30,6 +43,9 @@ export function CourseView({ view, host }: { view: CoursePreviewView; host: Cour
           {view.chapters.map(ch => (
             <ChapterToc key={ch.chapterId} chapter={ch} activeSection={activeSection} />
           ))}
+        </div>
+        <div className="wg-course-progress" role="presentation">
+          <i style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       </nav>
       <main className="wg-course-main">

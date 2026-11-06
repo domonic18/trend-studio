@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Kline, type KlineBar, type KlineEvent } from '../kline/Kline.js'
+import { MaPicker } from '../kline/MaPicker.js'
 import { DEFAULT_OVERLAYS } from '../kline/kline-chart.js'
 import {
   PERIOD_LABEL,
@@ -14,7 +15,7 @@ import type {
   BarReplayDecisionSpec as ReplayDecision,
   BarReplaySpec,
 } from '../spec-types.js'
-import { formatPosition } from './format.js'
+import { DecisionPanel } from './DecisionPanel.js'
 import { selectByCode } from './select-bars.js'
 
 export interface BarReplayDecisionProps {
@@ -96,9 +97,9 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
   const [revealed, setRevealed] = React.useState(0)
   const [playing, setPlaying] = React.useState(false)
   const [speed, setSpeed] = React.useState<1 | 2>(1)
+  const [overlays, setOverlays] = React.useState<string[]>(parsed?.overlays ?? DEFAULT_OVERLAYS)
   const [answers, setAnswers] = React.useState<Map<string, { selected: number; correct: boolean }>>(new Map())
   const [current, setCurrent] = React.useState<ReplayDecision | null>(null)
-  const [completed, setCompleted] = React.useState(false)
   const [showSummary, setShowSummary] = React.useState(false)
   const [filterKinds, setFilterKinds] = React.useState<Set<AnnotationKind>>(
     () => new Set(['structure', 'invalidation', 'rhythm']),
@@ -110,7 +111,6 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
   React.useEffect(() => {
     if (!playing || current !== null || total === 0) return undefined
     if (revealed >= total) {
-      setCompleted(true)
       setShowSummary(true)
       setPlaying(false)
       return undefined
@@ -128,7 +128,6 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
         }
         if (next >= total) {
           window.setTimeout(() => {
-            setCompleted(true)
             setShowSummary(true)
             setPlaying(false)
           }, 0)
@@ -163,7 +162,6 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
       setPlaying(false)
     }
     if (next >= total) {
-      setCompleted(true)
       setShowSummary(true)
       setPlaying(false)
     }
@@ -174,27 +172,28 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
     setPlaying(false)
     setAnswers(new Map())
     setCurrent(null)
-    setCompleted(false)
     setShowSummary(false)
   }
 
-  const handleAnswer = (d: ReplayDecision, optionIndex: number): void => {
-    if (answers.has(d.atDate)) return
-    const correct = optionIndex === d.correct
+  const handleAnswer = (optionIndex: number): void => {
+    if (current === null || answers.has(current.atDate)) return
+    const correct = optionIndex === current.correct
     setAnswers((prev) => {
       const next = new Map(prev)
-      next.set(d.atDate, { selected: optionIndex, correct })
+      next.set(current.atDate, { selected: optionIndex, correct })
       return next
     })
-    window.setTimeout(() => {
-      setCurrent(null)
-      if (revealed >= total) {
-        setCompleted(true)
-        setShowSummary(true)
-      } else {
-        setPlaying(true)
-      }
-    }, 1200)
+  }
+
+  /** 作答后显式继续：揭晓内容保持可见，直到用户点「继续回放」。 */
+  const handleContinue = (): void => {
+    setCurrent(null)
+    if (revealed >= total) {
+      setShowSummary(true)
+      setPlaying(false)
+      return
+    }
+    setPlaying(true)
   }
 
   const handleJumpToDecision = (idx: number): void => {
@@ -243,7 +242,10 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
     <div className="wg-replay">
       <header className="wg-replay-head">
         <span className="wg-replay-title">逐根回放：{code} · {PERIOD_LABEL[period]}</span>
-        <span className="wg-replay-progress-text">{Math.round(progress * 100)}%</span>
+        <span className="wg-replay-head-tools">
+          <MaPicker value={overlays} onChange={setOverlays} />
+          <span className="wg-replay-progress-text">{Math.round(progress * 100)}%</span>
+        </span>
       </header>
 
       <div className="wg-replay-chart-wrap">
@@ -254,48 +256,19 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
           mode="replay"
           revealCount={revealed}
           height={280}
-          overlays={parsed.overlays ?? DEFAULT_OVERLAYS}
+          overlays={overlays}
         />
-        {current && (
-          <div className="wg-replay-decision-card">
-            <div className="wg-replay-decision-question">{current.question}</div>
-            <div className="wg-replay-decision-options">
-              {current.options.map((opt, i) => {
-                const answered = answers.get(current.atDate)
-                const locked = answered !== undefined
-                const isSelected = answered?.selected === i
-                const isCorrect = i === current.correct
-                let stateClass = ''
-                if (locked && isCorrect) stateClass = 'wg-replay-option-correct'
-                else if (locked && isSelected) stateClass = 'wg-replay-option-wrong'
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    className={`wg-replay-option ${stateClass}`}
-                    disabled={locked}
-                    onClick={() => handleAnswer(current, i)}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-            {answers.get(current.atDate) && (
-              <div className="wg-replay-reveal">
-                <p className="wg-replay-reveal-text">{current.revealText}</p>
-                <button
-                  type="button"
-                  className="wg-replay-unit-link"
-                  onClick={() => handleUnitClick(current.unitId, current.atMs)}
-                >
-                  老师原话 · {formatPosition(current.atMs)}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {current !== null ? (
+        <DecisionPanel
+          decision={current}
+          answer={answers.get(current.atDate)}
+          onAnswer={handleAnswer}
+          onUnitClick={handleUnitClick}
+          onContinue={handleContinue}
+        />
+      ) : null}
 
       <div className="wg-replay-controls">
         <button
@@ -363,7 +336,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
         ))}
       </div>
 
-      {showSummary && (
+      {showSummary ? (
         <div className="wg-replay-summary">
           <div className="wg-replay-summary-title">回放小结</div>
           <div className="wg-replay-summary-score">
@@ -371,7 +344,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
           </div>
           <button type="button" className="wg-replay-btn" onClick={handleReset}>再跑一次</button>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

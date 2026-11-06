@@ -1,3 +1,5 @@
 export { BarReplayDecision } from './BarReplayDecision.js'
 export type { BarReplayDecisionProps } from './BarReplayDecision.js'
+export { DecisionPanel } from './DecisionPanel.js'
+export type { DecisionPanelProps } from './DecisionPanel.js'
 export { formatPosition } from './format.js'

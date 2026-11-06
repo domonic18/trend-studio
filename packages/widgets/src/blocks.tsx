@@ -127,6 +127,13 @@ function WarnBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLi
   )
 }
 
+/** 图示来源徽章：A 类 AI 插画 / B 类结构图 / 关键帧。 */
+const FIGURE_KIND_BADGE: Record<string, { label: string; className: string }> = {
+  generated: { label: 'AI 插画', className: 'wg-figure-badge-ai' },
+  diagram: { label: '结构图', className: 'wg-figure-badge-struct' },
+  keyframe: { label: '关键帧', className: 'wg-figure-badge-frame' },
+}
+
 function FigureBlock({ attrs, host }: { attrs: Record<string, string>; host: ArticleHost }) {
   const figureId = attrs.figureId ?? ''
   const [url, setUrl] = useState<string | null>(null)
@@ -147,11 +154,16 @@ function FigureBlock({ attrs, host }: { attrs: Record<string, string>; host: Art
   }, [figureId, host])
 
   const title = attrs.caption !== undefined && attrs.caption !== '' ? attrs.caption : figureId
+  const badge = FIGURE_KIND_BADGE[host.figures.get(figureId)?.kind ?? '']
   return (
     <figure className="wg-figure">
       <header className="wg-figure-head">
         <span className="wg-figure-title">{title}</span>
-        <span className="wg-figure-badge">图示</span>
+        {badge !== undefined ? (
+          <span className={`wg-figure-badge ${badge.className}`}>{badge.label}</span>
+        ) : (
+          <span className="wg-figure-badge">图示</span>
+        )}
       </header>
       <div className="wg-figure-body">
         {failed ? (
