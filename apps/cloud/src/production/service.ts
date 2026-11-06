@@ -122,6 +122,8 @@ export interface WidgetDetail {
   status: string
   version: number
   createdAt: string
+  /** 课件引用集：重写课件时按此原样带回。 */
+  citations: string[]
 }
 
 export interface FigureBrief {
@@ -467,8 +469,9 @@ export class ProductionService {
       status: string
       version: number
       created_at: Date
+      citations: string[]
     }>(
-      `SELECT widget_id, type, spec_version, spec, assertions, validation, status, version, created_at
+      `SELECT widget_id, type, spec_version, spec, assertions, validation, status, version, created_at, citations
        FROM widget_specs WHERE section_id = $1 ORDER BY created_at, widget_id`,
       [sectionId],
     )
@@ -515,6 +518,7 @@ export class ProductionService {
         status: row.status,
         version: row.version,
         createdAt: row.created_at.toISOString(),
+        citations: row.citations,
       })),
       figures: figureRows.map(row => ({
         figureId: row.figure_id,
@@ -1024,27 +1028,65 @@ export class ProductionService {
     if (!proof.ok) {
       throw codedConflict('assertion_unproven', 'widget assertions failed server-side proof', { failed: proof.failed })
     }
-    const id = wgtId()
-    const { rows } = await this.pool.query<{ status: string }>(
-      `INSERT INTO widget_specs (widget_id, section_id, course_id, type, spec_version, spec,
-                                 assertions, validation, citations)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)
-       RETURNING status`,
-      [
-        id,
-        sectionId,
-        section.course_id,
-        type,
-        specVersion,
-        JSON.stringify(spec),
-        JSON.stringify(assertions),
-        JSON.stringify(proof.validation),
-        JSON.stringify(citations),
-      ],
-    )
+    // M10 v2：同节同 code 的 bar-replay-decision 唯一——正文 :::replay 按 code 解析回放课件，
+    // 同 code 出现两份会让回放入口歧义。重复写入按覆盖语义替换旧课件（与案例股同 code 覆盖一致），
+    // 否则生产端写错一个数字就只能在管理台手工删，产线没有纠错回路。
+    // 其余题型不设覆盖键：同节同类型的多份课件各自独立，纠错走 DELETE 端点。
+    const replaced = await this.findReplayWidgetToReplace(sectionId, type, spec)
+    if (replaced.length > 1) {
+      await this.pool.query('DELETE FROM widget_specs WHERE widget_id = ANY($1::text[])', [replaced.slice(1)])
+    }
+    const id = replaced[0] ?? wgtId()
+    const { rows } = replaced.length > 0
+      ? await this.pool.query<{ status: string }>(
+        `UPDATE widget_specs
+            SET spec_version = $2, spec = $3::jsonb, assertions = $4::jsonb,
+                validation = $5::jsonb, citations = $6::jsonb, version = version + 1, updated_at = now()
+          WHERE widget_id = $1
+          RETURNING status`,
+        [
+          id,
+          specVersion,
+          JSON.stringify(spec),
+          JSON.stringify(assertions),
+          JSON.stringify(proof.validation),
+          JSON.stringify(citations),
+        ],
+      )
+      : await this.pool.query<{ status: string }>(
+        `INSERT INTO widget_specs (widget_id, section_id, course_id, type, spec_version, spec,
+                                   assertions, validation, citations)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)
+         RETURNING status`,
+        [
+          id,
+          sectionId,
+          section.course_id,
+          type,
+          specVersion,
+          JSON.stringify(spec),
+          JSON.stringify(assertions),
+          JSON.stringify(proof.validation),
+          JSON.stringify(citations),
+        ],
+      )
     const widgetRow = rows[0]
     if (widgetRow === undefined) throw new Error('widget insert returned no row')
     return { widgetId: id, validation: proof.validation, status: widgetRow.status }
+  }
+
+  /** 同节同 code 的 bar-replay-decision 课件 id（按创建顺序）；非回放课件返回空数组。 */
+  private async findReplayWidgetToReplace(sectionId: string, type: string, spec: unknown): Promise<string[]> {
+    if (type !== 'bar-replay-decision') return []
+    const code = (spec as { code?: unknown }).code
+    if (typeof code !== 'string') return []
+    const { rows } = await this.pool.query<{ widget_id: string }>(
+      `SELECT widget_id FROM widget_specs
+        WHERE section_id = $1 AND type = $2 AND spec->>'code' = $3
+        ORDER BY created_at, widget_id`,
+      [sectionId, type, code],
+    )
+    return rows.map(row => row.widget_id)
   }
 
   /** 管理端纠错删除：草稿/已发布均可（清探针、误建课件）；widget 不在该节下视同不存在。 */

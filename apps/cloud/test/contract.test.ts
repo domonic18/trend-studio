@@ -3645,7 +3645,7 @@ test('M9 语料级生产：节渲染预览聚合（教材 + 课件全量 + 图�
     headers: adminHeaders(),
   })
   const withBody = withWidget.json() as {
-    widgets: { widgetId: string; type: string; specVersion: number; spec: unknown; assertions: unknown; validation: Record<string, string>; status: string; version: number; createdAt: string }[]
+    widgets: { widgetId: string; type: string; specVersion: number; spec: unknown; assertions: unknown; validation: Record<string, string>; status: string; version: number; createdAt: string; citations: string[] }[]
   }
   assert.equal(withBody.widgets.length, 1)
   const w = withBody.widgets[0]
@@ -3654,6 +3654,8 @@ test('M9 语料级生产：节渲染预览聚合（教材 + 课件全量 + 图�
   assert.equal(w.specVersion, 1)
   assert.ok(typeof (w.spec as { solution?: unknown }).solution === 'object')
   assert.ok(typeof w.createdAt === 'string' && w.createdAt.length > 0)
+  // 课件引用集随预览回带：重写课件时按此原样带回，不必从正文反推
+  assert.deepEqual(w.citations, [unitId])
 
   // 不存在的节 → 404
   const missing = await app.inject({

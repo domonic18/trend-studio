@@ -1,7 +1,7 @@
 /** 节级图示写入（架构 §6.6.2）：keyframe 抽帧路 + diagram 模板渲染路；配额分路，自动选定候选。 */
 
 import { randomBytes } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Pool } from 'pg'
 import { badRequest, codedBadRequest, codedConflict, serviceUnavailable } from '../../errors.js'
@@ -95,11 +95,12 @@ function figureIdFor(): string {
 }
 
 /** 配额按 kind 分路：keyframe ≤6/节、diagram ≤2/节（generated 沿用 M8 illustrate 通道不经此端点）。 */
-async function assertQuota(pool: Pool, sectionId: string, kind: 'keyframe' | 'diagram'): Promise<void> {
+async function assertQuota(pool: Pool, sectionId: string, kind: 'keyframe' | 'diagram', excludeFigureId?: string): Promise<void> {
   const limit = kind === 'keyframe' ? KEYFRAME_QUOTA_PER_SECTION : DIAGRAM_QUOTA_PER_SECTION
   const { rows } = await pool.query<{ count: string }>(
-    'SELECT count(*)::text AS count FROM figures WHERE section_id = $1 AND kind = $2',
-    [sectionId, kind],
+    `SELECT count(*)::text AS count FROM figures
+      WHERE section_id = $1 AND kind = $2 AND ($3::text IS NULL OR figure_id <> $3)`,
+    [sectionId, kind, excludeFigureId ?? null],
   )
   if (Number(rows[0]?.count ?? 0) >= limit) {
     throw codedConflict('figure_quota_exceeded', `${kind} figures per section is limited to ${limit}`, { kind, limit })
@@ -175,20 +176,93 @@ async function insertFigureWithCandidate(
   }
 }
 
+/**
+ * 同节同 kind 同 caption 的图示覆盖更新：figure_id 不变（正文 :::figure 引用不失效），
+ * 旧候选行清掉、spec 与选中候选换新。生产端写错一张图没有删除端点可用，产线需要纠错回路。
+ */
+async function replaceFigureWithCandidate(
+  deps: FigureWriterDeps,
+  input: SectionFigureInput,
+  stored: { relPath: string; bytes: number; sha256: string },
+  dimensions: { width: number; height: number },
+  figureId: string,
+  candidateId: string,
+): Promise<void> {
+  const client = await deps.pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { rows: oldCandidates } = await client.query<{ rel_path: string }>(
+      'SELECT rel_path FROM figure_candidates WHERE figure_id = $1',
+      [figureId],
+    )
+    await client.query('DELETE FROM figure_candidates WHERE figure_id = $1', [figureId])
+    await client.query(
+      `INSERT INTO figure_candidates
+         (candidate_id, figure_id, rel_path, width, height, bytes, sha256, source_sec, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ready')`,
+      [
+        candidateId,
+        figureId,
+        stored.relPath,
+        dimensions.width,
+        dimensions.height,
+        stored.bytes,
+        stored.sha256,
+        input.kind === 'keyframe' ? input.sec : null,
+      ],
+    )
+    // selected_candidate_id 有外键指向 figure_candidates：候选行先落，再改指针。
+    await client.query(
+      `UPDATE figures
+          SET caption = $2, spec = $3::jsonb, selected_candidate_id = $4, status = 'ready', updated_at = now()
+        WHERE figure_id = $1`,
+      [
+        figureId,
+        input.caption,
+        input.kind === 'diagram' ? JSON.stringify({ template: input.template, params: input.params }) : null,
+        candidateId,
+      ],
+    )
+    await client.query('COMMIT')
+    for (const old of oldCandidates) {
+      await unlink(deps.figureStore.pathOf(old.rel_path)).catch(() => undefined)
+    }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export async function createSectionFigure(
   deps: FigureWriterDeps,
   scope: SectionFigureScope,
   input: SectionFigureInput,
 ): Promise<SectionFigureResult> {
-  const figureId = figureIdFor()
+  let figureId = figureIdFor()
   const candidateId = candidateIdFor()
 
   if (input.kind === 'diagram') {
     // 语义校验（400）优先于配额（409）：参数错误不应消耗配额判断。
     const rendered = renderTemplate(input.template, input.params)
-    await assertQuota(deps.pool, scope.sectionId, 'diagram')
+    // 同节同 kind 同 caption 视为同一张图：覆盖更新（figure_id 不变，正文引用不失效）。
+    const { rows: sameCaption } = await deps.pool.query<{ figure_id: string }>(
+      `SELECT figure_id FROM figures
+        WHERE section_id = $1 AND kind = $2 AND caption = $3
+        ORDER BY created_at LIMIT 1`,
+      [scope.sectionId, 'diagram', input.caption],
+    )
+    const replacing = sameCaption[0]?.figure_id
+    await assertQuota(deps.pool, scope.sectionId, 'diagram', replacing)
+    // 覆盖时沿用旧 figure_id：正文 :::figure 引用不失效，SVG 也落在同一目录树下。
+    figureId = replacing ?? figureId
     const stored = await deps.figureStore.write(figureId, candidateId, 'svg', Buffer.from(rendered.svg, 'utf8'))
-    await insertFigureWithCandidate(deps, scope, input, stored, rendered, figureId, candidateId)
+    if (replacing === undefined) {
+      await insertFigureWithCandidate(deps, scope, input, stored, rendered, figureId, candidateId)
+    } else {
+      await replaceFigureWithCandidate(deps, input, stored, rendered, figureId, candidateId)
+    }
   } else {
     const { rows: unitRows } = await deps.pool.query<{ asset_id: string; start_ms: string | bigint; end_ms: string | bigint }>(
       'SELECT asset_id, start_ms, end_ms FROM source_units WHERE unit_id = $1',

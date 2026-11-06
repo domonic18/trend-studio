@@ -65,6 +65,80 @@ test('断言证明：mcq 未知术语失败，已知术语通过', () => {
   assert.deepEqual(unknown.ok === false ? unknown.failed : [], ['termsInConcepts'])
 })
 
+test('bar-replay-decision：spec 校验接受 unitId 值，断言在真实上下文下全过', () => {
+  const spec = validateSpec('bar-replay-decision', {
+    code: 'sz002079',
+    window: { from: '2025-11-11', to: '2026-02-13' },
+    overlays: ['M60'],
+    annotations: [
+      { unitId: 'su_0123456789abcdef', atMs: 600000, kind: 'structure', d: '2026-01-21', label: '趋势启动' },
+    ],
+    decisions: [
+      {
+        atDate: '2025-12-23',
+        question: '末端缩量说明什么？',
+        options: [{ label: '筹码锁定' }, { label: '出货' }],
+        correct: 0,
+        revealText: '阻尼运动末端缩量说明筹码锁定。',
+        unitId: 'su_0123456789abcdef',
+        atMs: 600000,
+      },
+    ],
+    citations: ['su_0123456789abcdef'],
+  })
+  const assertions = validateAssertions('bar-replay-decision', {
+    decisionPointsGrounded: true,
+    revealMonotonic: true,
+    annotationTermsGrounded: true,
+    answerUnique: true,
+  })
+  const ctx = {
+    conceptNames: new Set(['阻尼运动', '趋势启动']),
+    unitWindows: new Map([['su_0123456789abcdef', { startMs: 585930, endMs: 641230 }]]),
+    caseWindow: { start: '2025-07-11', end: '2026-11-05' },
+    tradingDays: new Set(['2025-12-23', '2026-01-21']),
+  }
+  const proved = proveWidget('bar-replay-decision', spec, assertions, ctx)
+  assert.equal(proved.ok, true, proved.ok ? '' : proved.failed.join(','))
+
+  const badDecision = () => validateSpec('bar-replay-decision', {
+    code: 'sz002079',
+    window: { from: '2025-11-11', to: '2026-02-13' },
+    decisions: [
+      {
+        atDate: '2025-12-23',
+        question: '末端缩量说明什么？',
+        options: [{ label: '筹码锁定' }, { label: '出货' }],
+        correct: 5,
+        revealText: '阻尼运动末端缩量说明筹码锁定。',
+        unitId: 'su_0123456789abcdef',
+        atMs: 600000,
+      },
+    ],
+    citations: ['su_0123456789abcdef'],
+  })
+  assert.throws(badDecision)
+  assert.throws(() => validateSpec('bar-replay-decision', {
+    code: 'sz002079',
+    window: { from: '2025-11-11', to: '2026-02-13' },
+    annotations: [
+      { unitId: 'not-a-unit-id', atMs: 700000, kind: 'structure', d: '2026-01-21', label: '趋势启动' },
+    ],
+    decisions: [
+      {
+        atDate: '2025-12-23',
+        question: '末端缩量说明什么？',
+        options: [{ label: '筹码锁定' }, { label: '出货' }],
+        correct: 0,
+        revealText: '阻尼运动末端缩量说明筹码锁定。',
+        unitId: 'su_0123456789abcdef',
+        atMs: 600000,
+      },
+    ],
+    citations: ['su_0123456789abcdef'],
+  }))
+})
+
 test('断言证明：calc-trainer 复算错误答案判失败', () => {
   const good = validateSpec('calc-trainer', {
     formula: 'position-size',

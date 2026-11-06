@@ -79,6 +79,15 @@ function proofFor(type: WidgetType, spec: WidgetSpec, key: string, assertions: W
       return closesHoldAbove(candles, spec.solution!.trendline)
     }
     case 'answerUnique': {
+      // bar-replay-decision 没有 options/answerId：正确项由 decisions[].correct 唯一指定，
+      // 断言口径是「每道题有且只有一个正确答案」——correct 必须落在该题选项区间内。
+      if (type === 'bar-replay-decision') {
+        const decisions = (spec as BarReplaySpec).decisions
+        return decisions.length > 0 && decisions.every(decision =>
+          Number.isInteger(decision.correct)
+          && decision.correct >= 0
+          && decision.correct < decision.options.length)
+      }
       const options = spec.options!
       return options.some(option => option.id === spec.answerId)
         && new Set(options.map(option => option.id)).size === options.length

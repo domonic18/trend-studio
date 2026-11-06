@@ -450,9 +450,9 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
             const annotation = objectValue(raw, `spec.annotations[${index}]`)
             rejectUnknown(annotation, ['unitId', 'atMs', 'kind', 'd', 'label'], `spec.annotations[${index}]`)
             return {
-              unitId: sourceUnitId(annotation, `spec.annotations[${index}].unitId`),
+              unitId: sourceUnitId(field(annotation, 'unitId'), `spec.annotations[${index}].unitId`),
               atMs: intNumber(field(annotation, 'atMs'), `spec.annotations[${index}].atMs`, 0, 86_400_000),
-              kind: annotationKind(annotation, `spec.annotations[${index}].kind`),
+              kind: annotationKind(field(annotation, 'kind'), `spec.annotations[${index}].kind`),
               d: dateField(annotation, 'd'),
               label: textField(annotation, 'label', 1, 50),
             }
@@ -471,7 +471,7 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
           options,
           correct: intNumber(field(decision, 'correct'), `spec.decisions[${index}].correct`, 0, options.length - 1),
           revealText: textField(decision, 'revealText', 1, 2000),
-          unitId: sourceUnitId(decision, `spec.decisions[${index}].unitId`),
+          unitId: sourceUnitId(field(decision, 'unitId'), `spec.decisions[${index}].unitId`),
           atMs: intNumber(field(decision, 'atMs'), `spec.decisions[${index}].atMs`, 0, 86_400_000),
         }
       })
