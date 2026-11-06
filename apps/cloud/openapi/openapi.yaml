@@ -7557,6 +7557,38 @@ paths:
         '503':
           description: 图示存储未配置或管线未启用（keyframe 抽帧不可用）
 
+  /v1/admin/content/sections/{sectionId}/figures/{figureId}:
+    delete:
+      summary: 管理端纠错删除图示（operator/admin/producer，M10）
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+        - name: figureId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^fig_[0-9a-f]{16}$'
+      responses:
+        '204':
+          description: 已删除（候选字节一并清理；草稿/已发布均可；重复删除 404）
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
   /v1/admin/content/sections/{sectionId}/case-stocks:
     get:
       summary: 节级案例股清单（operator/admin/producer，M10 R2）

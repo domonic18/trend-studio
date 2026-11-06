@@ -436,6 +436,12 @@ export const figureWriteInput = z.discriminatedUnion('kind', [
   }).strict(),
 ])
 
+/** 图示删除（生产端纠错回路）：配额或抽错帧写歪时删掉重来。 */
+export const figureDeleteInput = z.object({
+  sectionId,
+  figureId: z.string().regex(FIGURE_ID_STRICT, 'figureId 格式不合法'),
+}).strict()
+
 export const figureWriteOutput = z.object({
   figureId: z.string().regex(FIGURE_ID_STRICT),
   kind: z.enum(['keyframe', 'diagram']),
@@ -553,6 +559,7 @@ export type WidgetWriteOutput = z.infer<typeof widgetWriteOutput>
 export type SectionPreviewOutput = z.infer<typeof sectionPreviewOutput>
 export type ProvenanceOutput = z.infer<typeof provenanceOutput>
 export type FigureWriteOutput = z.infer<typeof figureWriteOutput>
+export type FigureDeleteInput = z.infer<typeof figureDeleteInput>
 export type CaseStocksWriteOutput = z.infer<typeof caseStocksWriteOutput>
 export type PipelineStatusOutput = z.infer<typeof pipelineStatusOutput>
 export type PipelineJob = z.infer<typeof pipelineJob>

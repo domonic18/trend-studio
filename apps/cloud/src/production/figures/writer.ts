@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Pool } from 'pg'
-import { badRequest, codedBadRequest, codedConflict, serviceUnavailable } from '../../errors.js'
+import { badRequest, codedBadRequest, codedConflict, notFound, serviceUnavailable } from '../../errors.js'
 import { candidateIdFor } from '../../pipeline/ids.js'
 import { jpegDimensions } from '../../pipeline/keyframes.js'
 import type { FigureStore } from '../../illustration/store.js'
@@ -298,6 +298,42 @@ export async function createSectionFigure(
     assetId: input.kind === 'keyframe' ? input.assetId : null,
     sourceSec: input.kind === 'keyframe' ? input.sec : null,
     spec: input.kind === 'diagram' ? { template: input.template, params: input.params } : null,
+  }
+}
+
+/**
+ * 管理端纠错删除：图示行与候选行同事务删除（候选经 ON DELETE CASCADE 随行落地），
+ * 候选字节文件在事务提交后清理。配额或抽错帧写歪时删掉重来——生产端没有覆盖删除语义可依赖。
+ */
+export async function deleteSectionFigure(
+  deps: { pool: Pool; figureStore?: FigureStore },
+  sectionId: string,
+  figureId: string,
+): Promise<void> {
+  const client = await deps.pool.connect()
+  const relPaths: string[] = []
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query<{ rel_path: string }>(
+      'SELECT rel_path FROM figure_candidates WHERE figure_id = $1',
+      [figureId],
+    )
+    relPaths.push(...rows.map(row => row.rel_path))
+    const { rowCount } = await client.query(
+      'DELETE FROM figures WHERE figure_id = $1 AND section_id = $2',
+      [figureId, sectionId],
+    )
+    if ((rowCount ?? 0) === 0) throw notFound('figure not found in section')
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+  if (deps.figureStore === undefined) return
+  for (const relPath of relPaths) {
+    await unlink(deps.figureStore.pathOf(relPath)).catch(() => undefined)
   }
 }
 

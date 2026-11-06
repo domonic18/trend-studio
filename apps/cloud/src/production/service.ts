@@ -26,6 +26,7 @@ import {
 } from '../quotes/read.js'
 import {
   createSectionFigure as writeSectionFigure,
+  deleteSectionFigure as removeSectionFigure,
   listSectionFigures as querySectionFigures,
   parseSectionFigureInput,
   type SectionFigureEntry,
@@ -1140,6 +1141,20 @@ export class ProductionService {
   async listSectionFigures(sectionId: string): Promise<{ figures: SectionFigureEntry[] }> {
     parseSectionId(sectionId)
     return { figures: await querySectionFigures(this.pool, sectionId) }
+  }
+
+  /** 管理端纠错删除图示：草稿/已发布均可（配额烧掉、抽错帧）；图示不在该节下视同不存在。 */
+  async deleteSectionFigure(sectionId: string, figureId: string): Promise<void> {
+    parseSectionId(sectionId)
+    if (!/^fig_[0-9a-f]{16}$/.test(figureId)) throw badRequest('figureId invalid')
+    await removeSectionFigure(
+      {
+        pool: this.pool,
+        ...(this.deps.figureStore === undefined ? {} : { figureStore: this.deps.figureStore }),
+      },
+      sectionId,
+      figureId,
+    )
   }
 
   /** 节级案例股清单写入（§6.6.3）：生产端抽取，云端复检代号/窗口/事件锚点后落库；同节同代号覆盖。 */

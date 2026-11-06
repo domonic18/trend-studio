@@ -3382,6 +3382,38 @@ test('M10 呈现层：节级 figures 写入（diagram 确定性 + keyframe 抽�
     },
   })
   assert.equal(article.statusCode, 200, article.body)
+
+  // 纠错删除：删后清单缩短、候选字节落盘文件消失；重复删 404；属其他节 404；非法 id 400
+  const keyframeCandidateId = (keyframe.json() as { selectedCandidateId: string }).selectedCandidateId
+  const deleted = await app.inject({
+    method: 'DELETE',
+    url: `${figureUrl}/${keyframeBody.figureId}`,
+    headers: adminHeaders(),
+  })
+  assert.equal(deleted.statusCode, 204, deleted.body)
+  const afterDelete = await app.inject({ method: 'GET', url: figureUrl, headers: adminHeaders() })
+  const entriesAfter = afterDelete.json().figures as { figureId: string }[]
+  assert.equal(entriesAfter.some(entry => entry.figureId === keyframeBody.figureId), false)
+  assert.equal(entriesAfter.length, entries.length - 1)
+  await assert.rejects(readFile(join(figureDir, keyframeBody.figureId, `${keyframeCandidateId}.jpg`)))
+  const deleteRepeat = await app.inject({
+    method: 'DELETE',
+    url: `${figureUrl}/${keyframeBody.figureId}`,
+    headers: adminHeaders(),
+  })
+  assert.equal(deleteRepeat.statusCode, 404)
+  const wrongSection = await app.inject({
+    method: 'DELETE',
+    url: `/v1/admin/content/sections/sec_0000000000000000/figures/${secondBody.figureId}`,
+    headers: adminHeaders(),
+  })
+  assert.equal(wrongSection.statusCode, 404)
+  const badId = await app.inject({
+    method: 'DELETE',
+    url: `${figureUrl}/fig_nothex`,
+    headers: adminHeaders(),
+  })
+  assert.equal(badId.statusCode, 400)
 })
 
 test('M10 呈现层：asset+时间窗播放会话（admin 预览通道）', async () => {

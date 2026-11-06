@@ -303,6 +303,15 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     return reply.code(201).send(await service.createSectionFigure(sectionId, request.body))
   })
 
+  app.delete('/v1/admin/content/sections/:sectionId/figures/:figureId', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const sectionId = parseSectionId(stringField(params, 'sectionId', { max: 20 }))
+    const figureId = stringField(params, 'figureId', { max: 20, pattern: /^fig_[0-9a-f]{16}$/ })
+    await service.deleteSectionFigure(sectionId, figureId)
+    return reply.code(204).send()
+  })
+
   app.get('/v1/admin/content/sections/:sectionId/case-stocks', async (request, reply) => {
     await guard(request)
     const params = asObject(request.params as unknown)
