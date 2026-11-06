@@ -910,10 +910,37 @@
 .wg-replay-summary-score { color: var(--wg-text-secondary); margin-bottom: 10px; }
 
 /* ---------- K 线画布 ---------- */
+.wg-kline-stage {
+  position: relative;
+}
 .wg-kline-canvas {
   display: block;
   width: 100%;
   border-radius: var(--wg-radius-sm);
   background: var(--wg-canvas-bg);
   cursor: crosshair;
+}
+.wg-kline-tip {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 12px;
+  border: 1px solid var(--wg-line);
+  border-radius: 9px;
+  background: var(--wg-surface-solid);
+  box-shadow: var(--wg-shadow-lg);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--wg-text-muted);
+  white-space: nowrap;
+  transform: translate(16px, -50%);
+}
+.wg-kline-tip-flip { transform: translate(calc(-100% - 16px), -50%); }
+.wg-kline-tip b {
+  color: var(--wg-text);
+  font-size: 12.5px;
+  font-weight: 650;
 }

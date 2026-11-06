@@ -24,6 +24,13 @@ export interface KlineEvent {
   unitId?: string
 }
 
+/** 悬停读数：命中的 bar 与光标在画布内的位置（CSS 像素）。 */
+export interface KlineHoverInfo {
+  bar: KlineBar
+  x: number
+  y: number
+}
+
 export interface KlineColors {
   up: string
   down: string
@@ -42,6 +49,8 @@ export interface KlineChartOptions {
   windowEnd?: string
   volumeHeightRatio?: number
   onEventClick?: (event: KlineEvent) => void
+  /** 悬停读数回调：交给宿主渲染浮层读数卡。 */
+  onHover?: (info: KlineHoverInfo | undefined) => void
   colors?: Partial<KlineColors>
   mode?: 'chart' | 'replay'
   revealCount?: number
@@ -107,6 +116,7 @@ export class KlineChart {
   private readonly windowEnd?: string
   private readonly volumeHeightRatio: number
   private readonly onEventClick?: (event: KlineEvent) => void
+  private readonly onHover?: (info: KlineHoverInfo | undefined) => void
   private readonly observer: ResizeObserver | undefined
   private readonly customColors: Partial<KlineColors>
 
@@ -121,6 +131,7 @@ export class KlineChart {
     this.windowEnd = options.windowEnd
     this.volumeHeightRatio = options.volumeHeightRatio ?? VOLUME_RATIO
     this.onEventClick = options.onEventClick
+    this.onHover = options.onHover
     this.customColors = options.colors ?? {}
     const context = canvas.getContext('2d')
     if (context === null) throw new Error('canvas 2d context unavailable')
@@ -148,6 +159,8 @@ export class KlineChart {
     this.events = events ?? []
     this.maBars = maBars ?? bars
     this.maOffset = this.computeMaOffset()
+    this.hover = undefined
+    this.emitHover()
     this.resetView()
     this.schedule()
   }
@@ -261,12 +274,32 @@ export class KlineChart {
       this.start = this.clampStart(this.dragStart + shift)
     }
     this.hover = { index: this.indexAt(event.offsetX), x: event.offsetX, y: event.offsetY }
+    this.emitHover()
     this.schedule()
   }
 
   private readonly onMouseLeave = (): void => {
     this.hover = undefined
+    this.emitHover()
     this.schedule()
+  }
+
+  /** 把当前悬停位置交给宿主渲染浮层读数；落在可见区（回放时为已揭示区）之外则收起。 */
+  private emitHover(): void {
+    if (this.onHover === undefined) return
+    const hover = this.hover
+    if (hover === undefined || this.bars.length === 0) {
+      this.onHover(undefined)
+      return
+    }
+    const end = Math.min(this.bars.length, this.start + this.visible)
+    const limit = this.mode === 'replay' ? this.start + Math.min(this.revealCount, end - this.start) : end
+    const bar = hover.index >= this.start && hover.index < limit ? this.bars[hover.index] : undefined
+    if (bar === undefined) {
+      this.onHover(undefined)
+      return
+    }
+    this.onHover({ bar, x: hover.x, y: hover.y })
   }
 
   private readonly onDoubleClick = (): void => {
@@ -536,11 +569,9 @@ export class KlineChart {
       ctx.fillRect(maskX, PAD_TOP, plotWidth - (maskX - PAD_LEFT), plotHeight)
     }
 
-    // 十字线与读数
+    // 十字线（读数由宿主浮层承担）
     const hover = this.hover
     if (hover === undefined || hover.index < this.start || hover.index >= this.start + drawEnd) return
-    const bar = this.bars[hover.index]
-    if (bar === undefined) return
     const cx = PAD_LEFT + perBar * (hover.index - this.start + 0.5)
     ctx.strokeStyle = colors.crosshair
     ctx.setLineDash([3, 3])
@@ -551,10 +582,5 @@ export class KlineChart {
     ctx.lineTo(PAD_LEFT + plotWidth, hover.y)
     ctx.stroke()
     ctx.setLineDash([])
-    const label = `${bar.tradeDate}  开 ${bar.open.toFixed(2)} 高 ${bar.high.toFixed(2)} 低 ${bar.low.toFixed(2)} 收 ${bar.close.toFixed(2)} 量 ${bar.volume.toLocaleString()}`
-    ctx.fillStyle = colors.text
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'bottom'
-    ctx.fillText(label, PAD_LEFT + 2, PAD_TOP - 2)
   }
 }
