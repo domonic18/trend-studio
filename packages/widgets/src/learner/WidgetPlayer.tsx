@@ -493,8 +493,8 @@ function Checklist({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | 
 function BarReplayDecisionWrapper({ spec, bars }: { spec: WidgetSpec; assertions: WidgetAssertions | null; bars?: KlineBar[] }) {
   const raw = spec as unknown as Record<string, unknown>
   const code = typeof raw.code === 'string' ? raw.code : ''
-  const widgetBars = useMemo(() => bars?.filter((b) => b.code === code) ?? [], [bars, code])
-  return <BarReplayDecision code={code} bars={widgetBars} spec={spec} />
+  // 行情 bar 用 6 位纯数字码，spec 用带交易所前缀的码；归一与筛选交给回放组件。
+  return <BarReplayDecision code={code} bars={bars ?? []} spec={spec} />
 }
 
 function TimelineExplorer({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | null }) {
