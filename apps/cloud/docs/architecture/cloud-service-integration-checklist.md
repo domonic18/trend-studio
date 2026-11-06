@@ -1,8 +1,8 @@
 # 云端服务对接清单
 
 本文用于启动**独立的云端服务仓库**，供 `dsh-plugin-trend-coach` 插件对接。
-版本：v0.13（2026-11-06）
-状态：接口口径以需求 v0.14 §3（C13/C14）与架构 v0.16 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.14 M3b 批次 B6——学员端节级学习契约落地：课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）。v0.13 M3b 批次 B5——§3.14 行情侧落地：新增 `POST /courses/{courseId}/quotes-sync`（operator/admin，同步执行腾讯前复权日 K，`(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes`（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `pending=true`；成交量单位手、成交额恒 null）；v0.12 M3b 批次 B4——§3.13 增 `POST|GET /courses/{courseId}/approvals` 审批签批（operator/admin 专属，producer 不可自签；签批 = 对课程内容指纹 sha256 签名），publish 新增硬门禁（无 final 签批 `409 approval_required`、内容变更后 `409 approval_stale`）并同步翻转节级案例股清单 draft→published；v0.11 M3b 批次 B3——§3.13 增 `POST /source-units/read` 完整证据读取（转写原文 + 视觉 + 关键帧签名 URL + 播放会话；全有或全无，409 unit_not_readable）；v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
+版本：v0.14（2026-11-06）
+状态：接口口径以需求 v0.16 §3（C13/C14）与架构 v0.17 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.14 M3b 呈现层 R2/R3 代码落地：§3.14 状态列更新——DSL v2（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 断言证明、K 线组件与管理台课程预览页已落地；新增 `GET /v1/admin/content/courses/{courseId}/preview`（operator/admin/producer，课程树草稿全量预览）与 `GET /v1/admin/content/courses/{courseId}/quotes`（operator/admin/producer，草稿行情可见，不限 published）；`POST /courses/{courseId}/quotes-sync` 角色放宽为 operator/admin/producer（producer 可触发行情回填）。v0.13 M3b 批次 B6——学员端节级学习契约落地：课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）。v0.13 M3b 批次 B5——§3.14 行情侧落地：新增 `POST /courses/{courseId}/quotes-sync`（operator/admin，同步执行腾讯前复权日 K，`(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes`（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `pending=true`；成交量单位手、成交额恒 null）；v0.12 M3b 批次 B4——§3.13 增 `POST|GET /courses/{courseId}/approvals` 审批签批（operator/admin 专属，producer 不可自签；签批 = 对课程内容指纹 sha256 签名），publish 新增硬门禁（无 final 签批 `409 approval_required`、内容变更后 `409 approval_stale`）并同步翻转节级案例股清单 draft→published；v0.11 M3b 批次 B3——§3.13 增 `POST /source-units/read` 完整证据读取（转写原文 + 视觉 + 关键帧签名 URL + 播放会话；全有或全无，409 unit_not_readable）；v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
 
 历史：v0.7（2026-11-05）§3.14 增补老师标注与逐根回放（DSL v2 草案 `:::annotation`/`:::replay`、`spec_version=2` 批次增 `bar-replay-decision`；零新端点零新表，验收用例与错误码见 §3.14，契约细节以架构 §6.6.1/§6.6.5 为准）；v0.6 新增教材呈现层与个股实盘接口（§3.14，M10：节级图示写入、案例股清单、行情缓存与学员行情查询；DSL 语法冻结于架构 §6.6.1）；v0.5 课件 spec schema v1 冻结（断言词表/生成器白名单见架构 §6.5.5，§3.13 补 `409 failed` 字段）；v0.4 新增语料级生产与交互课件接口（§3.13，M9，生产 Agent 循环在外部 `dsh-plugin-trend-producer`，本文仅为云端契约）；v0.3 新增门户与 AI 运营接口（§3.11、§3.12）。
 
@@ -25,7 +25,7 @@
 
 **不耦合 ai-invest**：不进其库、不调其服务、不共享代码与数据；只借鉴 PostgreSQL halfvec + pg_trgm + RRF 的技术选型（PRD D2）。
 
-**内容生产管线现状（2026-11-01）**：M1 视频→课程管线已落地，覆盖素材上传、单码率 HLS、带时间戳长音频转写、章节/知识点/片段切分、文章草稿与人工发布；真实 MiniMax ASR、内容 LLM 与 1024 维 embedding 均已通过链路验收。M8 已落地：阅读层改为章节教材并新增图示（关键帧 + 文生图），学员体系契约升级到 `contractVersion=2`，插件已按新契约升级并通过 S12；真实 Ark 出图待图片模型 Key。旧课程直接作废重跑。**M9 语料级生产（架构 §6.5）阶段 0–3 已真机跑通**：多模态理解与生产 Agent 循环在外部生产插件执行，云端提供帧轨道、理解产物存储/检索、节与课件 spec 复检、溯源账本，发布门禁不变。**M10 呈现层（架构 §6.6）**：节教材升级富文本 DSL 四层结构（叙事/图示/媒体/实盘），管理台先行，学员端随 `contractVersion=3`。**R1 呈现层已落地（2026-11-05）**：DSL 解析与服务端校验、节级 figures 写入端点与四模板 SVG 渲染器、资产时间窗播放会话、publish 门禁扩展、`web/widgets` 渲染组件包与管理台节预览接入；**R2 实盘层（案例股端点、行情缓存与同步、K 线组件、课件换皮与新题型）与 R3 质量收敛（rubric 0.4.0、老师标注与逐根回放试点、6 节 DSL 重写回灌）待落地**。
+**内容生产管线现状（2026-11-06）**：M1 视频→课程管线已落地，覆盖素材上传、单码率 HLS、带时间戳长音频转写、章节/知识点/片段切分、文章草稿与人工发布；真实 MiniMax ASR、内容 LLM 与 1024 维 embedding 均已通过链路验收。M8 已落地：阅读层改为章节教材并新增图示（关键帧 + 文生图），学员体系契约升级到 `contractVersion=2`，插件已按新契约升级并通过 S12；真实 Ark 出图待图片模型 Key。旧课程直接作废重跑。**M9 语料级生产（架构 §6.5）阶段 0–3 已真机跑通**：多模态理解与生产 Agent 循环在外部生产插件执行，云端提供帧轨道、理解产物存储/检索、节与课件 spec 复检、溯源账本，发布门禁不变。**M10 呈现层（架构 §6.6）**：节教材升级富文本 DSL 四层结构（叙事/图示/媒体/实盘），管理台先行，学员端随 `contractVersion=3`。**R1 呈现层已落地（2026-11-05）**：DSL 解析与服务端校验、节级 figures 写入端点与四模板 SVG 渲染器、资产时间窗播放会话、publish 门禁扩展、`@trend/widgets` 渲染组件包与管理台节预览接入；**R2 实盘层已落地（2026-11-06）**：案例股端点、行情缓存与同步、`GET /v1/admin/content/courses/{courseId}/quotes` 草稿行情、K 线组件、管理台课程预览页、`bar-replay-decision` 新题型；**R3 部分落地（2026-11-06）**：`:::annotation`/`:::replay` DSL v2 校验与渲染、回放断言证明与本地作答隐私护栏已落地；老师标注与逐根回放的**首个试点节真产已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06）；rubric 0.4.0 与 6 节 DSL 重写回灌仍待后续批次。
 
 ## 2. 通用约定
 
@@ -821,7 +821,7 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 | GET | `/concepts?courseId` | 课程术语清单（含 conceptId/别名/定义，供 conceptRefs 回填）；未知课程空列表 |
 | PUT | `/concepts`、`POST /concept-edges` | 术语归一与依赖边 |
 | GET/PUT | `/sections`、`PUT /sections/{sectionId}/article` | 节草稿与节教材（幂等 upsert，`version+1`） |
-| GET/POST | `/sections/{sectionId}/widgets` | 课件 spec 草稿；服务端复检 schema 与断言证明记录 |
+| GET/POST | `/sections/{sectionId}/widgets` | 课件 spec 草稿；服务端复检 schema 与断言证明记录。**写入语义（2026-11-06 修订）**：`bar-replay-decision` 按 `(sectionId, spec.code)` 唯一，重复写入覆盖既有课件（`widget_id` 不变、`version+1`，已发布行同样被覆盖，唯一性优先）；其余类型不设覆盖键——同节同类型的多份课件各自独立，POST 也不动已发布课件；纠错走 DELETE 端点 |
 | DELETE | `/sections/{sectionId}/widgets/{widgetId}` | 管理端纠错删除（草稿/已发布均可）；不在该节下 `404` |
 | GET | `/sections/{sectionId}/preview` | 管理台渲染预览（教材 + figures + widgets 试玩数据） |
 | POST | `/provenance` | 生产溯源上报，落 `ai_runs(source='producer')` 与 `ai_usage_events` |
@@ -947,19 +947,21 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 
 ### 3.14 教材呈现层与个股实盘对照（M10）
 
-> 本节为云端契约，与云端架构 v0.11 §6.6 对齐。生产端产出（DSL 教材、图示选帧与片段窗、案例股清单、老师标注），云端确定性复检与存储；渲染组件先在管理台落地（独立包边界），学员端随 `contractVersion=3`。Admin 接口全部位于 `/v1/admin/content/*`，后台会话 Bearer（operator/admin/producer，M3b 起），按账号限流；学员行情接口走设备令牌。2026-11-05 增补：老师标注（`:::annotation`）与逐根回放（`:::replay` + `bar-replay-decision`）随 DSL/课件 v2 草案批次，**零新端点、零新表**（标注随教材正文、回放随 `widgets` 既有端点）。
+> 本节为云端契约，与云端架构 v0.17 §6.6 对齐。生产端产出（DSL 教材、图示选帧与片段窗、案例股清单、老师标注），云端确定性复检与存储；渲染组件先在管理台落地（独立包边界），学员端随 `contractVersion=3`。Admin 接口全部位于 `/v1/admin/content/*`，后台会话 Bearer（operator/admin/producer，M3b 起），按账号限流；学员行情接口走设备令牌。2026-11-05 增补：老师标注（`:::annotation`）与逐根回放（`:::replay` + `bar-replay-decision`）随 DSL/课件 v2 批次，**零新端点、零新表**（标注随教材正文、回放随 `widgets` 既有端点），**代码已落地 2026-11-06**。
 >
-> **实现状态（2026-11-05）**：**R1 已落地**——DSL 解析与服务端校验、figures 写入端点与 SVG 模板渲染器、资产时间窗播放会话、publish 门禁扩展、案例股清单端点；**R2 行情侧已落地**（M3b B5）——行情同步与学员行情查询；**学员端节级契约已落地**（M3b B6）——`contractVersion=3` 节摘要 + 节详情端点 + clip 窗播放会话，渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）；**R2 待落地**——K 线组件与课件换皮/新题型；**R3 待落地**——DSL v2 组件与 `bar-replay-decision` 新题型。下表「状态」列标注各端点落地批次。
+> **实现状态（2026-11-06）**：**R1 已落地**——DSL 解析与服务端校验、figures 写入端点与 SVG 模板渲染器、资产时间窗播放会话、publish 门禁扩展、案例股清单端点；**R2 已落地**——行情同步与学员行情查询（M3b B5）、K 线组件与管理台课程预览页、课件新题型 `bar-replay-decision`；**学员端节级契约已落地**（M3b B6）——`contractVersion=3` 节摘要 + 节详情端点 + clip 窗播放会话，渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）；**R3 部分落地**——DSL v2 组件（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 断言证明与本地作答隐私护栏已落地；首个试点节真产已跑通（2026-11-06）；rubric 0.4.0 阈值标定与 6 节重写回灌仍待后续批次。下表「状态」列标注各端点落地批次。
 
 **Admin 接口（后台会话 Bearer）**
 
 | 方法 | 路径 | 说明 | 状态 |
 |---|---|---|---|
-| POST | `/sections/{sectionId}/figures` | 节级图示写入：`kind=keyframe`（`assetId+sec` 从帧轨道抽帧落候选并自动选定，sec 须落在所引 source unit 内）或 `kind=diagram`（`template+params` 模板渲染器确定性出 SVG 并选定）；配额 keyframe ≤6/节、diagram ≤2/节 | R1 |
+| POST | `/sections/{sectionId}/figures` | 节级图示写入：`kind=keyframe`（`assetId+sec` 从帧轨道抽帧落候选并自动选定，sec 须落在所引 source unit 内）或 `kind=diagram`（`template+params` 模板渲染器确定性出 SVG 并选定）；配额 keyframe ≤6/节、diagram ≤2/节。**写入语义（2026-11-06 修订）**：同节同 kind 同 `caption` 视为同一张图，重写即覆盖（`figure_id` 不变、旧候选行与文件清理、覆盖不占额外配额） | R1 |
 | GET | `/sections/{sectionId}/figures` | 节级图示清单（kind/caption/spec/选定状态） | R1 |
 | POST | `/media-assets/{assetId}/playback-sessions` | 资产时间窗播放会话（管理台预览通道）：按 `assetId + {fromSec,toSec}` 签发签名 HLS 地址，不要求素材已发布（草稿可预览）；窗成对且 `0≤from<to`、≤3600s | R1 |
 | GET/PUT | `/sections/{sectionId}/case-stocks` | 案例股清单批量 upsert；复检：代号 6 位数字、窗口日期合法、事件 `date` 落窗内、`unitId` 可回溯；`(sectionId, code)` 冲突覆盖更新 | R1 |
-| POST | `/courses/{courseId}/quotes-sync` | 同步执行行情回填/日更（`pipeline_jobs kind='quotes_sync'`，任务直接落 `succeeded` 不入队列）；返回 `{job, upserted}`；同步范围 = 课程未归档案例股（draft + published） | M3b B5 |
+| POST | `/courses/{courseId}/quotes-sync` | 同步执行行情回填/日更（`pipeline_jobs kind='quotes_sync'`，任务直接落 `succeeded` 不入队列）；返回 `{job, upserted}`；同步范围 = 课程未归档案例股（draft + published）；producer 可触发 | M3b B5 / R2 |
+| GET | `/courses/{courseId}/preview` | 课程预览（管理台课程预览页）：返回课程树草稿全量（章节→节，含 article/widgets/figures/caseStocks）；operator/admin/producer 可访问 | R2 |
+| GET | `/courses/{courseId}/quotes?codes&from&to` | 管理台行情查询：返回课程未归档案例股（draft + published）前复权日线 OHLCV，不限 published；producer 可访问；清单外过滤、未同步 `pending=true`、单课 ≤10 只、每只 ≤320 根 | R2 |
 
 **学员接口（设备令牌）**
 
@@ -1056,14 +1058,14 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 //   annotationTermsGrounded + answerUnique，无证明 → 409 assertion_unproven
 ```
 
-- **DSL 版本**：`dslVersion=1` 随节响应下发；组件扩容升版本（只增不减），渲染器按版本门禁。v2 草案批次：`:::annotation`/`:::replay`（2026-11-05 采纳增补提案，随首个试点节冻结；服务端同时接受 1/2）。
+- **DSL 版本**：`dslVersion=1` 随节响应下发；组件扩容升版本（只增不减），渲染器按版本门禁。v2 批次 `:::annotation`/`:::replay`（2026-11-05 采纳增补提案，**代码已落地 2026-11-06**；服务端同时接受 1/2）。
 - **片段播放**：正文只存 `(assetId, fromSec, toSec)`；播放复用签名 HLS 会话（按 asset+时间窗签发），不产预切片。
-- **新题型课件**：`image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 随 `spec_version=2`（草案见架构 §6.6.5），经既有 `POST .../widgets` 写入，断言证明机制不变。
+- **新题型课件**：`image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 随 `spec_version=2`（`bar-replay-decision` **代码已落地 2026-11-06**；其余待试点），经既有 `POST .../widgets` 写入，断言证明机制不变。
 - **隐私与降级**：行情接口不记查询原文；腾讯源连续失败渲染层显示「行情暂不可用」，不伪造数据。回放判断的**学员作答只做本地反馈**——不落库、不进 `validation`/M2 事件/provenance（硬护栏）。
 
 **验收用例**
 
-> 落地批次：DSL 解析与校验、图示写入（keyframe/diagram）、片段卡播放、publish 门禁扩展、案例股复检随 **R1** 已实现；行情同步与学员行情接口随 **M3b B5** 已实现；K 线组件与课件换皮/新题型随 **R2** 余下；老师标注写入、标注定位稳定性、回放入口解析与回放断言证明随 **R3**。
+> 落地批次：DSL 解析与校验、图示写入（keyframe/diagram）、片段卡播放、publish 门禁扩展、案例股复检随 **R1** 已实现；行情同步与学员行情接口随 **M3b B5** 已实现；K 线组件、管理台课程预览页与 `bar-replay-decision` 新题型随 **R2** 已落地；老师标注写入、标注定位稳定性、回放入口解析与回放断言证明随 **R3** 代码已落地，首个试点节真产验证后冻结。
 
 | 用例 | 期望 |
 |---|---|
@@ -1077,12 +1079,14 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 | 学员行情接口 | published 课程的已发布案例股 `200`；清单外代号**过滤**（不回 403、不泄露他课数据）；缓存未就绪 `200 {pending:true, quotes:[]}`；未发布课程 `404`；非法 `codes` `400`；`from>to` `400` |
 | 片段卡播放 | 换签名会话后窗内起播/到点停止；窗数据不入播放日志正文 |
 | publish 门禁扩展 | DSL 内 figure/clip/case-stock 引用缺失 → `409` 附明细；补齐后照常 publish |
-| 老师标注写入（v2） | 合法标注保存 `version+1`；`unitId`/`atMs` 不落 source unit、`d` 不落窗或非交易日、`glossary` 超出 concepts、`code` 不在清单均 `400` 附定位；每节 >12 `409 annotation_quota_exceeded` |
-| 标注定位稳定性 | 窗口内行情回填条数变化后，`d` 仍映射同一交易日；映射不到显示「行情暂不可用」，不伪造 |
-| 回放入口解析（v2） | `:::replay` 按 code 解析：本节恰一个 `bar-replay-decision` widget；零个 `400 replay_widget_unknown`、多个 `400 replay_widget_ambiguous`；每节 >2 `409` |
-| 回放断言证明 | `decisionPointsGrounded`/`revealMonotonic`/`annotationTermsGrounded` 任一无证明记录 → `409 assertion_unproven` 附 `failed` |
-| 回放交互与隐私 | 判断点暂停并遮罩、提交后锁定、揭晓含老师原话与原片时间码、纵轴全区间定标不跳动；学员作答不出现在请求、日志、`validation`、provenance 与 M2 事件 |
+| 老师标注写入（v2） | 合法标注保存 `version+1`；`unitId`/`atMs` 不落 source unit、`d` 不落窗或非交易日、`glossary` 超出 concepts、`code` 不在清单均 `400` 附定位；每节 >12 `409 annotation_quota_exceeded`（已落地） |
+| 标注定位稳定性 | 窗口内行情回填条数变化后，`d` 仍映射同一交易日；映射不到显示「行情暂不可用」，不伪造（已落地） |
+| 回放入口解析（v2） | `:::replay` 按 code 解析：本节恰一个 `bar-replay-decision` widget；零个 `400 replay_widget_unknown`、多个 `400 replay_widget_ambiguous`；每节 >2 `409`（已落地） |
+| 回放断言证明 | `decisionPointsGrounded`/`revealMonotonic`/`annotationTermsGrounded` 任一无证明记录 → `409 assertion_unproven` 附 `failed`（已落地） |
+| 回放交互与隐私 | 判断点暂停并遮罩、提交后锁定、揭晓含老师原话与原片时间码、纵轴全区间定标不跳动；学员作答不出现在请求、日志、`validation`、provenance 与 M2 事件（已落地） |
 | v1 兼容 | `dslVersion=1` 存量正文照常保存与渲染；服务端同时接受 `spec_version` 1/2 |
+| 课程预览 | producer 可访问 `/courses/{courseId}/preview`，返回课程树含 draft 节、widgets、figures、caseStocks；未发布内容明显标记 |
+| 草稿行情查询 | producer 可访问 `/courses/{courseId}/quotes`，返回 draft + published 案例股行情；未同步 `pending=true`；清单外过滤 |
 
 ## 4. 数据与内容前置
 
