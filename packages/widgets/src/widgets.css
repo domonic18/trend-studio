@@ -16,6 +16,7 @@
   --wg-brand: #6ea8ff;
   --wg-brand-soft: rgba(110, 168, 255, 0.14);
   --wg-brand-line: rgba(110, 168, 255, 0.34);
+  --wg-on-brand: #ffffff;
   --wg-up: #e85a5a;
   --wg-up-soft: rgba(232, 90, 90, 0.14);
   --wg-up-line: rgba(232, 90, 90, 0.4);
@@ -55,6 +56,7 @@
   --wg-brand: #2f5bd7;
   --wg-brand-soft: #eaf0ff;
   --wg-brand-line: rgba(47, 91, 215, 0.28);
+  --wg-on-brand: #ffffff;
   --wg-up: #d9483f;
   --wg-up-soft: #fff0ee;
   --wg-up-line: rgba(217, 72, 63, 0.32);
@@ -394,6 +396,21 @@
   border: 1px solid var(--wg-brand-line);
   white-space: nowrap;
 }
+.wg-figure-badge-ai {
+  background: var(--wg-warn-soft);
+  color: var(--wg-warn);
+  border-color: var(--wg-warn-line);
+}
+.wg-figure-badge-struct {
+  background: var(--wg-down-soft);
+  color: var(--wg-down);
+  border-color: var(--wg-down-line);
+}
+.wg-figure-badge-frame {
+  background: var(--wg-surface-2);
+  color: var(--wg-text-secondary);
+  border-color: var(--wg-line);
+}
 .wg-figure-body { padding: 16px; }
 .wg-figure-img {
   display: block;
@@ -624,27 +641,32 @@
   position: relative;
   padding: 12px 16px;
 }
-.wg-replay-decision-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(440px, 92%);
+.wg-replay-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wg-replay-decision {
   padding: 16px 18px;
-  border-radius: var(--wg-radius-sm);
-  background: var(--wg-surface);
-  border: 1px solid var(--wg-warn-line);
-  box-shadow: var(--wg-shadow-lg);
+  background: var(--wg-warn-soft);
+  border-top: 1px solid var(--wg-warn-line);
+}
+.wg-replay-decision-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--wg-warn);
+  margin-bottom: 6px;
 }
 .wg-replay-decision-question {
+  font-size: 14.5px;
   font-weight: 650;
   margin-bottom: 12px;
   color: var(--wg-text);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 .wg-replay-decision-options {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 8px;
 }
 .wg-replay-option {
@@ -673,24 +695,40 @@
 }
 .wg-replay-reveal {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--wg-line);
+  padding: 12px 14px;
+  border-radius: var(--wg-radius-sm);
+  background: var(--wg-surface);
+  border: 1px solid var(--wg-line);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.wg-replay-reveal-head {
+  font-weight: 700;
+  color: var(--wg-brand);
+  margin-bottom: 4px;
 }
 .wg-replay-reveal-text {
-  margin: 0 0 0.8em;
+  margin: 0;
   color: var(--wg-text-secondary);
-  line-height: 1.7;
-  font-size: 0.95em;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.wg-replay-reveal-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
 }
 .wg-replay-unit-link {
-  font-size: 0.84em;
-  color: var(--wg-brand);
-  background: var(--wg-brand-soft);
-  border: 1px solid var(--wg-brand-line);
+  font-size: 11.5px;
+  color: var(--wg-text-muted);
+  background: var(--wg-surface-2);
+  border: 1px solid var(--wg-line);
   border-radius: 8px;
-  padding: 5px 12px;
+  padding: 4px 11px;
   cursor: pointer;
 }
+.wg-replay-unit-link:hover { color: var(--wg-brand); border-color: var(--wg-brand-line); }
 .wg-replay-controls {
   display: flex;
   gap: 8px;
@@ -709,10 +747,45 @@
 }
 .wg-replay-btn:hover:not(:disabled) { border-color: var(--wg-brand); color: var(--wg-brand); }
 .wg-replay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.wg-replay-btn-primary {
+  background: var(--wg-brand);
+  border-color: var(--wg-brand);
+  color: var(--wg-on-brand);
+  font-weight: 600;
+}
+.wg-replay-btn-primary:hover:not(:disabled) {
+  color: var(--wg-on-brand);
+  filter: brightness(1.08);
+}
 .wg-replay-btn-active {
   background: var(--wg-brand);
   border-color: var(--wg-brand);
-  color: #fff;
+  color: var(--wg-on-brand);
+}
+
+/* ---------- 均线位切换 ---------- */
+.wg-ma-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wg-ma-chip {
+  font-family: var(--wg-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--wg-line);
+  background: var(--wg-surface);
+  color: var(--wg-text-muted);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.wg-ma-chip:hover { border-color: var(--wg-brand-line); color: var(--wg-brand); }
+.wg-ma-chip.active {
+  background: var(--wg-brand-soft);
+  border-color: var(--wg-brand-line);
+  color: var(--wg-brand);
+  font-weight: 600;
 }
 .wg-replay-progress { padding: 12px 16px 4px; }
 .wg-replay-progress-track {

@@ -75,6 +75,22 @@
   margin: 0 auto;
 }
 
+.wg-course-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--wg-surface-2);
+}
+
+.wg-course-progress i {
+  display: block;
+  height: 100%;
+  background: var(--wg-brand);
+  transition: width 0.15s linear;
+}
+
 .wg-course-chapter { margin: 0 0 52px; }
 
 .wg-course-chapter-title {
@@ -355,6 +371,33 @@
   border-bottom: 1px dashed var(--wg-line);
   font-size: 0.9em;
 }
+
+.wg-case-event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.wg-case-event:hover {
+  background: var(--wg-surface-2);
+  border-color: var(--wg-line);
+}
+
+.wg-case-event.active {
+  background: var(--wg-brand-soft);
+  border-color: var(--wg-brand-line);
+}
+
+.wg-case-event.active .wg-case-event-label { color: var(--wg-brand); }
+.wg-case-event.active .wg-case-event-date { color: var(--wg-brand); }
 
 .wg-case-event-date {
   font-family: var(--wg-mono);
