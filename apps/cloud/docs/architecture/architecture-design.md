@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.24）
+# 趋势课程云端服务 · 架构设计（v0.25）
 
-版本：v0.24（2026-11-06；P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`，每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体（def/rule/misuse/risk）齐全且原 `:::warn` body 逐字保留只加 `variant`；既有 grounded 内容零丢失（逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code）；经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链）
+版本：v0.25（2026-11-07；M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签；此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语；发布失败改为按机器可读错误码给中文指引（`approval_required`/`approval_stale`/`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven`）；零新增云端端点、零新增表、零契约字段变更）
+v0.24（2026-11-06；P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`，每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体（def/rule/misuse/risk）齐全且原 `:::warn` body 逐字保留只加 `variant`；既有 grounded 内容零丢失（逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code）；经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链）
 v0.23（2026-11-06；P0 收口：新增 `DELETE /v1/admin/content/sections/{sectionId}/figures/{figureId}` 图示纠错删除端点（§6.6.2）——图示行与候选行同事务删除、候选字节文件一并清理，图示不在该节下 `404`，草稿/已发布均可删；删除改课程内容指纹 → 既有终审审批转 `approval_stale`；补上生产端唯一的图示纠错回路，此前写错的图示只能人工清理。M10 里程碑行与 §8 待冻结项按已落地事实回写）
 v0.22（2026-11-06；M10 呈现层对齐原型：DSL 升 **v3**——新增 `:::think`（折叠思考）、`:::sidenote`（术语边注）、`:::cards`（目标卡网格）三块，`:::warn` 增 `def/rule/misuse/risk` 四型变体（配额 think ≤3 / sidenote ≤8 / cards ≤2）；课件白名单扩至 11 类，新增 `image-juxtaposition`（前后对比滑块）与 `branching-scenario`（分支情景练习），两者 `spec_version=2` 且 6 条断言证明器已落地（迁移 021 扩 `widget_specs.type` CHECK 约束）；渲染侧 `@trend/widgets` 补三个新块渲染器、对比滑块与决策树组件，管理台节预览与课程预览同源接入）
 v0.21（2026-11-06；行情缓存**周期原生化**：缓存按 `period` 分存日线与周线（迁移 020，`period` 列 + 唯一键 `(code, period, trade_date)`），周线取腾讯原生周 K（≈640 根、回溯至 2013–2014）——替代 v0.20 的渲染端日线聚合（聚合只有 ≈128 根周线，60 周 M60 算不出，且日线源只回溯到 2024-03，早于该年的教学窗口整段无数据）；同步按案例股声明的 `period` 逐条拉取；学员/管理台行情端点加 `period` 参数（缺省 `1d`），条目携带 `period`；案例股清单下发 `period`，学员端按周期分批取数）
@@ -621,6 +622,7 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 | 存储 | `content_approvals`（`course_id + gate` 唯一）：`digest`（全课）+ `digest_sections`（各节单独指纹，便于定位「哪一节变了」）+ `approved_by` + `approved_at` |
 
 - **签批端点**：`POST /v1/admin/content/courses/{courseId}/approvals`（`gate ∈ {skeleton, final}`）——现算当前指纹并 upsert，同课程同门禁幂等重批（覆盖旧记录）；`GET` 同路径回审批记录。**权限限 operator/admin**：producer 负责生产，不能自签（§6.5.1 分权）。
+- **管理台入口**（2026-11-07 落地）：课程编辑页「签批终审」按钮与签批状态签（`GET` 回 `gate=final` 记录，未签批显示「未签批」，已签批显示签批时间与指纹前 16 位）；此前签批只有 curl 路径，管理台「发布课程」点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语。producer 会话点按签批由服务端 `403` 拦下（分权不变）。发布失败按机器可读错误码给中文指引：`approval_required` 提示先签批、`approval_stale` 提示内容已变更须重签、`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven` 指向对应产物（§6.5.9 发布门禁顺序：内容完整性先于签名问题报错）。
 - **发布门禁**：无 `gate=final` 记录 → `409 approval_required`；有但指纹不符 → `409 approval_stale`（附 expected/actual 指纹前 16 位便于比对）。修正方式：重新签批。
 - **实现位置**：指纹计算为纯函数模块 `src/production/digest.ts`（`canonicalJson`/`sha256Hex`/`digestOfManifest`），审批读写为 `src/production/approvals.ts`；门禁挂在 `PipelineService.publishCourse` 的全部内容门禁之后。
 - **章节课程兼容**：M8/管线生成的课程只有章节、无节，指纹必须同时覆盖章节与节（否则章节课程的审批指纹为空、门禁形同虚设）。
