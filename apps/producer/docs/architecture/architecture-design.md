@@ -1,7 +1,7 @@
 # 趋势课程生产插件 · 架构设计
 
-版本：v0.5（2026-11-06）
-状态：与云端架构 v0.17 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve），rubric 0.4.0 阈值标定与 6 节回灌仍待。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
+版本：v0.6（2026-11-06）
+状态：与云端架构 v0.18 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
 
 ## 1. 定位与边界
 
@@ -85,7 +85,8 @@ M10 扩充（随 R1–R3 迭代）：
 | `chapter-authoring` | 内置 DSL 写作规范与用例（7 容器块 + 1 个股内联锚的选用时机、媒体锚点声明规则）；v2 批次 `:::annotation`/`:::replay` 写法与用例已落地（标注三分类、`d` 用交易日期、判断点归 widget spec、写作顺序约束） |
 | `diagram-authoring` | 从 Mermaid 产出改为 SVG 模板参数化 spec（模板白名单 4 类，云端 §6.6.4；标注文字必须逐字核对术语与数字） |
 | `courseware-design` | 新增 `image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 三类题型工艺；`bar-replay-decision` spec/断言口径已落地，其余待试点冻结 |
-| `quality-rubric` | 0.3.0 → 0.4.0：`grounded` 扩义到媒体、个股与老师标注/判断点锚点（配图帧、片段窗、事件锚点、标注 quote/atMs、回放 revealText 均为可回溯引用）；阈值待首个试点节标定 |
+| `quality-rubric` | 0.3.0 → 0.4.0：`grounded` 扩义到媒体、个股与老师标注/判断点锚点（配图帧、片段窗、事件锚点、标注 quote/atMs、回放 revealText 均为可回溯引用）；0.4.0 → 0.4.1（R3 标定）：评审前置强制读回行情缓存，`grounded` 增「行情数值可核」一票否决子项（逐字对 bar、截图价须标原片日期、派生指标可复算、标注定性词与当日形态相符）；通过线 8 保持不变（6 正样本落在 8–9，负样本由子项检出） |
+| `section-production` | 写入顺序固化为「案例股 → 行情同步 → 行情读回 → 图示 → 回放课件 → 正文 → 其余课件 → 评审 → 溯源」（0.5.0，回放课件必须早于正文；`d`/`atDate` 须落在已同步的行情缓存交易日上） |
 
 ## 7. 安全与隐私
 
@@ -95,4 +96,4 @@ M10 扩充（随 R1–R3 迭代）：
 
 ## 8. 里程碑与开放问题
 
-里程碑 T1–T5 见 AGENTS.md（T5：单节按富文本 DSL 重写含配图卡/片段卡/案例股锚点通过门禁②，媒体锚点全部可回溯；v2 批次代码已落地，首个试点节真产运行后冻结）；接口级待冻结项统一维护在云端清单 §8（新题型断言词表含回放三条、rubric 0.4.0 阈值、行情源容灾等），本仓库不另立清单。
+里程碑 T1–T5 见 AGENTS.md（T5：单节按富文本 DSL 重写含配图卡/片段卡/案例股锚点通过门禁②，媒体锚点全部可回溯；v2 批次代码已落地，首个试点节真产运行后冻结）；接口级待冻结项统一维护在云端清单 §8（新题型断言词表含回放三条、rubric 0.4.1 阈值口径、行情源容灾等），本仓库不另立清单。

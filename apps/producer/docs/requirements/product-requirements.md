@@ -1,7 +1,7 @@
 # 趋势课程生产插件需求
 
-版本：v0.4（2026-11-06）
-状态：与云端需求 v0.16（C13/C14）与云端清单 v0.14 §3.13/§3.14、云端架构 v0.17 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve），rubric 0.4.0 阈值标定与 6 节回灌仍待。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
+版本：v0.5（2026-11-06）
+状态：与云端需求 v0.17（C13/C14）与云端清单 v0.14 §3.13/§3.14、云端架构 v0.18 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve）。v0.5 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（全部 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass，43 个标注与回放交易日全部落在行情缓存的实际交易日上，6 节主编自评全 approve，含 1 次真实打回→重写回灌）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）；Skill 工艺包同步升至 `section-production` 0.5.0 / `courseware-design` 0.2.0 / `chapter-authoring` 0.5.0 / `diagram-authoring` 0.2.1 / `quality-rubric` 0.4.1（写入顺序改为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」）。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
 
 ## 1. 背景与目标
 
@@ -56,7 +56,7 @@
 
 - 第 1 层 schema：工具边界 zod 校验（对齐云端清单 §3.13/§3.14 schema）。
 - 第 2 层语义：断言自检（本地预验）、术语∈glossary、citations 可回溯、图示块（SVG 模板 spec，M10 起取代 Mermaid）grounded（模板参数中术语/数字逐条核对且可渲染）、媒体锚点对位（配图帧、片段时间窗、案例股事件日期必须落在对应 source unit 范围内）。
-- 第 3 层教学质量：主编流程按 `quality-rubric` skill 结构化评分（0.4.0 起 grounded 含媒体与个股锚点）；失败回灌重写（≤3 次），仍失败进人工待办。
+- 第 3 层教学质量：主编流程按 `quality-rubric` skill 结构化评分（0.4.1 起 grounded 含媒体与个股锚点，并增「行情数值可核」一票否决子项）；失败回灌重写（≤3 次），仍失败进人工待办。
 
 ### F4 课件起草（T3，P0）
 
@@ -99,7 +99,7 @@
 - T2：骨架+概念图谱+术语表经门禁①批准落库。
 - T3：单章（节教材+图示+课件）全量通过三层校验入 draft。
 - T4：门禁②通过；总论卷可发布可检索；rubric 盲评占优 M8 产物；溯源账本完整。
-- T5：单节按富文本 DSL 重写（含配图卡/片段卡/案例股锚点）通过门禁②（rubric 0.4.0）；媒体锚点与事件锚点全部可回溯。v2 批次（`:::annotation`/`:::replay`/`bar-replay-decision`）代码/工艺已落地，首个试点节真产运行后冻结。
+- T5：单节按富文本 DSL 重写（含配图卡/片段卡/案例股锚点）通过门禁②（rubric 0.4.1）；媒体锚点与事件锚点全部可回溯。v2 批次（`:::annotation`/`:::replay`/`bar-replay-decision`）代码/工艺已落地，首个试点节真产运行后冻结。
 
 ## 6. 关联文档
 
