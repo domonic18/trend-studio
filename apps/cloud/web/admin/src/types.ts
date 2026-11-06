@@ -631,3 +631,16 @@ export interface AiConfigHealth {
 export interface AiHealthResponse {
   configs: AiConfigHealth[]
 }
+
+export type ApprovalGate = 'skeleton' | 'final'
+
+/** M3b 签批记录：审批 = 对课程内容指纹的签名；内容变更后指纹不符，须重签。 */
+export interface ApprovalItem {
+  approvalId: string
+  courseId: string
+  gate: ApprovalGate
+  digest: string
+  digestSections: Record<string, string>
+  approvedBy: string
+  approvedAt: string
+}
