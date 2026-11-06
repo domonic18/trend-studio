@@ -138,6 +138,17 @@ export const quotesSyncInput = z.object({
   courseId: z.string().min(1).max(64),
 }).strict()
 
+/**
+ * M10 v2：读课程案例股行情缓存（草稿可见）。
+ * 正文 `:::annotation` 的交易日只能取自这里的 tradeDate——视频里的日期未必在缓存窗口内。
+ */
+export const quotesReadInput = z.object({
+  courseId: z.string().min(1).max(64),
+  codes: z.array(z.string().regex(STOCK_CODE_PLAIN)).max(10).optional(),
+  from: z.string().regex(DATE_STR).optional(),
+  to: z.string().regex(DATE_STR).optional(),
+}).strict()
+
 export const keyframeFrame = z.object({
   sec: z.number().int().nonnegative(),
   url: z.string().max(2000),
@@ -274,6 +285,12 @@ export const BAR_REPLAY_DECISION_ASSERTIONS = [
   'answerUnique',
 ] as const
 
+/** 课件删除（生产端纠错回路）：同节同 code 的回放课件写错时删旧再写。 */
+export const widgetDeleteInput = z.object({
+  sectionId,
+  widgetId: z.string().regex(WIDGET_ID),
+}).strict()
+
 export const widgetWriteOutput = z.object({
   widgetId: z.string().regex(WIDGET_ID),
   validation: z.record(z.string(), z.literal('pass')),
@@ -311,6 +328,8 @@ export const sectionPreviewOutput = z.object({
     status: z.enum(['draft', 'published', 'archived']),
     version: z.number().int().positive(),
     createdAt: z.string(),
+    /** 课件引用集：重写课件时按此原样带回，不必从正文反推。 */
+    citations: z.array(sourceUnitId),
   }).strict()),
   figures: z.array(z.object({
     figureId: z.string(),
@@ -481,9 +500,11 @@ export type PipelineStatusOutput = z.infer<typeof pipelineStatusOutput>
 export type PipelineJob = z.infer<typeof pipelineJob>
 export type SourceUnitInput = z.infer<typeof sourceUnitInput>
 export type WidgetWriteInput = z.infer<typeof widgetWriteInput>
+export type WidgetDeleteInput = z.infer<typeof widgetDeleteInput>
 export type ProvenanceEntry = z.infer<typeof provenanceEntry>
 export type TranscriptOutput = z.infer<typeof transcriptOutput>
 export type SourceUnitsReadOutput = z.infer<typeof sourceUnitsReadOutput>
 export type ApprovalsListOutput = z.infer<typeof approvalsListOutput>
 export type QuotesSyncOutput = z.infer<typeof quotesSyncOutput>
+export type QuotesReadInput = z.infer<typeof quotesReadInput>
 export type ApprovalItem = z.infer<typeof approvalItem>
