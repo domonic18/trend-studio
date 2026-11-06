@@ -66,6 +66,7 @@ export function toSectionModel(sec: CoursePreviewSection): SectionViewModel {
       name: s.name,
       exchange: s.exchange as 'SZSE' | 'SSE' | 'BSE',
       code: s.code,
+      period: s.period === '1w' ? '1w' : '1d',
       windowStart: s.windowStart,
       windowEnd: s.windowEnd,
       events: Array.isArray(s.events)

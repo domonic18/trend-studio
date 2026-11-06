@@ -73,6 +73,8 @@ export interface CaseStockPreview {
   name: string
   exchange: string
   code: string
+  /** K 线周期：'1d' 日线 / '1w' 周线。 */
+  period: string
   windowStart: string
   windowEnd: string
   events: unknown[]
@@ -251,6 +253,7 @@ async function loadCaseStocks(pool: Pool, sectionIds: string[]): Promise<Map<str
     name: string
     exchange: string
     code: string
+    period: string
     window_start: string | Date
     window_end: string | Date
     events: unknown
@@ -258,7 +261,7 @@ async function loadCaseStocks(pool: Pool, sectionIds: string[]): Promise<Map<str
     status: string
     position: number
   }>(
-    `SELECT section_id, stock_ref_id, name, exchange, code,
+    `SELECT section_id, stock_ref_id, name, exchange, code, period,
             window_start::text AS window_start, window_end::text AS window_end,
             events, note, status, position
        FROM section_case_stocks
@@ -274,6 +277,7 @@ async function loadCaseStocks(pool: Pool, sectionIds: string[]): Promise<Map<str
       name: row.name,
       exchange: row.exchange,
       code: row.code,
+      period: row.period === '1w' ? '1w' : '1d',
       windowStart: toDateStr(row.window_start),
       windowEnd: toDateStr(row.window_end),
       events: Array.isArray(row.events) ? row.events as unknown[] : [],

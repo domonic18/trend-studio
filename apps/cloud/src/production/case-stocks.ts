@@ -8,8 +8,11 @@ export const CASE_STOCK_BATCH_LIMIT = 10
 const CODE = /^[0-9]{6}$/
 const UNIT_ID = /^su_[0-9a-f]{16}$/
 const EXCHANGES = ['SZSE', 'SSE', 'BSE'] as const
+/** K 线周期：课程讲日线画日线，讲周线画周线（周线由日线聚合）。 */
+const PERIODS = ['1d', '1w'] as const
 
 export type CaseStockExchange = (typeof EXCHANGES)[number]
+export type CaseStockPeriod = (typeof PERIODS)[number]
 
 export interface CaseStockEvent {
   date: string
@@ -21,6 +24,7 @@ export interface CaseStockInput {
   name: string
   exchange: CaseStockExchange
   code: string
+  period: CaseStockPeriod
   windowStart: string
   windowEnd: string
   events: CaseStockEvent[]
@@ -33,6 +37,7 @@ export interface CaseStockEntry {
   name: string
   exchange: string
   code: string
+  period: CaseStockPeriod
   windowStart: string
   windowEnd: string
   events: CaseStockEvent[]
@@ -85,6 +90,10 @@ function parseStock(raw: unknown, index: number): CaseStockInput {
   }
   const code = typeof stock.code === 'string' ? stock.code : ''
   if (!CODE.test(code)) throw badRequest(`stocks[${index}].code must be 6 digits`)
+  const period = stock.period === undefined ? '1d' : typeof stock.period === 'string' ? stock.period : ''
+  if (!PERIODS.includes(period as CaseStockPeriod)) {
+    throw badRequest(`stocks[${index}].period must be one of ${PERIODS.join('/')}`)
+  }
   const windowStart = typeof stock.windowStart === 'string' ? stock.windowStart : ''
   const windowEnd = typeof stock.windowEnd === 'string' ? stock.windowEnd : ''
   if (!isIsoDate(windowStart)) throw badRequest(`stocks[${index}].windowStart must be YYYY-MM-DD`)
@@ -112,6 +121,7 @@ function parseStock(raw: unknown, index: number): CaseStockInput {
     name,
     exchange: exchange as CaseStockExchange,
     code,
+    period: period as CaseStockPeriod,
     windowStart,
     windowEnd,
     events: parsedEvents,
@@ -169,10 +179,10 @@ export async function upsertSectionCaseStocks(
     )
     const { rows } = await pool.query<{ stock_ref_id: string }>(
       `INSERT INTO section_case_stocks
-         (stock_ref_id, section_id, course_id, name, exchange, code, window_start, window_end, events, note, status, position)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, 'draft', $11)
+         (stock_ref_id, section_id, course_id, name, exchange, code, period, window_start, window_end, events, note, status, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, 'draft', $12)
        ON CONFLICT (section_id, code) DO UPDATE
-         SET name = EXCLUDED.name, exchange = EXCLUDED.exchange,
+         SET name = EXCLUDED.name, exchange = EXCLUDED.exchange, period = EXCLUDED.period,
              window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end,
              events = EXCLUDED.events, note = EXCLUDED.note, status = 'draft', updated_at = now()
        RETURNING stock_ref_id`,
@@ -183,6 +193,7 @@ export async function upsertSectionCaseStocks(
         stock.name,
         stock.exchange,
         stock.code,
+        stock.period,
         stock.windowStart,
         stock.windowEnd,
         JSON.stringify(stock.events),
@@ -208,6 +219,7 @@ export async function listSectionCaseStocks(pool: Pool, sectionId: string): Prom
     name: string
     exchange: string
     code: string
+    period: string
     window_start: string
     window_end: string
     events: unknown
@@ -216,7 +228,7 @@ export async function listSectionCaseStocks(pool: Pool, sectionId: string): Prom
     position: number
     created_at: Date
   }>(
-    `SELECT stock_ref_id, section_id, name, exchange, code,
+    `SELECT stock_ref_id, section_id, name, exchange, code, period,
             window_start::text AS window_start, window_end::text AS window_end,
             events, note, status, position, created_at
      FROM section_case_stocks WHERE section_id = $1 ORDER BY position, stock_ref_id`,
@@ -228,6 +240,7 @@ export async function listSectionCaseStocks(pool: Pool, sectionId: string): Prom
     name: row.name,
     exchange: row.exchange,
     code: row.code,
+    period: (PERIODS.includes(row.period as CaseStockPeriod) ? row.period : '1d') as CaseStockPeriod,
     windowStart: row.window_start,
     windowEnd: row.window_end,
     events: (row.events ?? []) as CaseStockEvent[],

@@ -263,6 +263,9 @@ function annotationKind(value: unknown, label: string): typeof ANNOTATION_KINDS[
   return value as typeof ANNOTATION_KINDS[number]
 }
 
+/** 均线位白名单：讲师口径常用 M5/M10/M20/M30/M60，最多同时展示 3 条。 */
+const OVERLAY_PERIODS = ['M5', 'M10', 'M20', 'M30', 'M60'] as const
+
 function stringRecord(value: unknown, label: string, maxEntries: number): Record<string, string> {
   const record = objectValue(value, label)
   const keys = Object.keys(record)
@@ -430,7 +433,7 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
       return { type, nodes, edges }
     }
     case 'bar-replay-decision': {
-      rejectUnknown(spec, ['code', 'window', 'overlays', 'annotations', 'decisions', 'citations'], 'spec')
+      rejectUnknown(spec, ['code', 'window', 'period', 'overlays', 'annotations', 'decisions', 'citations'], 'spec')
       const code = textField(spec, 'code', 1, 20)
       if (!/^s[hz]\d{6}$|^bj\d{6}$/.test(code)) throw badRequest('spec.code must be sz|sh|bj + 6 digits')
       const window = objectValue(field(spec, 'window'), 'spec.window')
@@ -438,10 +441,16 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
       const windowFrom = dateField(window, 'from')
       const windowTo = dateField(window, 'to')
       if (windowFrom > windowTo) throw badRequest('spec.window.from must be before or equal to window.to')
+      const period = spec.period === undefined ? undefined : field(spec, 'period')
+      if (period !== undefined && period !== '1d' && period !== '1w') {
+        throw badRequest('spec.period must be 1d or 1w')
+      }
       const overlays = spec.overlays === undefined
         ? undefined
-        : arrayValue(spec, 'overlays', 0, 1).map((entry, index) => {
-            if (typeof entry !== 'string' || entry !== 'M60') throw badRequest(`spec.overlays[${index}] must be M60`)
+        : arrayValue(spec, 'overlays', 0, 3).map((entry, index) => {
+            if (typeof entry !== 'string' || !(OVERLAY_PERIODS as readonly string[]).includes(entry)) {
+              throw badRequest(`spec.overlays[${index}] must be one of ${OVERLAY_PERIODS.join('/')}`)
+            }
             return entry
           })
       const annotations = spec.annotations === undefined
@@ -481,6 +490,7 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
         type,
         code,
         window: { from: windowFrom, to: windowTo },
+        ...(period === undefined ? {} : { period }),
         ...(overlays === undefined ? {} : { overlays }),
         ...(annotations === undefined ? {} : { annotations }),
         decisions,

@@ -332,6 +332,8 @@ export interface CaseStockBrief {
   name: string
   exchange: string
   code: string
+  /** K 线周期：'1d' 日线 / '1w' 周线。 */
+  period: string
   windowStart: string
   windowEnd: string
   events: unknown[]
