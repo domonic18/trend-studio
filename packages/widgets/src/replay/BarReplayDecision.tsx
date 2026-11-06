@@ -6,6 +6,7 @@ import type {
   BarReplaySpec,
 } from '../spec-types.js'
 import { formatPosition } from './format.js'
+import { selectReplayBars } from './select-bars.js'
 
 export interface BarReplayDecisionProps {
   code: string
@@ -40,14 +41,8 @@ function parseSpec(raw: unknown): BarReplaySpec | null {
   }
 }
 
-function useWindowedBars(bars: KlineBar[], window: { from: string; to: string }): KlineBar[] {
-  return React.useMemo(() => {
-    const list = bars
-      .filter((b) => b.tradeDate >= window.from && b.tradeDate <= window.to)
-      .slice()
-      .sort((a, b) => (a.tradeDate > b.tradeDate ? 1 : -1))
-    return list
-  }, [bars, window.from, window.to])
+function useWindowedBars(bars: KlineBar[], code: string, window: { from: string; to: string }): KlineBar[] {
+  return React.useMemo(() => selectReplayBars(bars, code, window), [bars, code, window.from, window.to])
 }
 
 function decisionIndex(decisions: ReplayDecision[], bars: KlineBar[]): Map<number, ReplayDecision> {
@@ -62,7 +57,7 @@ function decisionIndex(decisions: ReplayDecision[], bars: KlineBar[]): Map<numbe
 export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDecisionProps): React.ReactElement {
   const parsed = parseSpec(spec)
   const timeWindow = parsed?.window ?? { from: '', to: '' }
-  const windowedBars = useWindowedBars(bars, timeWindow)
+  const windowedBars = useWindowedBars(bars, code, timeWindow)
   const decisions = parsed?.decisions ?? []
   const annotations = parsed?.annotations ?? []
   const decisionMap = React.useMemo(() => decisionIndex(decisions, windowedBars), [decisions, windowedBars])

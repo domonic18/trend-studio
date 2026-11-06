@@ -3,14 +3,18 @@ import { ArrowLeftOutlined, EyeOutlined, PictureOutlined } from '@ant-design/ico
 import { Button, Card, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { createAssetPlaybackSession, getFigureCandidateBlob, getSectionPreview } from '../../api'
+import { createAssetPlaybackSession, getCoursePreview, getFigureCandidateBlob, getSectionPreview } from '../../api'
 import { PageHeader } from '../../components/PageHeader'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
+import { createCourseHost } from '../../lib/courseHost'
+import { toSectionModel } from '../../lib/courseView'
 import type { FigureBrief } from '../../types'
 import { ArticleRenderer } from '@trend/widgets/article'
+import { SectionView } from '@trend/widgets/course'
 import type { ArticleHost, FigureMeta } from '@trend/widgets/types'
 import '@trend/widgets/widgets.css'
+import '@trend/widgets/course.css'
 import { WidgetPlayer } from '../../widgets'
 
 export function SectionPreviewPage() {
@@ -22,6 +26,21 @@ export function SectionPreviewPage() {
     queryFn: () => getSectionPreview(sectionId as string),
     enabled: sectionId !== undefined,
   })
+
+  /** 课程预览载荷（含案例股与课件），用于按学员同款渲染本节。 */
+  const coursePreview = useQuery({
+    queryKey: qk.coursePreview(courseId ?? ''),
+    queryFn: () => getCoursePreview(courseId as string),
+    enabled: courseId !== undefined,
+  })
+
+  const courseSection = useMemo(
+    () =>
+      coursePreview.data?.chapters
+        .flatMap(ch => ch.sections)
+        .find(sec => sec.section.sectionId === sectionId),
+    [coursePreview.data, sectionId],
+  )
 
   const host = useMemo<ArticleHost>(() => {
     const figures = new Map<string, FigureMeta>()
@@ -44,6 +63,27 @@ export function SectionPreviewPage() {
         createAssetPlaybackSession(assetId, fromSec, toSec),
     }
   }, [preview.data])
+
+  /** 学员同款渲染的宿主：图示 blob、行情加载、片段会话与课程预览页一致。 */
+  const learnerHost = useMemo(() => {
+    const figures = new Map<string, FigureMeta>()
+    for (const figure of courseSection?.figures ?? []) {
+      figures.set(figure.figureId, {
+        figureId: figure.figureId,
+        caption: figure.caption,
+        kind: figure.kind,
+        selectedCandidateId: figure.selectedCandidateId,
+      })
+    }
+    return createCourseHost(courseId ?? '', figures)
+  }, [courseId, courseSection])
+
+  useEffect(() => {
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(learnerHost as any).revokeFigureUrls?.()
+    }
+  }, [learnerHost])
 
   const back = (): void => {
     if (courseId !== undefined) navigate(`/courses/${courseId}`)
@@ -86,10 +126,10 @@ export function SectionPreviewPage() {
 
       <div className="section-preview-layout">
         <div className="section-preview-article">
-          <Card title="教材" size="small">
+          <Card title="教材（学员同款渲染）" size="small">
             {data.article === null ? (
               <Empty description="本节约无教材" />
-            ) : (
+            ) : courseSection === undefined ? (
               <>
                 <Space wrap style={{ marginBottom: 8 }}>
                   <StatusTag value={data.article.status} />
@@ -97,13 +137,15 @@ export function SectionPreviewPage() {
                 </Space>
                 <ArticleRenderer markdown={data.article.markdown} host={host} />
               </>
+            ) : (
+              <SectionView section={toSectionModel(courseSection)} host={learnerHost} />
             )}
           </Card>
         </div>
 
         <div className="section-preview-side">
           <Card
-            title={`课件（${data.widgets.length}）`}
+            title={`课件明细（${data.widgets.length}）`}
             size="small"
             style={{ marginBottom: 16 }}
           >
