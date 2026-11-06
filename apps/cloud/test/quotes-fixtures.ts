@@ -9,4 +9,13 @@ export const TENCENT_QFQ_PAYLOAD = `{"code":0,"msg":"","data":{"sz000001":{"qfqd
 /** 个别标的回落到不复权 day（字段序一致）。 */
 export const TENCENT_DAY_PAYLOAD = `{"code":0,"msg":"","data":{"sz000001":{"day":[["2026-11-04","11.750","11.740","11.860","11.680","1437906.000"],["2026-11-05","11.71","11.64","11.77","11.56","1228997"]]}}}`
 
+/**
+ * 腾讯前复权周K 真实报文夹具（2026-11-05 实采，web.ifzq.gtimg.cn fqkline）。
+ * 周线 bar 的日期是该周最后一个交易日。
+ */
+export const TENCENT_QFQ_WEEK_PAYLOAD = `{"code":0,"msg":"","data":{"sz000001":{"qfqweek":[["2026-10-30","11.530","11.640","11.670","11.400","1864245.000"],["2026-11-06","11.710","11.640","11.770","11.560","2828997.000"]]}}}`
+
+/** 个别标的回落到不复权 week（字段序一致）。 */
+export const TENCENT_WEEK_PAYLOAD = `{"code":0,"msg":"","data":{"sz000001":{"week":[["2026-11-06","11.71","11.64","11.77","11.56","1228997"]]}}}`
+
 export const TENCENT_ERROR_PAYLOAD = `{"code":-1,"msg":"param error"}`

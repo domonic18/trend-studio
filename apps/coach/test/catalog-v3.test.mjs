@@ -110,6 +110,7 @@ function quoteItemPayload(overrides = {}) {
     volume: 2_345_600,
     amount: 3_958_000_000,
     source: 'tencent-qfq',
+    period: '1d',
     ...overrides,
   }
 }
@@ -249,17 +250,24 @@ test('sectionPlayback 拒绝不合法的播放会话响应', async () => {
 
 test('courseQuotes 返回行情并按 code 过滤', async () => {
   const auth = stub({ pending: false, quotes: [quoteItemPayload()] })
-  const quotes = await getCourseQuotes(auth, COURSE_ID, ['600519'], signal)
+  const quotes = await getCourseQuotes(auth, COURSE_ID, ['600519'], '1d', signal)
   assert.equal(quotes.pending, false)
   assert.equal(quotes.quotes[0].close, 1698.75)
-  assert.equal(auth.calls[0], `/v1/catalog/courses/${COURSE_ID}/quotes?codes=600519`)
+  assert.equal(auth.calls[0], `/v1/catalog/courses/${COURSE_ID}/quotes?codes=600519&period=1d`)
 
-  const all = await getCourseQuotes(stub({ pending: false, quotes: [] }), COURSE_ID, undefined, signal)
+  const all = await getCourseQuotes(stub({ pending: false, quotes: [] }), COURSE_ID, undefined, '1d', signal)
   assert.equal(all.quotes.length, 0)
 })
 
+test('courseQuotes 按周期取行情并保留条目的周期', async () => {
+  const auth = stub({ pending: false, quotes: [quoteItemPayload({ period: '1w' })] })
+  const quotes = await getCourseQuotes(auth, COURSE_ID, ['600519'], '1w', signal)
+  assert.equal(auth.calls[0], `/v1/catalog/courses/${COURSE_ID}/quotes?codes=600519&period=1w`)
+  assert.equal(quotes.quotes[0].period, '1w')
+})
+
 test('courseQuotes 支持 pending 态（等待行情同步）', async () => {
-  const quotes = await getCourseQuotes(stub({ pending: true, quotes: [] }), COURSE_ID, undefined, signal)
+  const quotes = await getCourseQuotes(stub({ pending: true, quotes: [] }), COURSE_ID, undefined, '1d', signal)
   assert.equal(quotes.pending, true)
   assert.deepEqual(quotes.quotes, [])
 })
@@ -267,7 +275,7 @@ test('courseQuotes 支持 pending 态（等待行情同步）', async () => {
 test('courseQuotes 拒绝非法标的与非法条目', async () => {
   for (const codes of [[], ['60051'], ['60051X'], Array.from({ length: 11 }, () => '600519')]) {
     await assert.rejects(
-      getCourseQuotes(stub({ pending: false, quotes: [] }), COURSE_ID, codes, signal),
+      getCourseQuotes(stub({ pending: false, quotes: [] }), COURSE_ID, codes, '1d', signal),
       (error) => error instanceof InvalidResponseError,
       JSON.stringify(codes),
     )
@@ -279,10 +287,11 @@ test('courseQuotes 拒绝非法标的与非法条目', async () => {
     '成交量为负': quoteItemPayload({ volume: -1 }),
     '成交量非整数': quoteItemPayload({ volume: 1.5 }),
     '来源缺失': quoteItemPayload({ source: '' }),
+    '周期非法': quoteItemPayload({ period: '1m' }),
   }
   for (const [name, item] of Object.entries(cases)) {
     await assert.rejects(
-      getCourseQuotes(stub({ pending: false, quotes: [item] }), COURSE_ID, undefined, signal),
+      getCourseQuotes(stub({ pending: false, quotes: [item] }), COURSE_ID, undefined, '1d', signal),
       (error) => error instanceof InvalidResponseError,
       name,
     )
