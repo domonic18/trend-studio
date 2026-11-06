@@ -77,12 +77,14 @@
   --wg-shadow-lg: 0 12px 48px rgba(20, 28, 45, 0.13);
   background: var(--wg-bg);
   color: var(--wg-text);
+  font-family: var(--wg-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---------- 正文 ---------- */
 .wg-article {
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: 15.5px;
+  line-height: 1.85;
   color: var(--wg-text);
 }
 
@@ -347,29 +349,39 @@
 /* ---------- :::timeline 时间线 ---------- */
 .wg-timeline {
   list-style: none;
+  counter-reset: st;
   margin: 1.5em 0;
   padding: 0;
 }
 .wg-timeline-event {
   position: relative;
-  padding: 0 0 20px 30px;
+  padding: 0 0 20px 42px;
 }
+.wg-timeline-event:last-child { padding-bottom: 0; }
 .wg-timeline-event::before {
-  content: '';
+  counter-increment: st;
+  content: counter(st);
   position: absolute;
-  left: 4px;
-  top: 6px;
-  width: 10px;
-  height: 10px;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--wg-brand);
-  box-shadow: 0 0 0 3px var(--wg-brand-soft);
+  background: var(--wg-surface-solid);
+  border: 2px solid var(--wg-brand);
+  color: var(--wg-brand);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .wg-timeline-event:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: 8.5px;
-  top: 20px;
+  left: 13px;
+  top: 30px;
   bottom: 0;
   width: 2px;
   background: var(--wg-line);
@@ -377,7 +389,8 @@
 .wg-timeline-date {
   display: inline-block;
   font-family: var(--wg-mono);
-  font-size: 0.76em;
+  font-size: 0.72em;
+  letter-spacing: 0.4px;
   color: var(--wg-text-muted);
   background: var(--wg-surface-2);
   padding: 1px 9px;
@@ -387,6 +400,7 @@
 .wg-timeline-title {
   display: block;
   font-weight: 650;
+  font-size: 1.02em;
   color: var(--wg-text);
 }
 .wg-timeline-desc {
@@ -396,25 +410,39 @@
   margin-top: 3px;
 }
 
-/* ---------- :::warn 提醒 ---------- */
+/* ---------- :::warn 提醒（原型 callout.risk） ---------- */
 .wg-warn {
   margin: 1.5em 0;
-  padding: 14px 18px;
+  padding: 15px 18px;
   border: 1px solid var(--wg-warn-line);
   border-radius: var(--wg-radius-sm);
   background: var(--wg-warn-soft);
 }
 .wg-warn-title {
-  margin: 0 0 0.4em;
-  font-size: 0.95em;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
   font-weight: 700;
+  letter-spacing: 0.8px;
   color: var(--wg-warn);
+}
+.wg-warn-title::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid var(--wg-warn);
 }
 .wg-warn-text {
   margin: 0;
   white-space: pre-wrap;
   color: var(--wg-text-secondary);
   font-size: 0.95em;
+  line-height: 1.75;
 }
 
 /* ---------- :::figure 图示 ---------- */

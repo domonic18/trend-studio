@@ -119,10 +119,12 @@ function TimelineBlock({ bodyLines }: { bodyLines: string[] }) {
 }
 
 function WarnBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLines: string[] }) {
+  const title = attrs.title ?? ''
+  const text = bodyLines.join('\n').trim()
   return (
     <section className="wg-warn">
-      <h4 className="wg-warn-title">⚠ {attrs.title ?? ''}</h4>
-      <p className="wg-warn-text"><AnchorText text={bodyLines.join('\n').trim()} /></p>
+      {title !== '' ? <h4 className="wg-warn-title">{title}</h4> : null}
+      {text !== '' ? <p className="wg-warn-text"><AnchorText text={text} /></p> : null}
     </section>
   )
 }
