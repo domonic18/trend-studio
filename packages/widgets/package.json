@@ -35,6 +35,10 @@
       "types": "./lib/dsl.d.ts",
       "default": "./lib/dsl.js"
     },
+    "./evidence": {
+      "types": "./lib/evidence.d.ts",
+      "default": "./lib/evidence.js"
+    },
     "./engine": {
       "types": "./lib/engine.d.ts",
       "default": "./lib/engine.js"

@@ -156,19 +156,73 @@
   white-space: nowrap;
 }
 
-/* 证据锚：指向语料 unit 的内联徽章 */
+/* 证据锚：讲师原话在正文里按脚注式呈现，虚线术语样式 + 角标序号 */
 .wg-unit-anchor {
-  display: inline-block;
-  padding: 0 0.6em;
-  border: 1px dashed var(--wg-warn-line);
-  border-radius: 999px;
-  background: var(--wg-warn-soft);
-  color: var(--wg-warn);
-  font-size: 0.88em;
-  line-height: 1.6;
-  margin: 0 0.1em;
-  white-space: nowrap;
+  color: var(--wg-text);
+  border-bottom: 1px dashed var(--wg-line-subtle);
   cursor: pointer;
+  transition: 0.15s;
+}
+.wg-unit-anchor:hover {
+  color: var(--wg-warn);
+  border-bottom-color: var(--wg-warn-line);
+  background: var(--wg-warn-soft);
+}
+.wg-evidence-mark {
+  font-size: 0.66em;
+  vertical-align: super;
+  line-height: 0;
+  margin-left: 0.14em;
+  color: var(--wg-warn);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 文末证据出处清单 */
+.wg-evidence-list {
+  margin: 2.4em 0 0;
+  border: 1px dashed var(--wg-brand-line);
+  border-radius: var(--wg-radius);
+  background: var(--wg-surface-2);
+  padding: 0 18px;
+}
+.wg-evidence-summary {
+  cursor: pointer;
+  padding: 13px 0;
+  font-size: 0.88em;
+  font-weight: 650;
+  color: var(--wg-text-secondary);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wg-evidence-summary::-webkit-details-marker { display: none; }
+.wg-evidence-summary::before { content: '✦'; color: var(--wg-brand); }
+.wg-evidence-items {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.wg-evidence-item {
+  margin: 0.35em 0;
+  font-size: 0.87em;
+  color: var(--wg-text-secondary);
+  line-height: 1.7;
+}
+.wg-evidence-num {
+  display: inline-block;
+  min-width: 1.6em;
+  color: var(--wg-warn);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wg-evidence-text { color: var(--wg-text); }
+.wg-evidence-id {
+  font-family: var(--wg-mono);
+  font-size: 0.85em;
+  color: var(--wg-text-muted);
+  margin-left: 0.5em;
 }
 
 /* 语料徽章 */

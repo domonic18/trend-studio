@@ -6,6 +6,14 @@ export { ArticleRenderer } from './article.js'
 export { AnchorText } from './anchors.js'
 export { DslBlockView } from './blocks.js'
 export { ClipCard } from './clip.js'
+export {
+  EvidenceList,
+  EvidenceProvider,
+  buildEvidenceIndex,
+  useEvidenceIndex,
+  type EvidenceEntry,
+  type EvidenceIndex,
+} from './evidence.js'
 export { rewriteStockAnchors, splitArticle, splitInlineAnchors, type InlineAnchor } from './dsl.js'
 export { LearnerWidgetPlayer, type LearnerWidget } from './learner/index.js'
 export type {

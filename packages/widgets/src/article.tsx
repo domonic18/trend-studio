@@ -1,8 +1,10 @@
+import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { DslBlockView } from './blocks.js'
 import { StockAnchor, UnitAnchor } from './anchors.js'
 import { rewriteStockAnchors, splitArticle } from './dsl.js'
+import { EvidenceList, EvidenceProvider, buildEvidenceIndex } from './evidence.js'
 import type { ArticleHost } from './types.js'
 
 /** 教材正文渲染器：markdown 游程 + DSL 容器块 + 个股锚徽章 + figure: 遗留图片引用。 */
@@ -14,22 +16,26 @@ export function ArticleRenderer({
   host: ArticleHost
 }) {
   const segments = splitArticle(markdown)
+  const evidence = React.useMemo(() => buildEvidenceIndex(markdown), [markdown])
   return (
-    <div className="wg-article">
-      {segments.map((segment, index) =>
-        segment.kind === 'block' ? (
-          <DslBlockView
-            key={index}
-            directive={segment.directive}
-            attrs={segment.attrs}
-            bodyLines={segment.bodyLines}
-            host={host}
-          />
-        ) : (
-          <MarkdownRun key={index} text={segment.text} host={host} />
-        ),
-      )}
-    </div>
+    <EvidenceProvider index={evidence}>
+      <div className="wg-article">
+        {segments.map((segment, index) =>
+          segment.kind === 'block' ? (
+            <DslBlockView
+              key={index}
+              directive={segment.directive}
+              attrs={segment.attrs}
+              bodyLines={segment.bodyLines}
+              host={host}
+            />
+          ) : (
+            <MarkdownRun key={index} text={segment.text} host={host} />
+          ),
+        )}
+        <EvidenceList index={evidence} />
+      </div>
+    </EvidenceProvider>
   )
 }
 
