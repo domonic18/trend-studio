@@ -4028,6 +4028,20 @@ test('M3b 分权：producer 可写内容生产、不可发布与管理账号', a
   })
   assert.equal(publish.statusCode, 403)
 
+  // producer 可读管线作业状态（生产端 cloud_pipeline_status 依赖），但不可触发重试/取消
+  const jobs = await app.inject({
+    method: 'GET',
+    url: '/v1/admin/content/pipeline/jobs',
+    headers: producerHeaders,
+  })
+  assert.equal(jobs.statusCode, 200, jobs.body)
+  const retryJob = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/pipeline/jobs/job_0000000000000000/retry',
+    headers: producerHeaders,
+  })
+  assert.equal(retryJob.statusCode, 403)
+
   // producer 不可管理账号 / 不可读模型配置
   const createUser = await app.inject({
     method: 'POST',

@@ -293,7 +293,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.get('/v1/admin/content/pipeline/jobs', async request => {
-    await guard(request)
+    await producerGuard(request)
     const query = asObject(request.query)
     const courseId = queryText(query, 'courseId')
     const assetId = queryText(query, 'assetId')
@@ -308,7 +308,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.get('/v1/admin/content/pipeline/jobs/:jobId', async request => {
-    await guard(request)
+    await producerGuard(request)
     const { jobId } = request.params as { jobId: string }
     return { job: await api.getJob(parseJobId(jobId)) }
   })
