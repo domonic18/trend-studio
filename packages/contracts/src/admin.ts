@@ -9,7 +9,7 @@ import {
   SECTION_ID, SOURCE_UNIT_ID, STOCK_CODE, STOCK_CODE_PLAIN, TRANSCRIPT_ID, WIDGET_ID,
 } from './ids.js'
 import {
-  ANNOTATION_KINDS, COURSE_OVERLAYS, FIGURE_TEMPLATE_NAMES, PROVENANCE_TASK_KEYS, WIDGET_TYPES,
+  ANNOTATION_KINDS, COURSE_OVERLAYS, FIGURE_TEMPLATE_NAMES, KLINE_PERIODS, PROVENANCE_TASK_KEYS, WIDGET_TYPES,
 } from './enums.js'
 
 const assetId = z.string().regex(ASSET_ID, 'assetId 格式不合法')
@@ -257,7 +257,8 @@ export const barReplayDecisionSpec = z.strictObject({
     from: z.string().regex(DATE_STR, 'window.from 格式不合法'),
     to: z.string().regex(DATE_STR, 'window.to 格式不合法'),
   }),
-  overlays: z.array(z.enum(COURSE_OVERLAYS)).max(1).optional(),
+  overlays: z.array(z.enum(COURSE_OVERLAYS)).max(3).optional(),
+  period: z.enum(KLINE_PERIODS).optional(),
   annotations: z.array(z.strictObject({
     unitId: sourceUnitId,
     atMs: z.number().int().nonnegative().max(86_400_000),
@@ -401,6 +402,8 @@ const caseStockInput = z.object({
   name: z.string().min(1).max(50),
   exchange: z.enum(['SZSE', 'SSE', 'BSE']),
   code: z.string().regex(STOCK_CODE_PLAIN),
+  /** K 线周期：课件讲日线画日线，讲周线画周线。缺省日线。 */
+  period: z.enum(KLINE_PERIODS).optional(),
   windowStart: z.string().regex(DATE_STR),
   windowEnd: z.string().regex(DATE_STR),
   events: z.array(caseStockEvent).max(20).optional(),
