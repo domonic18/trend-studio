@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.20）
+# 趋势课程云端服务 · 架构设计（v0.21）
 
-版本：v0.20（2026-11-06；K 线显示口径与课程内容对齐：均线位改多值叠加（白名单 M5/M10/M20/M30/M60，≤3 条，默认 M5/M10/M60，带图例）；K 线周期声明式化——`section_case_stocks.period` 与 `bar-replay-decision` spec `period`（1d/1w，缺省 1d），周线由日线在渲染端按 ISO 周聚合（行情仍只存日线一份真相源）；存量 6 节案例股周期与 6 份回放课件均线已回填）
+版本：v0.21（2026-11-06；行情缓存**周期原生化**：缓存按 `period` 分存日线与周线（迁移 020，`period` 列 + 唯一键 `(code, period, trade_date)`），周线取腾讯原生周 K（≈640 根、回溯至 2013–2014）——替代 v0.20 的渲染端日线聚合（聚合只有 ≈128 根周线，60 周 M60 算不出，且日线源只回溯到 2024-03，早于该年的教学窗口整段无数据）；同步按案例股声明的 `period` 逐条拉取；学员/管理台行情端点加 `period` 参数（缺省 `1d`），条目携带 `period`；案例股清单下发 `period`，学员端按周期分批取数）
+v0.20（2026-11-06；K 线显示口径与课程内容对齐：均线位改多值叠加（白名单 M5/M10/M20/M30/M60，≤3 条，默认 M5/M10/M60，带图例）；K 线周期声明式化——`section_case_stocks.period` 与 `bar-replay-decision` spec `period`（1d/1w，缺省 1d），周线**先**由日线在渲染端按 ISO 周聚合（已于 v0.21 改为周期原生缓存）；存量 6 节案例股周期与 6 份回放课件均线已回填）
 v0.19（2026-11-06；M10 S1 学员端富媒体课程页落地：零新增云端端点，学员端复用 catalog v3 课程树/节详情/行情/按节播放会话，共享 `@trend/widgets` 课程视图与管理台预览同源；节载荷增 `summary` 与 `conceptNames`（hero chip 显示概念名）；§6.6.7 记录学员端载体契约）
 v0.18（2026-11-06；M10 R3 落地：6 节全量 DSL 重写回灌（`dsl_version=2`）完成，§6.6 实现状态与 M10 阶段表回写；rubric 阈值按 6 正 1 负样本标定——通过线 8 不变，grounded 增「行情数值可核」一票否决子项修 0.4.0 漏检；producer 可读管线作业状态（GET 放 producerGuard，重试/取消仍限 operator/admin）；遗留：云端无图示删除端点）
 v0.17（2026-11-06；M3b 呈现层 R2/R3 代码落地：DSL v2（`:::annotation`/`:::replay`）服务端校验、`bar-replay-decision` 新题型 spec 与断言证明、`GET /v1/admin/content/courses/{courseId}/preview` 课程预览与 `GET /v1/admin/content/courses/{courseId}/quotes` 草稿行情端点、K 线组件（含成交量/M60/事件锚点/回放遮罩）与管理台课程预览页接入 `@trend/widgets`；`producer` 角色可触发 `quotes-sync`。真产一节已跑通（TC-ZONGLUN「阻尼运动」节，2026-11-06，DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft）；rubric 0.4.0 阈值标定与 6 节回灌仍待。）
@@ -244,7 +245,7 @@ erDiagram
 | `concept_edges`（M9） | `edge_id`、`course_id`、`from_concept_id`、`to_concept_id`、`kind(prerequisite/related)` | 有向边；禁止自环；`prerequisite` 用于节排序校验与 `timeline-explorer` |
 | `widget_specs`（M9，M10 扩容） | `widget_id`、`section_id`、`course_id`、`type`、`spec_version`、`spec jsonb`、`assertions jsonb`、`validation jsonb`（证明记录）、`citations jsonb`、`status`、`version` | `type` 仅白名单 8 类（§6.5.5；M10 扩容 3 类见 §6.6.5，随 `spec_version=2` 冻结）；`spec` 服务端按 schema 复检；`validation` 必须包含全部断言的通过证明，缺失即拒绝入库；`draft` 对学员不可见；每节建议 1–3 个 |
 | `section_case_stocks`（M10） | `stock_ref_id`、`section_id`、`course_id`、`name`、`exchange(SZSE/SSE/BSE)`、`code`（6 位数字）、`period`（K 线周期 `1d` 日线 / `1w` 周线，缺省 `1d`）、`window_start/window_end`（DATE）、`events jsonb`（`[{date,label,unitId}]`）、`note`、`status`、`position` | `(section_id, code)` 唯一；事件 `date` 必须落在 `[window_start, window_end]` 内；`unitId` 必须可回溯 source unit；`draft` 不下发；由生产端提取、云端复检后落库（§6.6.3） |
-| `course_stock_quotes`（M10） | `code`、`trade_date`、`open/high/low/close`、`volume`、`source('tencent-qfq')`、`fetched_at` | `(code, trade_date)` 唯一；仅前复权日线 OHLCV 原始值，不混复权口径；只同步已入库案例股清单内 code；复权价差在渲染层声明，不改数据 |
+| `course_stock_quotes`（M10） | `code`、`period`（`1d` 日线 / `1w` 周线，缺省 `1d`）、`trade_date`、`open/high/low/close`、`volume`、`source('tencent-qfq')`、`fetched_at` | `(code, period, trade_date)` 唯一；仅前复权 OHLCV 原始值，不混复权口径；日线与周线各存原生一份（迁移 020），周期由案例股声明；只同步已入库案例股清单内 code；复权价差在渲染层声明，不改数据 |
 
 建库插件：`pgvector`（`halfvec`）、`pg_trgm`；检索索引与向量索引分离于业务表，可在线重建（M3 后台触发）。
 
@@ -714,22 +715,22 @@ R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_li
 |---|---|---|
 | `GET/PUT /v1/admin/content/sections/{sectionId}/case-stocks` | operator/admin | 案例股清单批量 upsert；云端复检：代号格式、窗口日期合法、事件锚点 `unitId` 可回溯、`date` 落窗口内、股票名非空 |
 | `POST /v1/admin/content/courses/{courseId}/quotes-sync` | operator/admin | 同步执行行情回填/日更（幂等）：返回 `{job, upserted}`；`job.kind='quotes_sync'` 且状态直接落 `succeeded`（同步执行不入队列，不与 worker 抢任务） |
-| `GET /v1/catalog/courses/{courseId}/quotes?codes&from&to` | 学员（设备令牌） | 仅 `published` 课程的**已发布**案例股清单内 code；返回 `{pending, quotes[]}`（前复权日线 OHLCV，按交易日升序）；清单外代号**过滤**（不回 403）；`codes` ≤10 只、每只 ≤320 根；未同步 `pending=true`；`from>to` `400` |
+| `GET /v1/catalog/courses/{courseId}/quotes?codes&from&to&period` | 学员（设备令牌） | 仅 `published` 课程的**已发布**案例股清单内 code；返回 `{pending, quotes[]}`（前复权 OHLCV，按交易日升序，条目带 `period`）；清单外代号**过滤**（不回 403）；`codes` ≤10 只、每只 ≤640 根；`period` ∈ `1d`/`1w`，缺省 `1d`；未同步 `pending=true`；`from>to` `400` |
 
 **行情同步机制**：
 
-- 数据源：腾讯 `web.ifzq.gtimg.cn/appstock/app/fqkline/get`（前复权日 K；单次 count ≤640，向前分页回填至案例窗口起点；窗口早于 2018 年的按 2018-01 起回填）。单源无备用：拉取失败走任务退避重试，连续失败渲染层降级为「行情暂不可用」，不伪造数据（原则 6）。
+- 数据源：腾讯 `web.ifzq.gtimg.cn/appstock/app/fqkline/get`（前复权；单次 count ≤640，向前分页回填至案例窗口起点）。**日线与周线都取原生周期**（`param=symbol,day,,,640,qfq` / `symbol,week,,,640,qfq`），不自行聚合。实测深度上限：日线约 641 根（回溯至约 2024-03）、周线约 640 根（回溯至 2013-11 / 2014-01 / 2014-05，逐代码而异）——**周线覆盖的历史窗口远长于日线**，教学案例中早于 2024-03 的窗口须以 `period='1w'` 声明，否则日线源取不到数据。单源无备用：拉取失败走任务退避重试，连续失败渲染层降级为「行情暂不可用」，不伪造数据（原则 6）。
 - 同步载体：`pipeline_jobs` 新 `kind='quotes_sync'`（`course_id` 必填、`asset_id` 空；迁移 016 放开 `course_stock_quotes.amount` 的 NOT NULL，腾讯源无成交额、落库恒 null）；**当前实现为同步执行**（`quotes-sync` 端点内直接拉取并 upsert，任务记录直接落 `succeeded`，不进队列），新案例股入库后由运营触发回填，交易日收盘后定时差量更新（待接调度）。
-- **字段口径（M3b B5 定版）**：`volume` 单位**手**（1 手 = 100 股）；`amount`（成交额）恒 `null`——腾讯前复权日 K 报文不含该字段，源不可得不估算；`source='tencent-qfq'`；`(code, trade_date)` 唯一约束 → 重跑幂等覆盖同一行（同步两次行数不变）。
+- **字段口径（M3b B5 定版，M10 周期增量）**：`volume` 单位**手**（1 手 = 100 股）；`amount`（成交额）恒 `null`——腾讯前复权报文不含该字段，源不可得不估算；`source='tencent-qfq'`；缓存按**周期原生**存（迁移 020：`period` 列 `1d`/`1w`，唯一键 `(code, period, trade_date)`）→ 同一代号可同时存日线与周线、重跑幂等覆盖同一行（同步两次行数不变）。周期由**案例股声明**（`section_case_stocks.period`，缺省 `1d`），同步按声明周期逐条拉取，不猜周期。
 - 同步范围：课程**未归档**案例股（draft + published 都取——同步先于发布也要能用）；学员端只放行 `published`。
-- 口径声明（渲染层，不改数据）：课程图示为录制时点（≈2022-09）前复权，与当前前复权存在除权漂移（实测锚点：丰乐种业课程筹码峰 8.68 精确吻合 2019-05-17 前复权收盘 8.669）；K 线组件必带「不构成投资建议」与复权口径声明位（文案可配）。
+- 口径声明（渲染层，不改数据）：课程图示为录制时点（≈2022-09）前复权，与当前前复权存在除权漂移（实测锚点：丰乐种业课程筹码峰 8.68 精确吻合 2019-05-17 前复权收盘 8.669）；K 线组件必带「不构成投资建议」与复权口径声明位（文案可配）。另注意前复权会**缩放历史价位**（韶钢松山 2020-01 周线收盘 ≈4.09 元，前复权），正文引用的绝对价位须与所选周期、复权口径对齐，否则原片截图与图表对不上。
 
 **渲染组件契约（管理台与学员端共用，独立包）**：
 
 - 输入纯数据 `{bars:[{d,o,h,l,c,v}], events:[{date,label}], window:[start,end]}`，组件自身无网络依赖；行情获取在宿主侧（管理台走 admin 通道，学员端走上述学员接口）。
 - 标注层（M10 v2）：输入可含 `annotations?:[{d,kind,label}]`——来自正文 `:::annotation`（宿主解析后注入），组件只收定位数据，详情文本（原话/术语）留在教材详情卡；按 `d` 映射 bar 索引，三类标注（structure/invalidation/rhythm）按类型着色与过滤。
 - 交互基线（V3 原型定版）：K 线 + 成交量双面板、红涨绿跌、均线位叠加、悬停十字线读数、滚轮缩放（光标锚定）/拖动平移、事件锚点三角标记与点选定位、案例窗口默认视野、双击复位。
-- **均线位与周期口径（2026-11-06 增量）**：均线位为**多值**——白名单 `M5/M10/M20/M30/M60`（`COURSE_OVERLAYS`），默认 `M5/M10/M60`，按周期固定配色并在图内右上角出图例；周期口径**声明式**——`section_case_stocks.period` 与 `bar-replay-decision` spec 的 `period`（`1d` 日线 / `1w` 周线，缺省 `1d`）决定画日线还是周线，**由生产端按本节实际讲解的图表口径填写**，渲染层不得替内容做选择。**周线由日线在渲染端按 ISO 周聚合**（开=周内首根开、收=周内末根收、高低取极值、量额求和），`course_stock_quotes` 仍只存日线一份真相源，不落第二份行情。
+- **均线位与周期口径（2026-11-06 增量）**：均线位为**多值**——白名单 `M5/M10/M20/M30/M60`（`COURSE_OVERLAYS`），默认 `M5/M10/M60`，按周期固定配色并在图内右上角出图例；周期口径**声明式**——`section_case_stocks.period` 与 `bar-replay-decision` spec 的 `period`（`1d` 日线 / `1w` 周线，缺省 `1d`）决定画日线还是周线，**由生产端按本节实际讲解的图表口径填写**，渲染层不得替内容做选择。**周期原生行情（2026-11-06 第二批增量）**：缓存按周期分别存日线与周线（迁移 020，唯一键 `(code, period, trade_date)`），周线取腾讯**原生周 K**（`param=...,week,...,qfq`，约 640 根、回溯至 2013–2014），不再由日线在渲染端聚合——渲染端聚合只有约 128 根周线，60 周 M60 算不出来，且日线源只回溯到 2024-03，早于该年的教学窗口会整段无数据。渲染层按声明周期取对应 bar，**不做跨周期换算**。
 - 案例股清单由节响应携带（`caseStocks[]` 含窗口与事件锚点）；个股锚 `[[stock:...]]` 点击即在侧栏切换标的。
 
 #### 6.6.4 参数化 SVG 模板图示（取代 Mermaid）
@@ -787,7 +788,7 @@ R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_li
 |---|---|
 | 课程树 + 节摘要 | `GET /v1/catalog/courses/{courseId}`（`contractVersion=3` 带 `sections[]`） |
 | 节详情 | `GET /v1/catalog/courses/{courseId}/sections/{sectionId}` |
-| 案例股行情 | `GET /v1/catalog/courses/{courseId}/quotes?codes=` |
+| 案例股行情 | `GET /v1/catalog/courses/{courseId}/quotes?codes=&period=` |
 | 按节签发播放会话 | `POST /v1/catalog/sections/{sectionId}/playback` |
 
 - **装配在客户端**：目录 + 逐节详情在客户端装配成共享 `CoursePreviewView`（纯函数 `assembleCourseView`），节详情并发拉取、单节失败不阻断整页。服务端不做课程级聚合端点——节详情已是 published-only 只读面，再加聚合端点只会多一份口径。

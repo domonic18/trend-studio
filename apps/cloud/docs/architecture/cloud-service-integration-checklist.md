@@ -958,16 +958,16 @@ GET    /v1/portal/stats                # 公开；已发布内容计数
 | POST | `/sections/{sectionId}/figures` | 节级图示写入：`kind=keyframe`（`assetId+sec` 从帧轨道抽帧落候选并自动选定，sec 须落在所引 source unit 内）或 `kind=diagram`（`template+params` 模板渲染器确定性出 SVG 并选定）；配额 keyframe ≤6/节、diagram ≤2/节。**写入语义（2026-11-06 修订）**：同节同 kind 同 `caption` 视为同一张图，重写即覆盖（`figure_id` 不变、旧候选行与文件清理、覆盖不占额外配额） | R1 |
 | GET | `/sections/{sectionId}/figures` | 节级图示清单（kind/caption/spec/选定状态） | R1 |
 | POST | `/media-assets/{assetId}/playback-sessions` | 资产时间窗播放会话（管理台预览通道）：按 `assetId + {fromSec,toSec}` 签发签名 HLS 地址，不要求素材已发布（草稿可预览）；窗成对且 `0≤from<to`、≤3600s | R1 |
-| GET/PUT | `/sections/{sectionId}/case-stocks` | 案例股清单批量 upsert；复检：代号 6 位数字、窗口日期合法、事件 `date` 落窗内、`unitId` 可回溯；`(sectionId, code)` 冲突覆盖更新 | R1 |
-| POST | `/courses/{courseId}/quotes-sync` | 同步执行行情回填/日更（`pipeline_jobs kind='quotes_sync'`，任务直接落 `succeeded` 不入队列）；返回 `{job, upserted}`；同步范围 = 课程未归档案例股（draft + published）；producer 可触发 | M3b B5 / R2 |
+| GET/PUT | `/sections/{sectionId}/case-stocks` | 案例股清单批量 upsert；复检：代号 6 位数字、窗口日期合法、事件 `date` 落窗内、`unitId` 可回溯；`(sectionId, code)` 冲突覆盖更新；每条带 `period`（`1d` 日线 / `1w` 周线，缺省 `1d`）——**决定该股 K 线画日线还是周线，也决定行情同步取哪条源**（周线源回溯更长，早于 2024-03 的窗口须声明 `1w`） | R1 |
+| POST | `/courses/{courseId}/quotes-sync` | 同步执行行情回填/日更（`pipeline_jobs kind='quotes_sync'`，任务直接落 `succeeded` 不入队列）；返回 `{job, upserted}`；同步范围 = 课程未归档案例股（draft + published）；**按每条案例股声明的 `period` 拉对应原生周期**（日线 ≈641 根 / 周线 ≈640 根，按 `(code, period, trade_date)` 幂等 upsert）；producer 可触发 | M3b B5 / R2 / 周期原生 |
 | GET | `/courses/{courseId}/preview` | 课程预览（管理台课程预览页）：返回课程树草稿全量（章节→节，含 article/widgets/figures/caseStocks）；operator/admin/producer 可访问 | R2 |
-| GET | `/courses/{courseId}/quotes?codes&from&to` | 管理台行情查询：返回课程未归档案例股（draft + published）前复权日线 OHLCV，不限 published；producer 可访问；清单外过滤、未同步 `pending=true`、单课 ≤10 只、每只 ≤320 根 | R2 |
+| GET | `/courses/{courseId}/quotes?codes&from&to&period` | 管理台行情查询：返回课程未归档案例股（draft + published）前复权 OHLCV（按 `period` 取日线或周线，条目带 `period`），不限 published；producer 可访问；清单外过滤、未同步 `pending=true`、单课 ≤10 只、每只 ≤640 根、`period` ∈ `1d`/`1w`（缺省 `1d`） | R2 |
 
 **学员接口（设备令牌）**
 
 | 方法 | 路径 | 说明 | 状态 |
 |---|---|---|---|
-| GET | `/v1/catalog/courses/{courseId}/quotes?codes&from&to` | 仅 `published` 课程的**已发布**案例股清单内 code；返回 `{pending, quotes[]}`（前复权日线 OHLCV，按交易日升序，`volume` 单位手、`amount` 恒 null、`source='tencent-qfq'`）；清单外代号**过滤**（不回 403）；`codes` ≤10 只、每只 ≤320 根；未同步 `pending=true`；未发布课程 `404`；`from>to` `400` | M3b B5 |
+| GET | `/v1/catalog/courses/{courseId}/quotes?codes&from&to&period` | 仅 `published` 课程的**已发布**案例股清单内 code；返回 `{pending, quotes[]}`（前复权 OHLCV，按交易日升序，条目带 `period`；`volume` 单位手、`amount` 恒 null、`source='tencent-qfq'`）；清单外代号**过滤**（不回 403）；`codes` ≤10 只、每只 ≤640 根；`period` ∈ `1d`/`1w`（缺省 `1d`）；未同步 `pending=true`；未发布课程 `404`；`from>to` `400` | M3b B5 / 周期原生 |
 | GET | `/v1/catalog/courses/{courseId}/sections/{sectionId}` | 节级学习契约：仅 `published` 课程 `published` 节；返回正文（markdown + dslVersion + version + publishedAt）、课件 spec 与断言、图示元数据（含**短时签名图片地址** `url`）、案例股清单、**节导语 `summary`**（可选，未撰写则不下发）与**概念名 `conceptNames`**（可选，按 `concept_refs` 顺序）；节未发布 `404`；后台会话令牌不可用（学员端只认设备令牌） | M3b B6 / S1 |
 | POST | `/v1/catalog/sections/{sectionId}/playback` | 学员播放会话：body `{assetId, fromSec, toSec}`；请求窗必须**完整落在该节已发布正文的某个 clip 块窗内**，否则 `409 playback_window_invalid`（素材不匹配同码）；`toSec ≤ fromSec` `400`；签发签名 HLS 地址 | M3b B6 |
 
