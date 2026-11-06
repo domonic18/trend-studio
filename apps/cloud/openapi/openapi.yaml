@@ -2616,7 +2616,7 @@ components:
           pattern: '^wgt_[0-9a-f]{16}$'
         type:
           type: string
-          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision, image-juxtaposition, branching-scenario]
         specVersion:
           type: integer
         specBytes:
@@ -2822,7 +2822,7 @@ components:
           pattern: '^wgt_[0-9a-f]{16}$'
         type:
           type: string
-          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
+          enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision, image-juxtaposition, branching-scenario]
         specVersion:
           type: integer
         spec:
@@ -7427,7 +7427,7 @@ paths:
               properties:
                 type:
                   type: string
-                  enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision]
+                  enum: [kline-annotator, pattern-quiz, step-reveal, calc-trainer, mcq-quiz, flashcards, checklist, timeline-explorer, bar-replay-decision, image-juxtaposition, branching-scenario]
                 specVersion:
                   type: integer
                   enum: [1]

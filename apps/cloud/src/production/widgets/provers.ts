@@ -7,10 +7,17 @@ import {
   closesHoldAbove,
   countTrendlineTouches,
   generateCandles,
+  isGeneratorId,
   trendlineAt,
   type Candle,
 } from './generators.js'
-import type { WidgetAssertions, WidgetSpec, WidgetType } from './schema.js'
+import type {
+  BranchingScenarioSpec,
+  ImageJuxtapositionSpec,
+  WidgetAssertions,
+  WidgetSpec,
+  WidgetType,
+} from './schema.js'
 
 interface BarReplayAnnotation {
   unitId: string
@@ -48,6 +55,8 @@ export interface ProofContext {
   caseWindow?: { start: string; end: string }
   /** M10 v2：该股行情缓存中的交易日集合（YYYY-MM-DD）。 */
   tradingDays?: ReadonlySet<string>
+  /** M10 v3 image-juxtaposition：本节 figures 的 figureId 集合（figureId 侧必须可解析）。 */
+  figureIds?: ReadonlySet<string>
 }
 
 export type ProofResult =
@@ -152,8 +161,9 @@ function proofFor(type: WidgetType, spec: WidgetSpec, key: string, assertions: W
       return (spec.items ?? []).every(item => item.text.trim().length > 0)
     }
     case 'edgeRefsExist': {
-      const names = new Set(spec.nodes!.map(node => node.conceptRef))
-      return spec.nodes!.every(node => ctx.conceptNames.has(node.conceptRef))
+      const nodes = spec.nodes as { conceptRef: string }[]
+      const names = new Set(nodes.map(node => node.conceptRef))
+      return nodes.every(node => ctx.conceptNames.has(node.conceptRef))
         && spec.edges!.every(edge => names.has(edge.from) && names.has(edge.to))
     }
     case 'acyclicPrerequisite': {
@@ -217,6 +227,103 @@ function proofFor(type: WidgetType, spec: WidgetSpec, key: string, assertions: W
       }
       for (const annotation of barSpec.annotations ?? []) {
         if (!conceptNames.has(annotation.label)) return false
+      }
+      return true
+    }
+    case 'pairSidesValid': {
+      const juxtapose = spec as ImageJuxtapositionSpec
+      for (const side of [juxtapose.left, juxtapose.right]) {
+        if ('figureId' in side) {
+          if (ctx.figureIds === undefined || !ctx.figureIds.has(side.figureId)) return false
+          continue
+        }
+        if (!isGeneratorId(side.generator)) return false
+        if (!Number.isInteger(side.seed) || side.seed < 0) return false
+        if (!Number.isInteger(side.bars) || side.bars < 20 || side.bars > 300) return false
+      }
+      return true
+    }
+    case 'captionsGrounded': {
+      const juxtapose = spec as ImageJuxtapositionSpec
+      const conceptNames = [...ctx.conceptNames]
+      for (const caption of [juxtapose.captions.left, juxtapose.captions.right]) {
+        if (!conceptNames.some(name => caption.includes(name))) return false
+      }
+      return true
+    }
+    case 'graphAcyclic': {
+      const branching = spec as BranchingScenarioSpec
+      const adjacency = new Map<string, string[]>()
+      for (const node of branching.nodes) {
+        for (const option of node.options ?? []) {
+          adjacency.set(node.id, [...(adjacency.get(node.id) ?? []), option.next])
+        }
+      }
+      const visiting = new Set<string>()
+      const visited = new Set<string>()
+      const visit = (id: string): boolean => {
+        if (visiting.has(id)) return false
+        if (visited.has(id)) return true
+        visiting.add(id)
+        for (const next of adjacency.get(id) ?? []) {
+          if (!visit(next)) return false
+        }
+        visiting.delete(id)
+        visited.add(id)
+        return true
+      }
+      return [...adjacency.keys()].every(visit)
+    }
+    case 'allPathsTerminate': {
+      const branching = spec as BranchingScenarioSpec
+      const byId = new Map(branching.nodes.map(node => [node.id, node]))
+      if (!byId.has(branching.entryId)) return false
+      // 三色 DFS：回边（visiting 再入）即成环，路径不再终止；后继必须落在节点集内。
+      const state = new Map<string, 'visiting' | 'done'>()
+      const visit = (id: string): boolean => {
+        const mark = state.get(id)
+        if (mark === 'done') return true
+        if (mark === 'visiting') return false
+        const node = byId.get(id)
+        if (node === undefined) return false
+        state.set(id, 'visiting')
+        for (const option of node.options ?? []) {
+          if (!byId.has(option.next)) return false
+          if (!visit(option.next)) return false
+        }
+        state.set(id, 'done')
+        return true
+      }
+      if (!visit(branching.entryId)) return false
+      // 终点可达：可达子图内每个非终点节点都有后继，且路径必在无选项节点收口。
+      for (const [id, mark] of state) {
+        if (mark !== 'done') continue
+        const node = byId.get(id)!
+        if ((node.options ?? []).length === 0) continue
+        for (const option of node.options ?? []) {
+          if (state.get(option.next) !== 'done') return false
+        }
+      }
+      return true
+    }
+    case 'optimalPathReachable': {
+      const branching = spec as BranchingScenarioSpec
+      const path = branching.optimalPath
+      if (path.length === 0 || path[0] !== branching.entryId) return false
+      const byId = new Map(branching.nodes.map(node => [node.id, node]))
+      for (let index = 0; index < path.length - 1; index++) {
+        const node = byId.get(path[index]!)
+        if (node === undefined) return false
+        if (!(node.options ?? []).some(option => option.next === path[index + 1])) return false
+      }
+      return byId.has(path[path.length - 1]!)
+    }
+    case 'feedbackNonEmpty': {
+      const branching = spec as BranchingScenarioSpec
+      for (const node of branching.nodes) {
+        for (const option of node.options ?? []) {
+          if (option.feedback.trim().length === 0) return false
+        }
       }
       return true
     }

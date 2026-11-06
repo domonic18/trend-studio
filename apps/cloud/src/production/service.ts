@@ -51,6 +51,13 @@ import {
 
 const HEX16 = '^[0-9a-f]{16}$'
 
+/** v2 spec 形态的题型：写入时必须声明 specVersion 2。 */
+const V2_SPEC_TYPES: ReadonlySet<string> = new Set([
+  'bar-replay-decision',
+  'image-juxtaposition',
+  'branching-scenario',
+])
+
 const suId = (): string => `su_${randomBytes(8).toString('hex')}`
 const cptId = (): string => `cpt_${randomBytes(8).toString('hex')}`
 const cedId = (): string => `ced_${randomBytes(8).toString('hex')}`
@@ -995,7 +1002,9 @@ export class ProductionService {
     if (typeof type !== 'string' || !isWidgetType(type)) throw badRequest('type is not in the frozen whitelist')
     const specVersion = Number(body.specVersion)
     if (!Number.isInteger(specVersion) || specVersion < 1 || specVersion > 2) throw badRequest('specVersion must be 1 or 2')
-    if (type === 'bar-replay-decision' && specVersion !== 2) throw badRequest('bar-replay-decision requires specVersion 2')
+    if (V2_SPEC_TYPES.has(type) && specVersion !== 2) {
+      throw badRequest(`${type} requires specVersion 2`)
+    }
     const spec = validateSpec(type, body.spec)
     const assertions = validateAssertions(type, body.assertions)
     const citations = body.citations === undefined ? [] : validateCitations(body.citations)
@@ -1023,6 +1032,14 @@ export class ProductionService {
         ? new Set<string>()
         : await this.loadTradingDays(barSpec.code, caseWindow)
       Object.assign(proofCtx, { unitWindows, caseWindow, tradingDays })
+    }
+    if (type === 'image-juxtaposition') {
+      // figureId 侧必须能解析到本节图示，否则对比滑块渲染不出左侧画面。
+      const { rows } = await this.pool.query<{ figure_id: string }>(
+        'SELECT figure_id FROM figures WHERE section_id = $1',
+        [sectionId],
+      )
+      Object.assign(proofCtx, { figureIds: new Set(rows.map(row => row.figure_id)) })
     }
     const proof = proveWidget(type, spec, assertions, proofCtx)
     if (!proof.ok) {

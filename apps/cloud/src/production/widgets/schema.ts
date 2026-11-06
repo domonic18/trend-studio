@@ -14,6 +14,8 @@ export const WIDGET_TYPES = [
   'checklist',
   'timeline-explorer',
   'bar-replay-decision',
+  'image-juxtaposition',
+  'branching-scenario',
 ] as const
 export type WidgetType = (typeof WIDGET_TYPES)[number]
 
@@ -31,6 +33,36 @@ export interface WidgetChartData {
 
 export interface TrendlineSolution {
   trendline: { startIdx: number; endIdx: number }
+}
+
+/** M10 v3 image-juxtaposition：两侧各为课程画面引用或确定性合成 K 线。 */
+export type JuxtapositionSide =
+  | { figureId: string }
+  | { generator: GeneratorId; seed: number; bars: number }
+
+/** M10 v3 branching-scenario：决策树节点（options 缺省即终点）。 */
+export interface BranchingNode {
+  id: string
+  prompt: string
+  options?: { label: string; next: string; feedback: string }[]
+}
+
+export interface ImageJuxtapositionSpec {
+  type: 'image-juxtaposition'
+  left: JuxtapositionSide
+  right: JuxtapositionSide
+  labels: { left: string; right: string }
+  captions: { left: string; right: string }
+  citations: string[]
+}
+
+export interface BranchingScenarioSpec {
+  type: 'branching-scenario'
+  scenario: string
+  entryId: string
+  nodes: BranchingNode[]
+  optimalPath: string[]
+  citations: string[]
 }
 
 export interface WidgetSpec {
@@ -58,7 +90,7 @@ export interface WidgetSpec {
   cards?: { front: string; back: string; conceptRef: string }[]
   title?: string
   items?: { text: string; conceptRef?: string }[]
-  nodes?: { conceptRef: string }[]
+  nodes?: { conceptRef: string }[] | BranchingNode[]
   edges?: { from: string; to: string; kind: string }[]
   patternMatchesAnswer?: GeneratorId
   /** M10 v2 bar-replay-decision：真实案例股逐根回放。 */
@@ -74,6 +106,15 @@ export interface WidgetSpec {
     unitId: string
     atMs: number
   }[]
+  /** M10 v3 image-juxtaposition：两图对比滑块。 */
+  left?: JuxtapositionSide
+  right?: JuxtapositionSide
+  labels?: { left: string; right: string }
+  captions?: { left: string; right: string }
+  /** M10 v3 branching-scenario：决策树情境练习。 */
+  scenario?: string
+  entryId?: string
+  optimalPath?: string[]
   citations?: string[]
 }
 
@@ -93,6 +134,14 @@ export interface WidgetAssertions {
   itemsNonEmpty?: boolean
   edgeRefsExist?: boolean
   acyclicPrerequisite?: boolean
+  /** M10 v3 image-juxtaposition。 */
+  pairSidesValid?: boolean
+  captionsGrounded?: boolean
+  /** M10 v3 branching-scenario。 */
+  graphAcyclic?: boolean
+  allPathsTerminate?: boolean
+  optimalPathReachable?: boolean
+  feedbackNonEmpty?: boolean
 }
 
 const REQUIRED_ASSERTIONS: Record<WidgetType, readonly string[]> = {
@@ -105,6 +154,8 @@ const REQUIRED_ASSERTIONS: Record<WidgetType, readonly string[]> = {
   checklist: ['itemsNonEmpty'],
   'timeline-explorer': ['edgeRefsExist', 'acyclicPrerequisite'],
   'bar-replay-decision': ['decisionPointsGrounded', 'revealMonotonic', 'annotationTermsGrounded', 'answerUnique'],
+  'image-juxtaposition': ['pairSidesValid', 'captionsGrounded'],
+  'branching-scenario': ['graphAcyclic', 'allPathsTerminate', 'optimalPathReachable', 'feedbackNonEmpty'],
 }
 
 const ALLOWED_ASSERTIONS: Record<WidgetType, readonly string[]> = {
@@ -117,6 +168,8 @@ const ALLOWED_ASSERTIONS: Record<WidgetType, readonly string[]> = {
   checklist: [...REQUIRED_ASSERTIONS.checklist, 'termsInConcepts'],
   'timeline-explorer': REQUIRED_ASSERTIONS['timeline-explorer'],
   'bar-replay-decision': REQUIRED_ASSERTIONS['bar-replay-decision'],
+  'image-juxtaposition': REQUIRED_ASSERTIONS['image-juxtaposition'],
+  'branching-scenario': REQUIRED_ASSERTIONS['branching-scenario'],
 }
 
 type Raw = Record<string, unknown>
@@ -127,11 +180,14 @@ function field(value: Raw, key: string): unknown {
 }
 
 function textField(value: Raw, key: string, min = 1, max = 2000): string {
-  const raw = field(value, key)
-  if (typeof raw !== 'string' || raw.trim().length < min || raw.trim().length > max) {
-    throw badRequest(`spec.${key} must be ${min}–${max} characters`)
+  return textValue(field(value, key), `spec.${key}`, min, max)
+}
+
+function textValue(value: unknown, label: string, min = 1, max = 2000): string {
+  if (typeof value !== 'string' || value.trim().length < min || value.trim().length > max) {
+    throw badRequest(`${label} must be ${min}–${max} characters`)
   }
-  return raw
+  return value
 }
 
 function intNumber(value: unknown, label: string, min: number, max: number): number {
@@ -286,6 +342,25 @@ function numberInputs(value: unknown, label: string): Record<string, number> {
     result[key] = numberValue(record[key], `${label}.${key}`)
   }
   return result
+}
+
+/** M10 v3 image-juxtaposition 一侧：课程画面引用或确定性合成 K 线，二选一。 */
+function juxtapositionSide(value: unknown, label: string): JuxtapositionSide {
+  const side = objectValue(value, label)
+  const keys = Object.keys(side)
+  if (keys.length === 1 && keys[0] === 'figureId') {
+    return { figureId: textField(side, 'figureId', 1, 60) }
+  }
+  rejectUnknown(side, ['generator', 'seed', 'bars'], label)
+  const generator = field(side, 'generator')
+  if (typeof generator !== 'string' || !isGeneratorId(generator)) {
+    throw badRequest(`${label}.generator must be a frozen generator`)
+  }
+  return {
+    generator,
+    seed: intNumber(field(side, 'seed'), `${label}.seed`, 0, 2 ** 31 - 1),
+    bars: intNumber(field(side, 'bars'), `${label}.bars`, 20, 300),
+  }
 }
 
 export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
@@ -496,6 +571,65 @@ export function validateSpec(type: WidgetType, raw: unknown): WidgetSpec {
         decisions,
         citations,
       }
+    }
+    case 'image-juxtaposition': {
+      rejectUnknown(spec, ['left', 'right', 'labels', 'captions', 'citations'], 'spec')
+      const left = juxtapositionSide(field(spec, 'left'), 'spec.left')
+      const right = juxtapositionSide(field(spec, 'right'), 'spec.right')
+      const labels = objectValue(field(spec, 'labels'), 'spec.labels')
+      rejectUnknown(labels, ['left', 'right'], 'spec.labels')
+      const captions = objectValue(field(spec, 'captions'), 'spec.captions')
+      rejectUnknown(captions, ['left', 'right'], 'spec.captions')
+      const citations = arrayValue(spec, 'citations', 1, 20).map((entry, index) =>
+        sourceUnitId(entry, `spec.citations[${index}]`))
+      return {
+        type,
+        left,
+        right,
+        labels: { left: textField(labels, 'left', 1, 60), right: textField(labels, 'right', 1, 60) },
+        captions: { left: textField(captions, 'left', 1, 300), right: textField(captions, 'right', 1, 300) },
+        citations,
+      }
+    }
+    case 'branching-scenario': {
+      rejectUnknown(spec, ['scenario', 'entryId', 'nodes', 'optimalPath', 'citations'], 'spec')
+      const scenario = textField(spec, 'scenario', 1, 800)
+      const entryId = textField(spec, 'entryId', 1, 40)
+      const nodes = arrayValue(spec, 'nodes', 1, 20).map((raw, index) => {
+        const node = objectValue(raw, `spec.nodes[${index}]`)
+        rejectUnknown(node, ['id', 'prompt', 'options'], `spec.nodes[${index}]`)
+        const options = node.options === undefined
+          ? undefined
+          : arrayValue(node, 'options', 2, 4, `spec.nodes[${index}].options`).map((optionRaw, optionIndex) => {
+              const option = objectValue(optionRaw, `spec.nodes[${index}].options[${optionIndex}]`)
+              rejectUnknown(option, ['label', 'next', 'feedback'], `spec.nodes[${index}].options[${optionIndex}]`)
+              return {
+                label: textField(option, 'label', 1, 200),
+                next: textField(option, 'next', 1, 40),
+                feedback: textField(option, 'feedback', 1, 500),
+              }
+            })
+        return {
+          id: textField(node, 'id', 1, 40),
+          prompt: textField(node, 'prompt', 1, 500),
+          ...(options === undefined ? {} : { options }),
+        }
+      })
+      const nodeIds = new Set(nodes.map(node => node.id))
+      if (nodeIds.size !== nodes.length) throw badRequest('spec.nodes ids must be unique')
+      if (!nodeIds.has(entryId)) throw badRequest('spec.entryId must reference a node id')
+      for (const [index, node] of nodes.entries()) {
+        for (const [optionIndex, option] of (node.options ?? []).entries()) {
+          if (!nodeIds.has(option.next)) {
+            throw badRequest(`spec.nodes[${index}].options[${optionIndex}].next must reference a node id`)
+          }
+        }
+      }
+      const optimalPath = arrayValue(spec, 'optimalPath', 1, 20).map((entry, index) =>
+        textValue(entry, `spec.optimalPath[${index}]`, 1, 40))
+      const citations = arrayValue(spec, 'citations', 1, 20).map((entry, index) =>
+        sourceUnitId(entry, `spec.citations[${index}]`))
+      return { type, scenario, entryId, nodes, optimalPath, citations }
     }
   }
 }
