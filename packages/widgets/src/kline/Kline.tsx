@@ -3,6 +3,8 @@ import { KlineChart, type KlineBar, type KlineChartOptions, type KlineEvent } fr
 
 export interface KlineProps {
   bars: KlineBar[]
+  /** 更长的历史序列（按交易日对齐），只用于均线计算；缺省用 bars 自身。 */
+  maBars?: KlineBar[]
   events?: KlineEvent[]
   height?: number
   windowStart?: string
@@ -15,6 +17,7 @@ export interface KlineProps {
 
 export function Kline({
   bars,
+  maBars,
   events,
   height = 260,
   windowStart,
@@ -39,12 +42,12 @@ export function Kline({
       revealCount,
     })
     chartRef.current = chart
-    chart.setBars(bars, events)
+    chart.setBars(bars, events, maBars)
     return () => {
       chart.destroy()
       chartRef.current = null
     }
-  }, [bars, events, windowStart, windowEnd, overlays, onEventClick, mode])
+  }, [bars, maBars, events, windowStart, windowEnd, overlays, onEventClick, mode])
 
   React.useEffect(() => {
     if (mode === 'replay' && chartRef.current !== null && revealCount !== undefined) {

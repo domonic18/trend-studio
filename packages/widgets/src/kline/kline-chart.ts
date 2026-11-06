@@ -99,6 +99,8 @@ export class KlineChart {
   private readonly overlays: string[]
   private readonly mode: 'chart' | 'replay'
   private revealCount = 0
+  private maBars: KlineBar[] = []
+  private maOffset = 0
   private readonly windowStart?: string
   private readonly windowEnd?: string
   private readonly volumeHeightRatio: number
@@ -135,11 +137,29 @@ export class KlineChart {
     }
   }
 
-  setBars(bars: KlineBar[], events?: KlineEvent[]): void {
+  /**
+   * `maBars` 是更长的历史序列（按交易日对齐），只用于均线计算——显示的仍是 `bars`。
+   * 均线取全历史口径，才与正文引用的「当日 M60」一致。
+   */
+  setBars(bars: KlineBar[], events?: KlineEvent[], maBars?: KlineBar[]): void {
     this.bars = bars
     this.events = events ?? []
+    this.maBars = maBars ?? bars
+    this.maOffset = this.computeMaOffset()
     this.resetView()
     this.schedule()
+  }
+
+  /** 显示序列在历史序列中的起点（按交易日对齐）；对不上则退回用显示序列自身算均线。 */
+  private computeMaOffset(): number {
+    const first = this.bars[0]
+    if (first === undefined || this.maBars === this.bars) return 0
+    const index = this.maBars.findIndex(bar => bar.tradeDate === first.tradeDate)
+    if (index === -1) {
+      this.maBars = this.bars
+      return 0
+    }
+    return index
   }
 
   setRevealCount(count: number): void {
@@ -455,7 +475,7 @@ export class KlineChart {
       }
     }
 
-    // 收盘均线（多周期）
+    // 收盘均线（多周期，取全历史口径）
     for (const period of parseOverlayPeriods(this.overlays)) {
       ctx.strokeStyle = MA_COLORS[period] ?? colors.ma
       ctx.lineWidth = period >= 60 ? 1.6 : 1.2
@@ -463,10 +483,11 @@ export class KlineChart {
       let started = false
       for (let offset = 0; offset < visibleBars.length; offset += 1) {
         const index = this.start + offset
-        if (index < period - 1) continue
+        const sourceIndex = this.maOffset + index
+        if (sourceIndex < period - 1) continue
         let sum = 0
         for (let back = 0; back < period; back += 1) {
-          sum += this.bars[index - back]?.close ?? 0
+          sum += this.maBars[sourceIndex - back]?.close ?? 0
         }
         const cx = PAD_LEFT + perBar * (offset + 0.5)
         const py = yPrice(sum / period)

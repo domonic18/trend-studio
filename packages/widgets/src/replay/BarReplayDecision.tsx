@@ -57,13 +57,14 @@ function usePeriodBars(
   code: string,
   period: KlinePeriod,
   window: { from: string; to: string },
-): PeriodBar[] {
+): { windowed: PeriodBar[]; all: PeriodBar[] } {
   return React.useMemo(() => {
     const daily = selectByCode(bars, code)
     const periodBars = toPeriodBars(daily, period)
-    return period === '1w'
+    const windowed = period === '1w'
       ? filterPeriodWindow(periodBars, window)
       : periodBars.filter(bar => bar.tradeDate >= window.from && bar.tradeDate <= window.to)
+    return { windowed, all: periodBars }
   }, [bars, code, period, window.from, window.to])
 }
 
@@ -87,7 +88,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
   const parsed = parseSpec(spec)
   const timeWindow = parsed?.window ?? { from: '', to: '' }
   const period: KlinePeriod = parsed?.period ?? '1d'
-  const windowedBars = usePeriodBars(bars, code, period, timeWindow)
+  const { windowed: windowedBars, all: allBars } = usePeriodBars(bars, code, period, timeWindow)
   const decisions = parsed?.decisions ?? []
   const annotations = parsed?.annotations ?? []
   const decisionMap = React.useMemo(() => decisionIndex(decisions, windowedBars), [decisions, windowedBars])
@@ -248,6 +249,7 @@ export function BarReplayDecision({ code, bars, spec, onUnitClick }: BarReplayDe
       <div className="wg-replay-chart-wrap">
         <Kline
           bars={windowedBars}
+          maBars={allBars}
           events={events}
           mode="replay"
           revealCount={revealed}

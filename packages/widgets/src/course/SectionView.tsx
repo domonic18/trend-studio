@@ -162,22 +162,22 @@ function CaseStockDetail({
   pending: boolean
 }) {
   const period: KlinePeriod = stock.period ?? '1d'
-  const periodBars = useMemo(() => {
-    const all = toPeriodBars(bars, period)
+  const allBars = useMemo(() => toPeriodBars(bars, period), [bars, period])
+  const viewBars = useMemo(() => {
     return period === '1w'
-      ? filterPeriodWindow(all, { from: stock.windowStart, to: stock.windowEnd })
-      : all.filter(bar => bar.tradeDate >= stock.windowStart && bar.tradeDate <= stock.windowEnd)
-  }, [bars, period, stock.windowStart, stock.windowEnd])
+      ? filterPeriodWindow(allBars, { from: stock.windowStart, to: stock.windowEnd })
+      : allBars.filter(bar => bar.tradeDate >= stock.windowStart && bar.tradeDate <= stock.windowEnd)
+  }, [allBars, period, stock.windowStart, stock.windowEnd])
   const events = useMemo(
     () =>
       stock.events.map(
         (e): import('../kline/kline-chart.js').KlineEvent => ({
-          date: periodEventDate(periodBars, e.date),
+          date: periodEventDate(allBars, e.date),
           label: e.label,
           unitId: e.unitId,
         }),
       ),
-    [stock.events, periodBars],
+    [stock.events, allBars],
   )
   return (
     <div className="wg-case-detail">
@@ -193,10 +193,11 @@ function CaseStockDetail({
         <div className="wg-case-pending">等待行情同步…</div>
       ) : null}
       <Kline
-        bars={periodBars}
+        bars={allBars}
+        maBars={allBars}
         events={events}
-        windowStart={stock.windowStart}
-        windowEnd={stock.windowEnd}
+        windowStart={viewBars[0]?.tradeDate ?? stock.windowStart}
+        windowEnd={viewBars[viewBars.length - 1]?.tradeDate ?? stock.windowEnd}
         height={260}
       />
       {stock.events.length > 0 ? (
