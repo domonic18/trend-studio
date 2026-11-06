@@ -1,7 +1,7 @@
 ---
 name: courseware-design
 description: 课件设计工艺：11 类白名单组件选型与 spec/assertions 撰写规范（断言证明的供给侧）
-version: 0.3.0
+version: 0.3.1
 ---
 
 # 课件设计工艺
@@ -136,3 +136,16 @@ version: 0.3.0
 ## 收敛纪律
 
 - 409 回灌 ≤3 次（按 failed 断言修正）；3 次不过放弃该课件转人工，不降级规格硬塞。
+
+## spec 载荷形态（嵌套数组易被改写）
+
+写 spec 的 tool-call 载荷若含多层嵌套数组（`branching-scenario` 的 `nodes[].options[]`
+最典型），可能在传输中被改写成单键对象，服务端回 `400 spec.nodes must be an array`——
+**这不是 spec 形状错，是载荷问题**。对策：
+
+- 把 spec 压成**单行紧凑 JSON**，整份控制在 2000 字符以内；节点 id 用纯 ASCII 短标识
+  （`n1`/`n2`/`end`），不用中文或长名。
+- 决策树刻意做小：3–4 个节点、每个非末节点恰好 2 个选项、feedback ≤40 字。
+- 收到 400 形状错误时先怀疑载荷：把 spec 再压小重试；仍不行就把同一份 JSON 交给
+  **新起的子代理**写入（子代理的 tool-call 载荷更稳），不要去研究 harness 源码。
+- `spec` 里始终不许带 `type` 字段。
