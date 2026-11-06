@@ -141,6 +141,10 @@ export interface CatalogSection {
   chapterId: string
   title: string
   position: number
+  /** 节导语（hero lead）；未撰写时不下发。 */
+  summary?: string
+  /** 节关联概念名，按 concept_refs 顺序。 */
+  conceptNames?: string[]
   article: CatalogSectionArticle | null
   widgets: CatalogWidget[]
   figures: CatalogFigure[]

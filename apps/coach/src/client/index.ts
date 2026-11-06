@@ -19,6 +19,7 @@ import type {
 } from '../shared/contracts.js'
 import { CatalogPanel } from './catalog.js'
 import { ClassroomPanel } from './classroom.js'
+import { CoursePagePanel } from './course-page.js'
 import { SectionView } from './section-view.js'
 import { LearnerContextBridge } from './context-bridge.js'
 import { learnerContextStore } from './learner-context.js'
@@ -56,10 +57,12 @@ const CATALOG_ID = 'dsh-plugin-trend-coach-catalog'
 const PLAYER_ID = 'dsh-plugin-trend-coach-player'
 const CLASSROOM_ID = 'dsh-plugin-trend-coach-classroom'
 const SECTION_ID = 'dsh-plugin-trend-coach-section'
+const COURSE_ID = 'dsh-plugin-trend-coach-course'
 const CATALOG_KIND = 'trend-coach-catalog'
 const PLAYER_KIND = 'trend-coach-player'
 const CLASSROOM_KIND = 'trend-coach-classroom'
 const SECTION_KIND = 'trend-coach-section'
+const COURSE_KIND = 'trend-coach-course'
 const CITATION_HOST = 'trend-coach.local'
 const SEGMENT_CODE = /^seg-[A-Za-z0-9._-]+$/
 const SEGMENT_CLIP_SEC = 60
@@ -207,6 +210,8 @@ const catalogSectionSchema = z.object({
   chapterId: z.string(),
   title: z.string(),
   position: z.number(),
+  summary: z.string().optional(),
+  conceptNames: z.array(z.string()).optional(),
   article: z.union([catalogSectionArticleSchema, z.null()]),
   widgets: z.array(catalogWidgetSchema),
   figures: z.array(catalogFigureSchema),
@@ -1484,6 +1489,14 @@ export function apply(ctx: Context): void {
     }
   }
 
+  const openCourse = (params: { courseId: string }) => {
+    try {
+      ctx.sidebarRight.openTab(COURSE_KIND, { params: { ...params } })
+    } catch (error) {
+      console.error('[trend-coach] open course tab failed', error)
+    }
+  }
+
   const openSegment = async (remote: TrendCoachRemote, params: PlayerParams): Promise<void> => {
     if (params.segmentId === undefined) {
       openPlayer({ ...params, error: '缺少引用片段' })
@@ -1591,6 +1604,7 @@ export function apply(ctx: Context): void {
               ),
             openClassroom: (target: { courseId: string; chapterId: string }) => openClassroom(target),
             openSection: (target: { courseId: string; sectionId: string }) => openSection(target),
+            openCoursePage: (target: { courseId: string }) => openCourse(target),
           }),
         }, CatalogPanel))
 
@@ -1615,6 +1629,20 @@ export function apply(ctx: Context): void {
               scoped.remote.trendCoach.courseQuotes(courseId, codes),
           }),
         }, SectionView))
+
+        scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: COURSE_ID,
+          inject: () => ({
+            catalogCourse: (courseId: string) => scoped.remote.trendCoach.catalogCourse(courseId),
+            catalogSection: (courseId: string, sectionId: string) =>
+              scoped.remote.trendCoach.catalogSection(courseId, sectionId),
+            courseQuotes: (courseId: string, codes: string[]) =>
+              scoped.remote.trendCoach.courseQuotes(courseId, codes),
+            sectionPlayback: (sectionId: string, assetId: string, fromSec: number, toSec: number) =>
+              scoped.remote.trendCoach.sectionPlayback(sectionId, assetId, fromSec, toSec),
+          }),
+        }, CoursePagePanel))
 
         scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
           name: 'sidebar.right.pane.tab',
@@ -1766,5 +1794,17 @@ export function apply(ctx: Context): void {
       description: () => '节级教材与案例股行情',
     }],
   }), 'trend-coach section tab type')
+
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: COURSE_ID,
+    kind: COURSE_KIND,
+    title: () => '课程页',
+    guide: [{
+      id: COURSE_ID,
+      order: 193,
+      title: () => '课程页',
+      description: () => '整本课程富媒体阅读',
+    }],
+  }), 'trend-coach course tab type')
 
 }

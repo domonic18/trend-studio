@@ -43,6 +43,8 @@ export interface CatalogPanelProps {
   openSegment: (target: CatalogOpenTarget) => Promise<void>
   openClassroom: (target: { courseId: string; chapterId: string }) => void
   openSection: (target: { courseId: string; sectionId: string }) => void
+  /** 打开整本课程富媒体页（独立标签页），与面板内的课程树加载不同。 */
+  openCoursePage: (target: { courseId: string }) => void
 }
 
 interface ChapterCacheEntry {
@@ -343,6 +345,7 @@ export function CatalogPanel({
   openSegment,
   openClassroom,
   openSection,
+  openCoursePage,
 }: CatalogPanelProps): React.ReactElement {
   const [auth, setAuth] = React.useState<AuthStatus | undefined>(undefined)
   const [device, setDevice] = React.useState<DeviceAuthStart | undefined>(undefined)
@@ -794,6 +797,18 @@ export function CatalogPanel({
         style: { border: 0, background: 'transparent', color: '#2a6ebb', cursor: 'pointer', padding: 0 },
       }, '← 返回课程列表'),
       React.createElement('h4', { key: 'course-title', style: { margin: '8px 0 2px' } }, course.title),
+      React.createElement('button', {
+        key: 'open-course-page',
+        type: 'button',
+        onClick: () => openCoursePage({ courseId: course.courseId }),
+        style: {
+          ...buttonStyle(),
+          marginTop: 6,
+          borderColor: '#2a6ebb',
+          color: '#2a6ebb',
+          fontWeight: 600,
+        },
+      }, '打开课程页'),
       (course.sections ?? []).length === 0
         ? null
         : React.createElement('div', { key: 'sections', style: { marginBottom: 12 } },
