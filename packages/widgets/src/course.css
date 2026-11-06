@@ -1,0 +1,531 @@
+/** M10 课程预览浅色编辑风：作用域 .wg-course 内生效。 */
+
+.wg-course {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.wg-course-toc {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--wg-surface);
+  border-bottom: 1px solid var(--wg-line);
+  margin: -24px -24px 24px;
+  padding: 12px 24px;
+}
+
+.wg-course-toc-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  overflow-x: auto;
+}
+
+.wg-course-toc-title {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--wg-text);
+}
+
+.wg-course-toc-chapter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wg-course-toc-chapter-title {
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  white-space: nowrap;
+}
+
+.wg-course-toc-section {
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.wg-course-toc-section:hover,
+.wg-course-toc-section.active {
+  color: var(--wg-brand);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.wg-course-chapter {
+  margin-bottom: 48px;
+}
+
+.wg-course-chapter-title {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
+  font-size: 1.6em;
+  margin: 0 0 24px;
+  color: var(--wg-text);
+}
+
+.wg-course-section {
+  background: var(--wg-surface);
+  border: 1px solid var(--wg-line);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.wg-section-hero {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--wg-line);
+}
+
+.wg-section-chip {
+  display: inline-block;
+  font-size: 0.78em;
+  color: var(--wg-brand);
+  border: 1px solid var(--wg-brand);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+
+.wg-section-title {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
+  font-size: 1.45em;
+  margin: 0 0 8px;
+  color: var(--wg-text);
+}
+
+.wg-section-lead {
+  color: var(--wg-text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.wg-section-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.85em;
+}
+
+.wg-section-draft {
+  color: var(--wg-warn);
+  border: 1px solid var(--wg-warn);
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.wg-section-stat {
+  color: var(--wg-text-muted);
+}
+
+.wg-case-panel {
+  margin: 20px 0;
+  border: 1px solid var(--wg-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wg-case-panel-head {
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--wg-line);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.wg-case-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--wg-line);
+}
+
+.wg-case-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  background: var(--wg-surface);
+  color: var(--wg-text-secondary);
+  cursor: pointer;
+}
+
+.wg-case-tab.active {
+  border-color: var(--wg-brand);
+  color: var(--wg-brand);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.wg-case-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--wg-text-muted);
+}
+
+.wg-case-detail {
+  padding: 14px;
+}
+
+.wg-case-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.wg-case-name {
+  font-weight: 600;
+}
+
+.wg-case-exchange {
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  border: 1px solid var(--wg-line);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.wg-case-window {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--wg-text-muted);
+}
+
+.wg-case-events {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+}
+
+.wg-case-events li {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--wg-line);
+}
+
+.wg-case-event-date {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--wg-text-muted);
+  min-width: 90px;
+}
+
+.wg-case-kline-placeholder {
+  padding: 40px;
+  text-align: center;
+  border: 1px dashed var(--wg-line);
+  border-radius: 8px;
+  color: var(--wg-text-muted);
+}
+
+.wg-case-pending {
+  padding: 32px;
+  text-align: center;
+  color: var(--wg-text-muted);
+  font-size: 0.9em;
+}
+
+.wg-widget-card {
+  margin: 16px 0;
+  border: 1px solid var(--wg-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wg-widget-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--wg-line);
+  font-size: 0.9em;
+}
+
+.wg-widget-status {
+  font-size: 0.85em;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.wg-widget-status-draft {
+  color: var(--wg-warn);
+  border: 1px solid var(--wg-warn);
+}
+
+.wg-widget-status-published {
+  color: var(--wg-down);
+  border: 1px solid var(--wg-down);
+}
+
+.wg-widget-spec {
+  margin: 0;
+  padding: 14px;
+  font-size: 0.8em;
+  overflow-x: auto;
+  color: var(--wg-text-secondary);
+}
+
+/* :::annotation 老师标注 */
+.wg-annotation {
+  margin: 1.2em 0;
+  padding: 1em 1.2em;
+  border: 1px solid var(--wg-line);
+  border-left: 4px solid var(--wg-brand);
+  border-radius: 6px;
+  background: var(--wg-surface);
+}
+
+.wg-annotation-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0.6em;
+}
+
+.wg-annotation-label {
+  font-weight: 600;
+  color: var(--wg-text);
+}
+
+.wg-annotation-date {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  color: var(--wg-text-muted);
+}
+
+.wg-annotation-quote {
+  margin: 0 0 0.8em;
+  padding: 0.6em 0.9em;
+  border-left: 3px solid var(--wg-line-subtle);
+  color: var(--wg-text-secondary);
+  font-style: italic;
+}
+
+.wg-annotation-glossary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.8em;
+}
+
+.wg-annotation-term {
+  font-size: 0.82em;
+  color: var(--wg-brand);
+  border: 1px solid var(--wg-brand);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.wg-annotation-jump {
+  font-size: 0.85em;
+  color: var(--wg-brand);
+  background: transparent;
+  border: 1px solid var(--wg-brand);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+/* :::replay 逐根回放 */
+.wg-replay {
+  margin: 1.2em 0;
+  border: 1px solid var(--wg-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--wg-surface);
+}
+.wg-replay-error,
+.wg-replay-empty {
+  padding: 2em;
+  text-align: center;
+  color: var(--wg-text-muted);
+}
+.wg-replay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0.9em 1.1em;
+  border-bottom: 1px solid var(--wg-line);
+  background: rgba(0, 0, 0, 0.02);
+}
+.wg-replay-title {
+  font-weight: 600;
+  color: var(--wg-text);
+}
+.wg-replay-progress-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--wg-brand);
+}
+.wg-replay-chart-wrap {
+  position: relative;
+  padding: 10px;
+}
+.wg-replay-decision-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, 90%);
+  padding: 1.1em;
+  border-radius: 8px;
+  background: var(--wg-bg);
+  border: 1px solid var(--wg-line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.wg-replay-decision-question {
+  font-weight: 600;
+  margin-bottom: 0.8em;
+  color: var(--wg-text);
+}
+.wg-replay-decision-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wg-replay-option {
+  text-align: left;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  background: var(--wg-surface);
+  color: var(--wg-text);
+  cursor: pointer;
+}
+.wg-replay-option:hover:not(:disabled) {
+  border-color: var(--wg-brand);
+}
+.wg-replay-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.wg-replay-option-correct {
+  border-color: var(--wg-down);
+  color: var(--wg-down);
+}
+.wg-replay-option-wrong {
+  border-color: var(--wg-up);
+  color: var(--wg-up);
+}
+.wg-replay-reveal {
+  margin-top: 0.9em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-reveal-text {
+  margin: 0 0 0.7em;
+  color: var(--wg-text-secondary);
+  line-height: 1.55;
+}
+.wg-replay-unit-link {
+  font-size: 0.85em;
+  color: var(--wg-brand);
+  background: transparent;
+  border: 1px solid var(--wg-brand);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.wg-replay-controls {
+  display: flex;
+  gap: 8px;
+  padding: 0.7em 1.1em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-btn {
+  padding: 0.45em 0.9em;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  background: var(--wg-surface);
+  color: var(--wg-text);
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.wg-replay-btn:hover:not(:disabled) {
+  border-color: var(--wg-brand);
+}
+.wg-replay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.wg-replay-btn-active {
+  border-color: var(--wg-brand);
+  color: var(--wg-brand);
+}
+.wg-replay-progress {
+  padding: 0 1.1em 0.8em;
+}
+.wg-replay-progress-track {
+  position: relative;
+  height: 6px;
+  background: var(--wg-line);
+  border-radius: 3px;
+}
+.wg-replay-progress-fill {
+  height: 100%;
+  background: var(--wg-brand);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.wg-replay-progress-tick {
+  position: absolute;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--wg-surface);
+  background: var(--wg-warn);
+  cursor: pointer;
+}
+.wg-replay-progress-tick-answered {
+  background: var(--wg-down);
+}
+.wg-replay-filters {
+  display: flex;
+  gap: 14px;
+  padding: 0.6em 1.1em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  cursor: pointer;
+}
+.wg-replay-summary {
+  padding: 1em 1.1em;
+  border-top: 1px solid var(--wg-line);
+  background: rgba(0, 0, 0, 0.02);
+}
+.wg-replay-summary-title {
+  font-weight: 600;
+  margin-bottom: 0.4em;
+  color: var(--wg-text);
+}
+.wg-replay-summary-score {
+  color: var(--wg-text-secondary);
+  margin-bottom: 0.8em;
+}
+
+/* K 线画布 */
+.wg-kline-canvas {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--wg-bg);
+  cursor: crosshair;
+}

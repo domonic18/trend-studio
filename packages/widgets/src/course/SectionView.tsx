@@ -1,0 +1,181 @@
+import { useEffect, useMemo, useState } from 'react'
+import { ArticleRenderer } from '../article.js'
+import { Kline } from '../kline/Kline.js'
+import { LearnerWidgetPlayer } from '../learner/WidgetPlayer.js'
+import type { CaseStockView, CoursePreviewHost, CourseQuote, KlineBar, SectionView as SectionViewModel } from './types.js'
+import { exchangeLabel, toBars } from './types.js'
+
+export function SectionView({ section, host }: { section: SectionViewModel; host: CoursePreviewHost }) {
+  const { section: meta, article, widgets, figures, caseStocks } = section
+  const draftBadge = meta.status !== 'published' || article?.status !== 'published'
+  const codes = useMemo(() => caseStocks.map((s) => s.code), [caseStocks])
+  const [quotesState, setQuotesState] = useState<{ pending: boolean; quotes: CourseQuote[] }>({ pending: false, quotes: [] })
+
+  useEffect(() => {
+    if (codes.length === 0) {
+      setQuotesState({ pending: false, quotes: [] })
+      return
+    }
+    let cancelled = false
+    host
+      .loadQuotes(codes)
+      .then((result) => {
+        if (cancelled) return
+        setQuotesState({ pending: result.pending, quotes: result.quotes })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setQuotesState({ pending: false, quotes: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [host, codes.join(',')])
+
+  const bars = useMemo(() => toBars(quotesState.quotes), [quotesState.quotes])
+  const articleHost = useMemo(
+    () => ({ ...host, widgets, bars }),
+    [host, widgets, bars],
+  )
+
+  return (
+    <article
+      id={meta.sectionId}
+      data-section-id={meta.sectionId}
+      className="wg-course-section"
+    >
+      <header className="wg-section-hero">
+        {meta.conceptRefs.length > 0 ? (
+          <div className="wg-section-chip">{meta.conceptRefs[0]}</div>
+        ) : null}
+        <h3 className="wg-section-title">{meta.title}</h3>
+        {meta.summary !== undefined && meta.summary !== '' ? (
+          <p className="wg-section-lead">{meta.summary}</p>
+        ) : null}
+        <footer className="wg-section-foot">
+          {draftBadge ? <span className="wg-section-draft">草稿</span> : null}
+          <span className="wg-section-stat">课件 {widgets.length}</span>
+          <span className="wg-section-stat">图示 {figures.length}</span>
+          <span className="wg-section-stat">案例股 {caseStocks.length}</span>
+        </footer>
+      </header>
+
+      {article !== null ? (
+        <div className="wg-section-article">
+          <ArticleRenderer markdown={article.markdown} host={articleHost} />
+        </div>
+      ) : null}
+
+      {caseStocks.length > 0 ? (
+        <CaseStockPanel stocks={caseStocks} bars={bars} pending={quotesState.pending} />
+      ) : null}
+
+      {widgets.length > 0 ? (
+        <div className="wg-section-widgets">
+          {widgets.map((w) => (
+            <div key={w.widgetId} className="wg-widget-card">
+              <header className="wg-widget-head">
+                <span className="wg-widget-type">{w.type}</span>
+                <span className={`wg-widget-status wg-widget-status-${w.status}`}>{w.status}</span>
+              </header>
+              <LearnerWidgetPlayer
+                widget={{
+                  widgetId: w.widgetId,
+                  type: w.type,
+                  spec: w.spec,
+                  assertions: w.assertions,
+                }}
+                bars={bars}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  )
+}
+
+function CaseStockPanel({
+  stocks,
+  bars,
+  pending,
+}: {
+  stocks: CaseStockView[]
+  bars: KlineBar[]
+  pending: boolean
+}) {
+  const [selected, setSelected] = useState<string>(stocks[0]?.code ?? '')
+  const active = stocks.find((s) => s.code === selected) ?? stocks[0]
+  const activeBars = useMemo(() => bars.filter((b) => b.code === active?.code), [bars, active?.code])
+  return (
+    <aside className="wg-case-panel">
+      <header className="wg-case-panel-head">案例股</header>
+      <div className="wg-case-tabs">
+        {stocks.map((s) => (
+          <button
+            key={s.code}
+            className={`wg-case-tab${s.code === selected ? ' active' : ''}`}
+            onClick={() => setSelected(s.code)}
+          >
+            {s.name}
+            <span className="wg-case-code">{s.code}</span>
+          </button>
+        ))}
+      </div>
+      {active !== undefined ? <CaseStockDetail stock={active} bars={activeBars} pending={pending} /> : null}
+    </aside>
+  )
+}
+
+function CaseStockDetail({
+  stock,
+  bars,
+  pending,
+}: {
+  stock: CaseStockView
+  bars: KlineBar[]
+  pending: boolean
+}) {
+  const events = useMemo(
+    () =>
+      stock.events.map(
+        (e): import('../kline/kline-chart.js').KlineEvent => ({
+          date: e.date,
+          label: e.label,
+          unitId: e.unitId,
+        }),
+      ),
+    [stock.events],
+  )
+  return (
+    <div className="wg-case-detail">
+      <div className="wg-case-meta">
+        <span className="wg-case-name">{stock.name}</span>
+        <span className="wg-case-exchange">{exchangeLabel(stock.exchange)}</span>
+        <span className="wg-case-window">
+          {stock.windowStart} ~ {stock.windowEnd}
+        </span>
+      </div>
+      {pending && bars.length === 0 ? (
+        <div className="wg-case-pending">等待行情同步…</div>
+      ) : null}
+      <Kline
+        bars={bars}
+        events={events}
+        windowStart={stock.windowStart}
+        windowEnd={stock.windowEnd}
+        height={260}
+      />
+      {stock.events.length > 0 ? (
+        <ul className="wg-case-events">
+          {stock.events.map((e, i) => (
+            <li key={i}>
+              <span className="wg-case-event-date">{e.date}</span>
+              <span className="wg-case-event-label">{e.label}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}

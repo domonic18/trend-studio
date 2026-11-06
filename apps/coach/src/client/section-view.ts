@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { ArticleRenderer, LearnerWidgetPlayer } from '@trend/widgets'
+import { barsByCode, exchangeLabel, toBars } from '@trend/widgets/course'
 import type { CatalogCaseStock, CatalogSection, QuoteItem } from '../shared/contracts.js'
 import type {
   RemoteCatalogSectionResult,
@@ -7,7 +8,6 @@ import type {
   RemoteSectionPlaybackResult,
 } from './dsh.js'
 import { createArticleHost } from './article-host.js'
-import type { KlineBar } from './kline.js'
 import { KlineView } from './kline-view.js'
 import { ensureWidgetsStyles } from './styles.js'
 
@@ -22,26 +22,6 @@ export interface SectionViewProps {
     toSec: number,
   ) => Promise<RemoteSectionPlaybackResult>
   courseQuotes: (courseId: string, codes: string[]) => Promise<RemoteCourseQuotesResult>
-}
-
-const EXCHANGE_LABEL: Record<CatalogCaseStock['exchange'], string> = {
-  SZSE: '深交所',
-  SSE: '上交所',
-  BSE: '北交所',
-}
-
-function toBars(quotes: QuoteItem[], code: string): KlineBar[] {
-  return quotes
-    .filter((quote) => quote.code === code)
-    .map((quote) => ({
-      tradeDate: quote.tradeDate,
-      open: quote.open,
-      high: quote.high,
-      low: quote.low,
-      close: quote.close,
-      volume: quote.volume,
-    }))
-    .sort((left, right) => (left.tradeDate < right.tradeDate ? -1 : 1))
 }
 
 function formatDate(value: number): string {
@@ -125,11 +105,14 @@ export function SectionView({
     }
   }, [courseId, codesKey, courseQuotes])
 
+  const barsMap = React.useMemo(() => barsByCode(quotes), [quotes])
+  const allBars = React.useMemo(() => toBars(quotes), [quotes])
+
   const host = React.useMemo(
     () => (section === undefined
       ? undefined
-      : createArticleHost(section, { sectionPlayback })),
-    [section, sectionPlayback],
+      : createArticleHost(section, { sectionPlayback }, { widgets: section.widgets, bars: allBars })),
+    [section, sectionPlayback, allBars],
   )
 
   React.useEffect(() => {
@@ -218,6 +201,7 @@ export function SectionView({
             spec: widget.spec,
             assertions: widget.assertions,
           },
+          bars: allBars,
         })),
       ))
     }
@@ -256,7 +240,7 @@ export function SectionView({
           ? React.createElement('p', { key: 'pending', style: { color: '#888', fontSize: 12 } }, '等待行情同步…')
           : null,
         ...section.caseStocks.map((stock) => {
-          const bars = toBars(quotes, stock.code)
+          const bars = barsMap.get(stock.code) ?? []
           return React.createElement(
             'section',
             {
@@ -273,7 +257,7 @@ export function SectionView({
             React.createElement('div', {
               key: 'meta',
               style: { color: '#888', fontSize: 12, marginBottom: 4 },
-            }, `${EXCHANGE_LABEL[stock.exchange]} · ${stock.windowStart} ~ ${stock.windowEnd}`),
+            }, `${exchangeLabel(stock.exchange)} · ${stock.windowStart} ~ ${stock.windowEnd}`),
             bars.length === 0
               ? React.createElement('p', {
                 key: 'no-bars',

@@ -35,7 +35,7 @@ test('前端 DSL 切分：引号属性、未知 directive 回落、未闭合保�
   assert.ok(warn?.kind === 'block' && warn.directive === 'warn')
   assert.equal(warn.attrs.title, '风险 提示')
 
-  const unknown = splitArticle(':::replay code=abc\n内容\n:::')
+  const unknown = splitArticle(':::unknown code=abc\n内容\n:::')
   assert.equal(unknown.length, 1)
   assert.equal(unknown[0]?.kind, 'markdown')
 

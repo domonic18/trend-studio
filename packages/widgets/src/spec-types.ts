@@ -9,6 +9,7 @@ export const WIDGET_TYPES = [
   'flashcards',
   'checklist',
   'timeline-explorer',
+  'bar-replay-decision',
 ] as const
 export type WidgetType = (typeof WIDGET_TYPES)[number]
 

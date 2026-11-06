@@ -1,5 +1,6 @@
 import type { ArticleHost, FigureMeta, PlaybackSessionTicket } from '@trend/widgets'
-import type { CatalogPlayback, CatalogSection } from '../shared/contracts.js'
+import type { KlineBar } from '@trend/widgets/kline'
+import type { CatalogPlayback, CatalogSection, CatalogWidget } from '../shared/contracts.js'
 
 export interface SectionPlaybackRequester {
   sectionPlayback(
@@ -19,6 +20,7 @@ export interface SectionPlaybackRequester {
 export function createArticleHost(
   section: CatalogSection,
   requester: SectionPlaybackRequester,
+  options: { widgets?: CatalogWidget[]; bars?: KlineBar[] } = {},
 ): ArticleHost {
   const figures = new Map<string, FigureMeta>()
   const signedUrls = new Map<string, string>()
@@ -34,6 +36,8 @@ export function createArticleHost(
 
   return {
     figures,
+    widgets: options.widgets,
+    bars: options.bars,
     resolveFigureUrl: async (figureId: string): Promise<string> => {
       const url = signedUrls.get(figureId)
       if (url === undefined) throw new Error('图示暂不可用')

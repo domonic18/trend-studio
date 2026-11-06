@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ClipCard } from './clip.js'
+import { BarReplayDecision } from './replay/BarReplayDecision.js'
 import type { ArticleHost } from './types.js'
 
 /** 七容器块渲染器：编辑部式版式——衬线标题、卡片化、颜色只留给数据。 */
@@ -18,6 +19,8 @@ export function DslBlockView({ directive, attrs, bodyLines, host }: BlockProps &
     case 'warn': return <WarnBlock {...{ attrs, bodyLines }} />
     case 'figure': return <FigureBlock {...{ attrs, host }} />
     case 'clip': return <ClipBlock {...{ attrs, host }} />
+    case 'annotation': return <AnnotationBlock {...{ attrs, bodyLines, host }} />
+    case 'replay': return <ReplayBlock {...{ attrs, host }} />
     default: return null
   }
 }
@@ -167,6 +170,73 @@ function ClipBlock({ attrs, host }: { attrs: Record<string, string>; host: Artic
     return <ParseError />
   }
   return <ClipCard assetId={assetId} fromSec={from} toSec={to} caption={attrs.caption ?? ''} host={host} />
+}
+
+interface AnnotationBody {
+  d: string
+  label: string
+  quote: string
+  glossary: string[]
+}
+
+function AnnotationBlock({ attrs, bodyLines, host }: { attrs: Record<string, string>; bodyLines: string[]; host: ArticleHost }) {
+  const body = parseJson<AnnotationBody>(bodyLines)
+  if (body === undefined) return <ParseError />
+  const unitId = attrs.unitId ?? ''
+  const assetId = attrs.assetId ?? ''
+  const atMs = Number(attrs.atMs ?? NaN)
+  const kind = attrs.kind ?? ''
+  return (
+    <aside className={`wg-annotation wg-annotation-${kind}`}>
+      <header className="wg-annotation-head">
+        <span className="wg-annotation-label">{body.label}</span>
+        <span className="wg-annotation-date">{body.d}</span>
+        {unitId !== '' ? <UnitBadge unitId={unitId} /> : null}
+      </header>
+      <blockquote className="wg-annotation-quote">{body.quote}</blockquote>
+      {body.glossary.length > 0 ? (
+        <div className="wg-annotation-glossary">
+          {body.glossary.map(term => <span key={term} className="wg-annotation-term">{term}</span>)}
+        </div>
+      ) : null}
+      <footer className="wg-annotation-foot">
+        {assetId !== '' && !Number.isNaN(atMs) ? (
+          <button
+            className="wg-annotation-jump"
+            onClick={() => host.createPlaybackSession(assetId, Math.floor(atMs / 1000), Math.ceil(atMs / 1000) + 1).catch(() => {})}
+          >
+            跳回原片 {formatMs(atMs)}
+          </button>
+        ) : null}
+      </footer>
+    </aside>
+  )
+}
+
+function formatMs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function ReplayBlock({ attrs, host }: { attrs: Record<string, string>; host: ArticleHost }) {
+  const code = attrs.code ?? ''
+  const caption = attrs.caption ?? ''
+  const widgets = host.widgets ?? []
+  const bars = host.bars ?? []
+  const widget = widgets.find((w) => w.type === 'bar-replay-decision' && (w.spec as Record<string, unknown> | undefined)?.code === code)
+  return (
+    <section className="wg-replay-block">
+      {caption !== '' ? <header className="wg-replay-block-head">{caption}</header> : null}
+      {widget !== undefined ? (
+        <BarReplayDecision code={code} bars={bars} spec={widget.spec} />
+      ) : (
+        <div className="wg-replay-placeholder">未找到 code={code} 的 bar-replay-decision 课件</div>
+      )}
+    </section>
+  )
 }
 
 function ParseError() {

@@ -5,6 +5,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { BarReplayDecision } from '../replay/BarReplayDecision.js'
+import type { KlineBar } from '../kline/kline-chart.js'
 import {
   classifyShape,
   computeFormula,
@@ -23,6 +25,11 @@ export interface LearnerWidget {
   type: string
   spec: unknown
   assertions: unknown
+}
+
+interface LearnerWidgetPlayerProps {
+  widget: LearnerWidget
+  bars?: KlineBar[]
 }
 
 const PANEL: React.CSSProperties = {
@@ -69,7 +76,7 @@ function Tag({ children, tone }: { children: React.ReactNode; tone?: 'ok' | 'bad
   )
 }
 
-export function LearnerWidgetPlayer({ widget }: { widget: LearnerWidget }) {
+export function LearnerWidgetPlayer({ widget, bars }: LearnerWidgetPlayerProps) {
   const spec = (widget.spec ?? null) as WidgetSpec | null
   const assertions = (widget.assertions ?? null) as WidgetAssertions | null
   const type = widget.type as WidgetType
@@ -83,7 +90,7 @@ export function LearnerWidgetPlayer({ widget }: { widget: LearnerWidget }) {
   return (
     <div style={PANEL}>
       <ProofBadge type={type} spec={spec} assertions={assertions} />
-      <Renderer spec={spec} assertions={assertions} />
+      <Renderer spec={spec} assertions={assertions} bars={bars} />
     </div>
   )
 }
@@ -103,7 +110,7 @@ function ProofBadge({
   return <div style={{ marginBottom: 6 }}><Tag tone="bad">失败：{proof.failed.join(', ')}</Tag></div>
 }
 
-const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: WidgetAssertions | null }) => React.ReactElement> = {
+const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: WidgetAssertions | null; bars?: KlineBar[] }) => React.ReactElement> = {
   'kline-annotator': KlineAnnotator,
   'pattern-quiz': PatternQuiz,
   'step-reveal': StepReveal,
@@ -112,6 +119,7 @@ const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: Widg
   flashcards: Flashcards,
   checklist: Checklist,
   'timeline-explorer': TimelineExplorer,
+  'bar-replay-decision': BarReplayDecisionWrapper,
 }
 
 const CHART_W = 480
@@ -480,6 +488,13 @@ function Checklist({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | 
       ))}
     </div>
   )
+}
+
+function BarReplayDecisionWrapper({ spec, bars }: { spec: WidgetSpec; assertions: WidgetAssertions | null; bars?: KlineBar[] }) {
+  const raw = spec as unknown as Record<string, unknown>
+  const code = typeof raw.code === 'string' ? raw.code : ''
+  const widgetBars = useMemo(() => bars?.filter((b) => b.code === code) ?? [], [bars, code])
+  return <BarReplayDecision code={code} bars={widgetBars} spec={spec} />
 }
 
 function TimelineExplorer({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | null }) {

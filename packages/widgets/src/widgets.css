@@ -1,5 +1,45 @@
 /* M10 呈现层组件包：编辑部式版式——衬线标题、卡片化、颜色只留给数据。 */
 
+:root {
+  --wg-bg: #0f1115;
+  --wg-surface: rgba(255, 255, 255, 0.03);
+  --wg-text: rgba(255, 255, 255, 0.88);
+  --wg-text-secondary: rgba(255, 255, 255, 0.55);
+  --wg-text-muted: rgba(255, 255, 255, 0.45);
+  --wg-line: rgba(255, 255, 255, 0.12);
+  --wg-line-subtle: rgba(255, 255, 255, 0.18);
+  --wg-brand: #6ea8ff;
+  --wg-up: #e85a5a;
+  --wg-down: #5ab67a;
+  --wg-warn: #e87a7a;
+  --wg-gold: #e8b64c;
+  --wg-ma: #faad14;
+  --wg-grid: rgba(255, 255, 255, 0.08);
+  --wg-crosshair: rgba(255, 255, 255, 0.35);
+  --wg-event: #6ea8ff;
+}
+
+.wg-course {
+  --wg-bg: #f6f7f9;
+  --wg-surface: #fff;
+  --wg-text: rgba(0, 0, 0, 0.88);
+  --wg-text-secondary: rgba(0, 0, 0, 0.55);
+  --wg-text-muted: rgba(0, 0, 0, 0.45);
+  --wg-line: rgba(0, 0, 0, 0.1);
+  --wg-line-subtle: rgba(0, 0, 0, 0.18);
+  --wg-brand: #2563eb;
+  --wg-up: #d93025;
+  --wg-down: #1e8e3e;
+  --wg-warn: #d93025;
+  --wg-gold: #b45f06;
+  --wg-ma: #b45f06;
+  --wg-grid: rgba(0, 0, 0, 0.08);
+  --wg-crosshair: rgba(0, 0, 0, 0.35);
+  --wg-event: #2563eb;
+  background: var(--wg-bg);
+  color: var(--wg-text);
+}
+
 .wg-article {
   font-size: 15px;
   line-height: 1.75;
@@ -265,4 +305,198 @@
   margin-top: 0.4em;
   font-size: 0.75em;
   color: rgba(255, 255, 255, 0.3);
+}
+
+/* :::replay 逐根回放 */
+.wg-replay {
+  margin: 1.2em 0;
+  border: 1px solid var(--wg-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--wg-surface);
+}
+.wg-replay-error,
+.wg-replay-empty {
+  padding: 2em;
+  text-align: center;
+  color: var(--wg-text-muted);
+}
+.wg-replay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0.9em 1.1em;
+  border-bottom: 1px solid var(--wg-line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.wg-replay-title {
+  font-weight: 600;
+  color: var(--wg-text);
+}
+.wg-replay-progress-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--wg-brand);
+}
+.wg-replay-chart-wrap {
+  position: relative;
+  padding: 10px;
+}
+.wg-replay-decision-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, 90%);
+  padding: 1.1em;
+  border-radius: 8px;
+  background: var(--wg-bg);
+  border: 1px solid var(--wg-line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.wg-replay-decision-question {
+  font-weight: 600;
+  margin-bottom: 0.8em;
+  color: var(--wg-text);
+}
+.wg-replay-decision-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wg-replay-option {
+  text-align: left;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  background: var(--wg-surface);
+  color: var(--wg-text);
+  cursor: pointer;
+}
+.wg-replay-option:hover:not(:disabled) {
+  border-color: var(--wg-brand);
+}
+.wg-replay-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.wg-replay-option-correct {
+  border-color: var(--wg-down);
+  color: var(--wg-down);
+}
+.wg-replay-option-wrong {
+  border-color: var(--wg-up);
+  color: var(--wg-up);
+}
+.wg-replay-reveal {
+  margin-top: 0.9em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-reveal-text {
+  margin: 0 0 0.7em;
+  color: var(--wg-text-secondary);
+  line-height: 1.55;
+}
+.wg-replay-unit-link {
+  font-size: 0.85em;
+  color: var(--wg-brand);
+  background: transparent;
+  border: 1px solid var(--wg-brand);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.wg-replay-controls {
+  display: flex;
+  gap: 8px;
+  padding: 0.7em 1.1em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-btn {
+  padding: 0.45em 0.9em;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  background: var(--wg-surface);
+  color: var(--wg-text);
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.wg-replay-btn:hover:not(:disabled) {
+  border-color: var(--wg-brand);
+}
+.wg-replay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.wg-replay-btn-active {
+  border-color: var(--wg-brand);
+  color: var(--wg-brand);
+}
+.wg-replay-progress {
+  padding: 0 1.1em 0.8em;
+}
+.wg-replay-progress-track {
+  position: relative;
+  height: 6px;
+  background: var(--wg-line);
+  border-radius: 3px;
+}
+.wg-replay-progress-fill {
+  height: 100%;
+  background: var(--wg-brand);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.wg-replay-progress-tick {
+  position: absolute;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--wg-surface);
+  background: var(--wg-warn);
+  cursor: pointer;
+}
+.wg-replay-progress-tick-answered {
+  background: var(--wg-down);
+}
+.wg-replay-filters {
+  display: flex;
+  gap: 14px;
+  padding: 0.6em 1.1em;
+  border-top: 1px solid var(--wg-line);
+}
+.wg-replay-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--wg-text-secondary);
+  cursor: pointer;
+}
+.wg-replay-summary {
+  padding: 1em 1.1em;
+  border-top: 1px solid var(--wg-line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.wg-replay-summary-title {
+  font-weight: 600;
+  margin-bottom: 0.4em;
+  color: var(--wg-text);
+}
+.wg-replay-summary-score {
+  color: var(--wg-text-secondary);
+  margin-bottom: 0.8em;
+}
+
+/* K 线画布 */
+.wg-kline-canvas {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--wg-bg);
+  cursor: crosshair;
 }

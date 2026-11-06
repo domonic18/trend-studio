@@ -22,6 +22,11 @@
       "types": "./lib/clip.d.ts",
       "default": "./lib/clip.js"
     },
+    "./course": {
+      "types": "./lib/course/index.d.ts",
+      "default": "./lib/course/index.js"
+    },
+    "./course.css": "./lib/course.css",
     "./dsl": {
       "types": "./lib/dsl.d.ts",
       "default": "./lib/dsl.js"
@@ -30,9 +35,17 @@
       "types": "./lib/engine.d.ts",
       "default": "./lib/engine.js"
     },
+    "./kline": {
+      "types": "./lib/kline/index.d.ts",
+      "default": "./lib/kline/index.js"
+    },
     "./learner": {
       "types": "./lib/learner/index.d.ts",
       "default": "./lib/learner/index.js"
+    },
+    "./replay": {
+      "types": "./lib/replay/index.d.ts",
+      "default": "./lib/replay/index.js"
     },
     "./spec-types": {
       "types": "./lib/spec-types.d.ts",
