@@ -18,6 +18,9 @@ export function DslBlockView({ directive, attrs, bodyLines, host }: BlockProps &
     case 'cmp': return <CmpBlock {...{ attrs, bodyLines }} />
     case 'timeline': return <TimelineBlock {...{ bodyLines }} />
     case 'warn': return <WarnBlock {...{ attrs, bodyLines }} />
+    case 'think': return <ThinkBlock {...{ attrs, bodyLines }} />
+    case 'sidenote': return <SidenoteBlock {...{ attrs, bodyLines }} />
+    case 'cards': return <CardsBlock {...{ bodyLines }} />
     case 'figure': return <FigureBlock {...{ attrs, host }} />
     case 'clip': return <ClipBlock {...{ attrs, host }} />
     case 'annotation': return <AnnotationBlock {...{ attrs, bodyLines, host }} />
@@ -118,13 +121,66 @@ function TimelineBlock({ bodyLines }: { bodyLines: string[] }) {
   )
 }
 
+/** :::warn 四型（原型 callout）：def 定义 / rule 要点 / misuse 误用 / risk 风险。 */
+const WARN_VARIANTS = ['def', 'rule', 'misuse', 'risk'] as const
+type WarnVariant = (typeof WARN_VARIANTS)[number]
+
 function WarnBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLines: string[] }) {
   const title = attrs.title ?? ''
   const text = bodyLines.join('\n').trim()
+  const raw = attrs.variant
+  const variant: WarnVariant = WARN_VARIANTS.includes(raw as WarnVariant) ? raw as WarnVariant : 'risk'
   return (
-    <section className="wg-warn">
+    <section className={`wg-warn wg-warn-${variant}`}>
       {title !== '' ? <h4 className="wg-warn-title">{title}</h4> : null}
       {text !== '' ? <p className="wg-warn-text"><AnchorText text={text} /></p> : null}
+    </section>
+  )
+}
+
+/** :::think 折叠思考（原型 details.think）：默认收起，先想一想再展开。 */
+function ThinkBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLines: string[] }) {
+  const title = attrs.title ?? '先想一想'
+  const text = bodyLines.join('\n').trim()
+  return (
+    <details className="wg-think">
+      <summary className="wg-think-summary">{title}</summary>
+      {text !== '' ? <div className="wg-think-body"><AnchorText text={text} /></div> : null}
+    </details>
+  )
+}
+
+/** :::sidenote 术语边注（原型 aside.sidenote）：贴段落右侧的窄列注释。 */
+function SidenoteBlock({ attrs, bodyLines }: { attrs: Record<string, string>; bodyLines: string[] }) {
+  const title = attrs.title ?? ''
+  const src = attrs.src ?? ''
+  const text = bodyLines.join('\n').trim()
+  return (
+    <aside className="wg-sidenote">
+      {title !== '' ? <b className="wg-sidenote-title">{title}</b> : null}
+      {text !== '' ? <span className="wg-sidenote-text"><AnchorText text={text} /></span> : null}
+      {src !== '' ? <span className="wg-sidenote-src">来源：{src}</span> : null}
+      {attrs.unitId !== undefined && attrs.unitId !== '' ? <UnitBadge unitId={attrs.unitId} /> : null}
+    </aside>
+  )
+}
+
+interface CardItem { num?: string; title: string; desc?: string }
+
+function CardsBlock({ bodyLines }: { bodyLines: string[] }) {
+  const items = parseJson<{ items: CardItem[] }>(bodyLines)?.items
+  if (items === undefined) return <ParseError />
+  return (
+    <section className="wg-cards">
+      {items.map((item, index) => (
+        <article className="wg-card" key={`${item.title}-${index}`}>
+          {item.num !== undefined && item.num !== '' ? <span className="wg-card-num">{item.num}</span> : null}
+          <h3 className="wg-card-title">{item.title}</h3>
+          {item.desc !== undefined && item.desc !== '' ? (
+            <p className="wg-card-desc"><AnchorText text={item.desc} /></p>
+          ) : null}
+        </article>
+      ))}
     </section>
   )
 }

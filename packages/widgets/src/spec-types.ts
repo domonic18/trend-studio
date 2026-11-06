@@ -10,6 +10,8 @@ export const WIDGET_TYPES = [
   'checklist',
   'timeline-explorer',
   'bar-replay-decision',
+  'image-juxtaposition',
+  'branching-scenario',
 ] as const
 export type WidgetType = (typeof WIDGET_TYPES)[number]
 
@@ -33,6 +35,34 @@ export interface WidgetChartData {
 
 export interface TrendlineSolution {
   trendline: { startIdx: number; endIdx: number }
+}
+
+/** M10 v3 image-juxtaposition 一侧：课程画面引用或确定性合成 K 线。 */
+export type JuxtapositionSide =
+  | { figureId: string }
+  | { generator: GeneratorId; seed: number; bars: number }
+
+/** M10 v3 branching-scenario 节点：无 options 即终点。 */
+export interface BranchingNode {
+  id: string
+  prompt: string
+  options?: { label: string; next: string; feedback: string }[]
+}
+
+export interface ImageJuxtapositionSpec {
+  left: JuxtapositionSide
+  right: JuxtapositionSide
+  labels: { left: string; right: string }
+  captions: { left: string; right: string }
+  citations: string[]
+}
+
+export interface BranchingScenarioSpec {
+  scenario: string
+  entryId: string
+  nodes: BranchingNode[]
+  optimalPath: string[]
+  citations: string[]
 }
 
 export interface WidgetSpec {
@@ -60,9 +90,19 @@ export interface WidgetSpec {
   cards?: { front: string; back: string; conceptRef: string }[]
   title?: string
   items?: { text: string; conceptRef?: string }[]
-  nodes?: { conceptRef: string }[]
+  nodes?: { conceptRef: string }[] | BranchingNode[]
   edges?: { from: string; to: string; kind: string }[]
   patternMatchesAnswer?: GeneratorId
+  /** M10 v3 image-juxtaposition：两图对比滑块。 */
+  left?: JuxtapositionSide
+  right?: JuxtapositionSide
+  labels?: { left: string; right: string }
+  captions?: { left: string; right: string }
+  /** M10 v3 branching-scenario：决策树情境练习。 */
+  scenario?: string
+  entryId?: string
+  optimalPath?: string[]
+  citations?: string[]
 }
 
 export type BarReplayAnnotationKind = 'structure' | 'invalidation' | 'rhythm'
@@ -115,4 +155,12 @@ export interface WidgetAssertions {
   revealMonotonic?: boolean
   decisionPointsGrounded?: boolean
   annotationTermsGrounded?: boolean
+  /** M10 v3 image-juxtaposition。 */
+  pairSidesValid?: boolean
+  captionsGrounded?: boolean
+  /** M10 v3 branching-scenario。 */
+  graphAcyclic?: boolean
+  allPathsTerminate?: boolean
+  optimalPathReachable?: boolean
+  feedbackNonEmpty?: boolean
 }

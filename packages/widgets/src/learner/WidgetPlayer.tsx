@@ -6,6 +6,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { BarReplayDecision } from '../replay/BarReplayDecision.js'
+import { ImageJuxtaposition, type ResolveFigureUrl } from '../compare/ImageJuxtaposition.js'
+import { BranchingScenario } from '../branching/BranchingScenario.js'
 import type { KlineBar } from '../kline/kline-chart.js'
 import {
   classifyShape,
@@ -18,7 +20,13 @@ import {
   trendlineAt,
   type Candle,
 } from '../engine.js'
-import type { WidgetAssertions, WidgetSpec, WidgetType } from '../spec-types.js'
+import type {
+  BranchingScenarioSpec,
+  ImageJuxtapositionSpec,
+  WidgetAssertions,
+  WidgetSpec,
+  WidgetType,
+} from '../spec-types.js'
 
 export interface LearnerWidget {
   widgetId: string
@@ -30,6 +38,8 @@ export interface LearnerWidget {
 interface LearnerWidgetPlayerProps {
   widget: LearnerWidget
   bars?: KlineBar[]
+  /** 课程画面 URL 解析（对比滑块的 figureId 侧需要）。 */
+  resolveFigureUrl?: ResolveFigureUrl
 }
 
 const PANEL: React.CSSProperties = {
@@ -76,7 +86,7 @@ function Tag({ children, tone }: { children: React.ReactNode; tone?: 'ok' | 'bad
   )
 }
 
-export function LearnerWidgetPlayer({ widget, bars }: LearnerWidgetPlayerProps) {
+export function LearnerWidgetPlayer({ widget, bars, resolveFigureUrl }: LearnerWidgetPlayerProps) {
   const spec = (widget.spec ?? null) as WidgetSpec | null
   const assertions = (widget.assertions ?? null) as WidgetAssertions | null
   const type = widget.type as WidgetType
@@ -90,7 +100,7 @@ export function LearnerWidgetPlayer({ widget, bars }: LearnerWidgetPlayerProps) 
   return (
     <div style={PANEL}>
       <ProofBadge type={type} spec={spec} assertions={assertions} />
-      <Renderer spec={spec} assertions={assertions} bars={bars} />
+      <Renderer spec={spec} assertions={assertions} bars={bars} resolveFigureUrl={resolveFigureUrl} />
     </div>
   )
 }
@@ -110,7 +120,14 @@ function ProofBadge({
   return <div style={{ marginBottom: 6 }}><Tag tone="bad">失败：{proof.failed.join(', ')}</Tag></div>
 }
 
-const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: WidgetAssertions | null; bars?: KlineBar[] }) => React.ReactElement> = {
+interface RendererProps {
+  spec: WidgetSpec
+  assertions: WidgetAssertions | null
+  bars?: KlineBar[]
+  resolveFigureUrl?: ResolveFigureUrl
+}
+
+const RENDERERS: Record<WidgetType, (props: RendererProps) => React.ReactElement> = {
   'kline-annotator': KlineAnnotator,
   'pattern-quiz': PatternQuiz,
   'step-reveal': StepReveal,
@@ -120,6 +137,8 @@ const RENDERERS: Record<WidgetType, (props: { spec: WidgetSpec; assertions: Widg
   checklist: Checklist,
   'timeline-explorer': TimelineExplorer,
   'bar-replay-decision': BarReplayDecisionWrapper,
+  'image-juxtaposition': ImageJuxtapositionWidget,
+  'branching-scenario': BranchingScenarioWidget,
 }
 
 const CHART_W = 480
@@ -490,15 +509,23 @@ function Checklist({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | 
   )
 }
 
-function BarReplayDecisionWrapper({ spec, bars }: { spec: WidgetSpec; assertions: WidgetAssertions | null; bars?: KlineBar[] }) {
+function BarReplayDecisionWrapper({ spec, bars }: RendererProps) {
   const raw = spec as unknown as Record<string, unknown>
   const code = typeof raw.code === 'string' ? raw.code : ''
   // 行情 bar 用 6 位纯数字码，spec 用带交易所前缀的码；归一与筛选交给回放组件。
   return <BarReplayDecision code={code} bars={bars ?? []} spec={spec} />
 }
 
+function ImageJuxtapositionWidget({ spec, resolveFigureUrl }: RendererProps) {
+  return <ImageJuxtaposition spec={spec as unknown as ImageJuxtapositionSpec} resolveFigureUrl={resolveFigureUrl} />
+}
+
+function BranchingScenarioWidget({ spec }: RendererProps) {
+  return <BranchingScenario spec={spec as unknown as BranchingScenarioSpec} />
+}
+
 function TimelineExplorer({ spec }: { spec: WidgetSpec; assertions: WidgetAssertions | null }) {
-  const nodes = spec.nodes ?? []
+  const nodes = (spec.nodes ?? []) as { conceptRef: string }[]
   const edges = spec.edges ?? []
   const names = nodes.map(node => node.conceptRef)
   const boxW = 120

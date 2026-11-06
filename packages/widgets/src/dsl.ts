@@ -2,7 +2,10 @@
 
 import type { ArticleSegment } from './types.js'
 
-const DIRECTIVES = new Set(['board', 'bignum', 'cmp', 'timeline', 'warn', 'figure', 'clip', 'annotation', 'replay'])
+const DIRECTIVES = new Set([
+  'board', 'bignum', 'cmp', 'timeline', 'warn', 'figure', 'clip', 'annotation', 'replay',
+  'think', 'sidenote', 'cards',
+])
 const OPEN_RE = /^:::([a-z][a-z0-9-]*)(.*)$/
 const CLOSE_RE = /^:::\s*$/
 const ATTR_RE = /([A-Za-z][A-Za-z0-9_-]*)=(?:"([^"]*)"|([^\s"=]+))/g

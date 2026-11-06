@@ -18,9 +18,17 @@
       "types": "./lib/blocks.d.ts",
       "default": "./lib/blocks.js"
     },
+    "./branching": {
+      "types": "./lib/branching/index.d.ts",
+      "default": "./lib/branching/index.js"
+    },
     "./clip": {
       "types": "./lib/clip.d.ts",
       "default": "./lib/clip.js"
+    },
+    "./compare": {
+      "types": "./lib/compare/index.d.ts",
+      "default": "./lib/compare/index.js"
     },
     "./course": {
       "types": "./lib/course/index.d.ts",

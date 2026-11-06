@@ -15,6 +15,8 @@ export {
   type EvidenceIndex,
 } from './evidence.js'
 export { rewriteStockAnchors, splitArticle, splitInlineAnchors, type InlineAnchor } from './dsl.js'
+export { BranchingScenario } from './branching/index.js'
+export { ImageJuxtaposition, type ResolveFigureUrl } from './compare/index.js'
 export { LearnerWidgetPlayer, type LearnerWidget } from './learner/index.js'
 export type {
   ArticleHost,

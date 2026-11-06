@@ -2,13 +2,16 @@
 
 import type {
   BarReplaySpec,
+  BranchingScenarioSpec,
   FormulaId,
   GeneratorId,
+  ImageJuxtapositionSpec,
   TrendlineSolution,
   WidgetAssertions,
   WidgetSpec,
   WidgetType,
 } from './spec-types.js'
+import { GENERATORS } from './spec-types.js'
 
 export interface Candle {
   open: number
@@ -399,9 +402,90 @@ function proofFor(
       return true
     }
     case 'decisionPointsGrounded':
-    case 'annotationTermsGrounded': {
+    case 'annotationTermsGrounded':
+    case 'captionsGrounded': {
       // 需要单元时间窗、案例窗口、交易日与课程概念集，预览态无此上下文（云端写入时已证明）。
       return 'n/a'
+    }
+    case 'pairSidesValid': {
+      const juxtapose = spec as unknown as Partial<ImageJuxtapositionSpec>
+      const sides = [juxtapose.left, juxtapose.right]
+      if (sides.some(side => side === undefined || 'figureId' in side)) {
+        // 课程画面侧要宿主解析 figureId，预览态无此上下文。
+        return 'n/a'
+      }
+      return sides.every(side => {
+        const generated = side as { generator: GeneratorId; seed: number; bars: number }
+        return (GENERATORS as readonly string[]).includes(generated.generator)
+          && Number.isInteger(generated.seed) && generated.seed >= 0
+          && Number.isInteger(generated.bars) && generated.bars >= 20 && generated.bars <= 300
+      })
+    }
+    case 'graphAcyclic': {
+      const branching = spec as unknown as Partial<BranchingScenarioSpec>
+      const adjacency = new Map<string, string[]>()
+      for (const node of branching.nodes ?? []) {
+        for (const option of node.options ?? []) {
+          adjacency.set(node.id, [...(adjacency.get(node.id) ?? []), option.next])
+        }
+      }
+      const visiting = new Set<string>()
+      const visited = new Set<string>()
+      const visit = (id: string): boolean => {
+        if (visiting.has(id)) return false
+        if (visited.has(id)) return true
+        visiting.add(id)
+        for (const next of adjacency.get(id) ?? []) {
+          if (!visit(next)) return false
+        }
+        visiting.delete(id)
+        visited.add(id)
+        return true
+      }
+      return [...adjacency.keys()].every(visit)
+    }
+    case 'allPathsTerminate': {
+      const branching = spec as unknown as Partial<BranchingScenarioSpec>
+      const nodes = branching.nodes ?? []
+      const byId = new Map(nodes.map(node => [node.id, node]))
+      if (branching.entryId === undefined || !byId.has(branching.entryId)) return false
+      const state = new Map<string, 'visiting' | 'done'>()
+      const visit = (id: string): boolean => {
+        const mark = state.get(id)
+        if (mark === 'done') return true
+        if (mark === 'visiting') return false
+        const node = byId.get(id)
+        if (node === undefined) return false
+        state.set(id, 'visiting')
+        for (const option of node.options ?? []) {
+          if (!byId.has(option.next)) return false
+          if (!visit(option.next)) return false
+        }
+        state.set(id, 'done')
+        return true
+      }
+      return visit(branching.entryId)
+    }
+    case 'optimalPathReachable': {
+      const branching = spec as unknown as Partial<BranchingScenarioSpec>
+      const path = branching.optimalPath ?? []
+      if (path.length === 0 || path[0] !== branching.entryId) return false
+      const byId = new Map((branching.nodes ?? []).map(node => [node.id, node]))
+      for (let index = 0; index < path.length - 1; index++) {
+        const node = byId.get(path[index]!)
+        if (node === undefined) return false
+        if (!(node.options ?? []).some(option => option.next === path[index + 1])) return false
+      }
+      return byId.has(path[path.length - 1]!)
+    }
+    case 'feedbackNonEmpty': {
+      const branching = spec as unknown as Partial<BranchingScenarioSpec>
+      for (const node of branching.nodes ?? []) {
+        for (const option of node.options ?? []) {
+          if (option.feedback.trim().length === 0) return false
+        }
+      }
+      return true
     }
     default:
       return false

@@ -151,6 +151,7 @@ export function SectionView({ section, host }: { section: SectionViewModel; host
                   assertions: w.assertions,
                 }}
                 bars={bars}
+                resolveFigureUrl={host.resolveFigureUrl}
               />
             </div>
           ))}
