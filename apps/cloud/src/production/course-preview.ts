@@ -31,6 +31,8 @@ export interface SectionPreview {
     status: string
     summary?: string
     conceptRefs: string[]
+    /** 概念名（按 conceptRefs 顺序）：hero chip 显示用。 */
+    conceptNames: string[]
   }
   article: {
     markdown: string
@@ -113,6 +115,7 @@ export async function readCoursePreview(pool: Pool, courseId: string): Promise<C
   const widgets = sectionIds.length > 0 ? await loadWidgets(pool, sectionIds) : new Map()
   const figures = sectionIds.length > 0 ? await loadFigures(pool, sectionIds) : new Map()
   const caseStocks = sectionIds.length > 0 ? await loadCaseStocks(pool, sectionIds) : new Map()
+  const conceptNames = await loadConceptNames(pool, courseId, sectionRows)
 
   const sectionsByChapter = new Map<string, SectionPreview[]>()
   for (const row of sectionRows) {
@@ -127,6 +130,7 @@ export async function readCoursePreview(pool: Pool, courseId: string): Promise<C
         status: row.status,
         ...(row.summary === null ? {} : { summary: row.summary }),
         conceptRefs: Array.isArray(row.concept_refs) ? row.concept_refs as string[] : [],
+        conceptNames: conceptNames.get(row.section_id) ?? [],
       },
       article: articles.get(sectionId) ?? null,
       widgets: widgets.get(sectionId) ?? [],
@@ -287,4 +291,35 @@ function toDateStr(value: string | Date): string {
   const month = String(value.getMonth() + 1).padStart(2, '0')
   const day = String(value.getDate()).padStart(2, '0')
   return `${value.getFullYear()}-${month}-${day}`
+}
+
+/** 一次查询取出全部节的概念名，按 section 归组（避免逐节 N+1）。 */
+async function loadConceptNames(
+  pool: Pool,
+  courseId: string,
+  sectionRows: { section_id: string; concept_refs: unknown }[],
+): Promise<Map<string, string[]>> {
+  const ids = new Set<string>()
+  for (const row of sectionRows) {
+    if (!Array.isArray(row.concept_refs)) continue
+    for (const value of row.concept_refs) {
+      if (typeof value === 'string') ids.add(value)
+    }
+  }
+  const map = new Map<string, string[]>()
+  if (ids.size === 0) return map
+  const { rows } = await pool.query<{ concept_id: string; name: string }>(
+    'SELECT concept_id, name FROM concepts WHERE course_id = $1 AND concept_id = ANY($2::text[])',
+    [courseId, [...ids]],
+  )
+  const names = new Map(rows.map(row => [row.concept_id, row.name]))
+  for (const row of sectionRows) {
+    if (!Array.isArray(row.concept_refs)) continue
+    const list = (row.concept_refs as unknown[])
+      .filter((value): value is string => typeof value === 'string')
+      .map(id => names.get(id))
+      .filter((name): name is string => name !== undefined)
+    map.set(row.section_id, list)
+  }
+  return map
 }

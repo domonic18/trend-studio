@@ -51,6 +51,8 @@ interface SectionRow {
   chapter_id: string
   title: string
   position: number
+  summary: string | null
+  concept_refs: unknown
 }
 
 interface ArticleRow {
@@ -96,7 +98,7 @@ function toDate(value: Date | string): string {
 
 async function publishedSection(pool: Pool, courseId: string, sectionId: string): Promise<SectionRow> {
   const { rows } = await pool.query<SectionRow>(
-    `SELECT s.section_id, s.course_id, s.chapter_id, s.title, s.position
+    `SELECT s.section_id, s.course_id, s.chapter_id, s.title, s.position, s.summary, s.concept_refs
        FROM sections s
        JOIN courses c ON c.course_id = s.course_id AND c.status = 'published'
       WHERE s.course_id = $1 AND s.section_id = $2 AND s.status = 'published'`,
@@ -110,7 +112,7 @@ async function publishedSection(pool: Pool, courseId: string, sectionId: string)
 /** 按节 ID 定位已发布节（播放端点路径里没有 courseId）。 */
 async function publishedSectionById(pool: Pool, sectionId: string): Promise<SectionRow> {
   const { rows } = await pool.query<SectionRow>(
-    `SELECT s.section_id, s.course_id, s.chapter_id, s.title, s.position
+    `SELECT s.section_id, s.course_id, s.chapter_id, s.title, s.position, s.summary, s.concept_refs
        FROM sections s
        JOIN courses c ON c.course_id = s.course_id AND c.status = 'published'
       WHERE s.section_id = $1 AND s.status = 'published'`,
@@ -256,11 +258,29 @@ export async function readSection(
     chapterId: section.chapter_id,
     title: section.title,
     position: section.position,
+    ...(section.summary === null || section.summary === '' ? {} : { summary: section.summary }),
+    conceptNames: await readConceptNames(pool, section.course_id, section.concept_refs),
     article,
     widgets,
     figures,
     caseStocks,
   }
+}
+
+/** 节关联概念的名字：供 hero chip 显示（概念 id 只在内部流转，不外泄）。 */
+export async function readConceptNames(pool: Pool, courseId: string, conceptRefs: unknown): Promise<string[]> {
+  const ids = Array.isArray(conceptRefs)
+    ? conceptRefs.filter((value): value is string => typeof value === 'string')
+    : []
+  if (ids.length === 0) return []
+  const { rows } = await pool.query<{ concept_id: string; name: string }>(
+    `SELECT concept_id, name
+       FROM concepts
+      WHERE course_id = $1 AND concept_id = ANY($2::text[])`,
+    [courseId, ids],
+  )
+  const names = new Map(rows.map(row => [row.concept_id, row.name]))
+  return ids.map(id => names.get(id)).filter((name): name is string => name !== undefined)
 }
 
 /** 已发布正文里的片段卡时间窗。 */

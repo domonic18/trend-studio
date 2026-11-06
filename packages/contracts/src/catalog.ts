@@ -89,6 +89,10 @@ export const catalogSectionOutput = z.object({
   chapterId: z.string().min(1).max(64),
   title: z.string().min(1).max(200),
   position: z.number().int().nonnegative(),
+  /** 节导语（hero lead）；未撰写时不下发。 */
+  summary: z.string().min(1).max(500).optional(),
+  /** 节关联概念的名称，按 section.concept_refs 顺序；供 hero chip 显示。 */
+  conceptNames: z.array(z.string().min(1).max(64)).optional(),
   article: z.object({
     markdown: z.string().min(1).max(20000),
     dslVersion: z.number().int().nonnegative(),
