@@ -117,9 +117,9 @@ export function SectionView({ section, host }: { section: SectionViewModel; host
         ) : null}
         <footer className="wg-section-foot">
           {draftBadge ? <span className="wg-section-draft">草稿</span> : null}
-          <span className="wg-section-stat">课件 {widgets.length}</span>
-          <span className="wg-section-stat">图示 {figures.length}</span>
-          <span className="wg-section-stat">案例股 {caseStocks.length}</span>
+          <span className="wg-section-stat"><b>{widgets.length}</b>课件</span>
+          <span className="wg-section-stat"><b>{figures.length}</b>图示</span>
+          <span className="wg-section-stat"><b>{caseStocks.length}</b>案例股</span>
         </footer>
       </header>
 
@@ -172,7 +172,10 @@ function CaseStockPanel({
   const activeBars = useMemo(() => bars.filter((b) => b.code === active?.code), [bars, active?.code])
   return (
     <aside className="wg-case-panel">
-      <header className="wg-case-panel-head">案例股</header>
+      <header className="wg-case-panel-head">
+        <span>案例股</span>
+        <span className="wg-case-panel-hint">滚轮缩放 · 拖动平移 · 双击复位</span>
+      </header>
       <div className="wg-case-tabs">
         {stocks.map((s) => (
           <button

@@ -320,16 +320,17 @@ export class KlineChart {
       const value = style.getPropertyValue(`--wg-${name}`).trim()
       return value || fallback
     }
+    const readVar = (name: string): string => style.getPropertyValue(`--wg-${name}`).trim()
     return {
       up: get('up', '#ef4d4d'),
       down: get('down', '#21ba72'),
       ma: get('ma', '#faad14'),
       grid: get('grid', 'rgba(0, 0, 0, 0.08)'),
       text: get('text', 'rgba(0, 0, 0, 0.55)'),
-      bg: get('bg', 'transparent'),
+      bg: this.customColors.bg ?? (readVar('canvas-bg') || get('bg', 'transparent')),
       crosshair: get('crosshair', 'rgba(0, 0, 0, 0.35)'),
       event: get('event', '#1677ff'),
-      surface: get('surface', '#ffffff'),
+      surface: this.customColors.surface ?? (readVar('surface-solid') || get('surface', '#ffffff')),
     }
   }
 

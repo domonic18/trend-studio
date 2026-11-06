@@ -146,19 +146,27 @@ function FigureBlock({ attrs, host }: { attrs: Record<string, string>; host: Art
     }
   }, [figureId, host])
 
+  const title = attrs.caption !== undefined && attrs.caption !== '' ? attrs.caption : figureId
   return (
     <figure className="wg-figure">
-      {failed ? (
-        <div className="wg-figure-missing">图示 {figureId} 加载失败</div>
-      ) : url === null ? (
-        <div className="wg-figure-loading">图示加载中…</div>
-      ) : (
-        <img className="wg-figure-img" src={url} alt={attrs.caption ?? figureId} />
-      )}
-      <figcaption className="wg-figure-caption">
-        {attrs.caption ?? figureId}
-        {attrs.unitId !== undefined ? <UnitBadge unitId={attrs.unitId} /> : null}
-      </figcaption>
+      <header className="wg-figure-head">
+        <span className="wg-figure-title">{title}</span>
+        <span className="wg-figure-badge">图示</span>
+      </header>
+      <div className="wg-figure-body">
+        {failed ? (
+          <div className="wg-figure-missing">图示 {figureId} 加载失败</div>
+        ) : url === null ? (
+          <div className="wg-figure-loading">图示加载中…</div>
+        ) : (
+          <img className="wg-figure-img" src={url} alt={title} />
+        )}
+      </div>
+      {attrs.unitId !== undefined ? (
+        <figcaption className="wg-figure-caption">
+          <UnitBadge unitId={attrs.unitId} />
+        </figcaption>
+      ) : null}
     </figure>
   )
 }
@@ -180,6 +188,13 @@ interface AnnotationBody {
   glossary: string[]
 }
 
+/** 标注类型标签：结构 / 证伪 / 节奏，卡片左侧色条与徽章按类型区分。 */
+const ANNOTATION_KIND_LABEL: Record<string, string> = {
+  structure: '结构',
+  invalidation: '证伪',
+  rhythm: '节奏',
+}
+
 function AnnotationBlock({ attrs, bodyLines, host }: { attrs: Record<string, string>; bodyLines: string[]; host: ArticleHost }) {
   const body = parseJson<AnnotationBody>(bodyLines)
   if (body === undefined) return <ParseError />
@@ -190,9 +205,10 @@ function AnnotationBlock({ attrs, bodyLines, host }: { attrs: Record<string, str
   return (
     <aside className={`wg-annotation wg-annotation-${kind}`}>
       <header className="wg-annotation-head">
+        <span className="wg-annotation-kind">{ANNOTATION_KIND_LABEL[kind] ?? '标注'}</span>
         <span className="wg-annotation-label">{body.label}</span>
-        <span className="wg-annotation-date">{body.d}</span>
         {unitId !== '' ? <UnitBadge unitId={unitId} /> : null}
+        <span className="wg-annotation-date">{body.d}</span>
       </header>
       <blockquote className="wg-annotation-quote">{body.quote}</blockquote>
       {body.glossary !== undefined && body.glossary.length > 0 ? (
