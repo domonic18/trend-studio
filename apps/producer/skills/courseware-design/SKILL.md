@@ -1,7 +1,7 @@
 ---
 name: courseware-design
 description: 课件设计工艺：11 类白名单组件选型与 spec/assertions 撰写规范（断言证明的供给侧）
-version: 0.3.1
+version: 0.4.0
 ---
 
 # 课件设计工艺
@@ -103,6 +103,11 @@ version: 0.3.1
   `captionsGrounded`（两条 caption 都含课程术语）。
 - 写入顺序：`figureId` 侧必须先 `cloud_figure_write` 落图示，否则 409；
   生成器侧不依赖任何写入顺序。
+- **caption 与画面的绑定纪律**：caption 写的是画面上可核对的事。
+  - `figureId` 侧：caption 的日期/价位必须来自该图示本身（正文已写过的数字），不另造。
+  - `generator` 侧：画面是**合成 K 线**，没有原片的日期与价位——caption **不得**绑定某个原片交易日
+    （「8 月 25 日涨停那根」这类写法是硬伤：合成图上不存在那一天）。要么把 caption 改写成
+    「环境成立／环境不成立」这类结构判断，要么改用 `figureId` 侧引用真实图示。
 
 ## branching-scenario（M10 v3）
 
@@ -119,11 +124,16 @@ version: 0.3.1
 - **必带断言**：`graphAcyclic`（决策树不得成环）、`allPathsTerminate`（每条路径都能走到末节点）、
   `optimalPathReachable`（最优路径真实可达）、`feedbackNonEmpty`（每项反馈非空）。
 - 作答只在本机内存，不落库、不进 validation、不进 provenance——反馈文本写在课件里即可。
+- **树形口径**：`optimalPath` 走的是**讲师口径**，不是「最不容易错」的路径；
+  非最优分支同样要能走到末节点（`allPathsTerminate` 会查），且每条 feedback 都要落在正文讲过的判断上，
+  不能是正文没讲的泛泛之谈。
 
 ## spec 白名单的已知回灌点（都是 400，不是断言问题）
 
 - **`spec` 里不能带 `type` 字段**——`400 spec.type is not allowed`。类型由外层 `type` 参数表达，
   spec 只放该类型的专属字段。标杆节里的旧课件带 `type` 是旧服务端版本的产物，照抄会挂。
+  （服务端落库时会自行补写 `type`，所以 `cloud_section_preview` 回读看到 `spec.type` 属正常，
+  不要因此再发一遍带 `type` 的 spec。）
 - **`assertions` 的参数形状按类型定**：`cardCount` 是对象 `{min,max}`，不是数字；
   `slopeRange` 是数组 `[min,max]`；`trendlineTouches` 是 `{min}`。
 - 这些是形状校验失败（400），不会进 409 断言回灌流程——按错误信息改形状即可，别反复重写。
@@ -149,3 +159,22 @@ version: 0.3.1
 - 收到 400 形状错误时先怀疑载荷：把 spec 再压小重试；仍不行就把同一份 JSON 交给
   **新起的子代理**写入（子代理的 tool-call 载荷更稳），不要去研究 harness 源码。
 - `spec` 里始终不许带 `type` 字段。
+
+## v2 新题型的落库口径（真产验证，2026-11-07）
+
+`image-juxtaposition` / `branching-scenario` 已在真实内容上跑通（总论 1/2/3 三节各 1 件，
+断言证明全部一次通过）。落库口径按下面四条走：
+
+1. **`spec.citations` 与外层 `citations` 都要给**：服务端缺 `spec.citations` 回
+   `400 spec.citations is required`（只给外层 `citations` 不够）。两处都是**扁平字符串数组**，
+   写成 `[["…"]]` 会被判形状错。
+2. **断言值形状两种都被接受**：`image-juxtaposition` 用布尔 `true`
+   （`{"pairSidesValid":true,"captionsGrounded":true}`）；`branching-scenario` 的四项用空对象
+   `{}` 即可（`{"graphAcyclic":{},"feedbackNonEmpty":{},"allPathsTerminate":{},"optimalPathReachable":{}}`），
+   服务端回读显示为 `""` 属正常——证明器只看键在不在。
+3. **载荷被改写时的实测解法**：`nodes[].options[]` / `optimalPath[]` 这类嵌套数组被改写后回
+   `400 spec.nodes must be an array of 1–20 items`；把同一份 JSON 压成**单行紧凑**重发即可通过
+   （已实测：一次失败、单行重发成功）。别改内容形状去迁就载荷。
+4. **同 figureId 对不要出两份 image-juxtaposition**：画面重复会让学员对着同一张图读两遍。
+   同一节里若已有同 figureId 对的一份，**删自己那份**（`cloud_widget_delete`），保留信息更精确、
+   数字更可核的那份；删完上报一条 `status=error` + `errorCode=artifact_retracted` 的溯源留痕。
