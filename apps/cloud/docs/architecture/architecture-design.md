@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.19）
+# 趋势课程云端服务 · 架构设计（v0.20）
 
-版本：v0.19（2026-11-06；M10 S1 学员端富媒体课程页落地：零新增云端端点，学员端复用 catalog v3 课程树/节详情/行情/按节播放会话，共享 `@trend/widgets` 课程视图与管理台预览同源；节载荷增 `summary` 与 `conceptNames`（hero chip 显示概念名）；§6.6.7 记录学员端载体契约）
+版本：v0.20（2026-11-06；K 线显示口径与课程内容对齐：均线位改多值叠加（白名单 M5/M10/M20/M30/M60，≤3 条，默认 M5/M10/M60，带图例）；K 线周期声明式化——`section_case_stocks.period` 与 `bar-replay-decision` spec `period`（1d/1w，缺省 1d），周线由日线在渲染端按 ISO 周聚合（行情仍只存日线一份真相源）；存量 6 节案例股周期与 6 份回放课件均线已回填）
+v0.19（2026-11-06；M10 S1 学员端富媒体课程页落地：零新增云端端点，学员端复用 catalog v3 课程树/节详情/行情/按节播放会话，共享 `@trend/widgets` 课程视图与管理台预览同源；节载荷增 `summary` 与 `conceptNames`（hero chip 显示概念名）；§6.6.7 记录学员端载体契约）
 v0.18（2026-11-06；M10 R3 落地：6 节全量 DSL 重写回灌（`dsl_version=2`）完成，§6.6 实现状态与 M10 阶段表回写；rubric 阈值按 6 正 1 负样本标定——通过线 8 不变，grounded 增「行情数值可核」一票否决子项修 0.4.0 漏检；producer 可读管线作业状态（GET 放 producerGuard，重试/取消仍限 operator/admin）；遗留：云端无图示删除端点）
 v0.17（2026-11-06；M3b 呈现层 R2/R3 代码落地：DSL v2（`:::annotation`/`:::replay`）服务端校验、`bar-replay-decision` 新题型 spec 与断言证明、`GET /v1/admin/content/courses/{courseId}/preview` 课程预览与 `GET /v1/admin/content/courses/{courseId}/quotes` 草稿行情端点、K 线组件（含成交量/M60/事件锚点/回放遮罩）与管理台课程预览页接入 `@trend/widgets`；`producer` 角色可触发 `quotes-sync`。真产一节已跑通（TC-ZONGLUN「阻尼运动」节，2026-11-06，DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft）；rubric 0.4.0 阈值标定与 6 节回灌仍待。）
 v0.16（2026-11-06；M3b 契约阻断项批次 B6：学员端节级学习契约落地——课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包由 `apps/cloud/web/widgets` 外迁至 monorepo `packages/widgets`（`@trend/widgets`，管理台与学员端共用构建产物））
@@ -242,7 +243,7 @@ erDiagram
 | `concepts`（M9） | `concept_id`、`course_id`、`name`、`aliases jsonb`、`definition`、`status` | 术语归一后唯一（含别名表）；课程内 `name` 唯一；正文术语校验以此为准 |
 | `concept_edges`（M9） | `edge_id`、`course_id`、`from_concept_id`、`to_concept_id`、`kind(prerequisite/related)` | 有向边；禁止自环；`prerequisite` 用于节排序校验与 `timeline-explorer` |
 | `widget_specs`（M9，M10 扩容） | `widget_id`、`section_id`、`course_id`、`type`、`spec_version`、`spec jsonb`、`assertions jsonb`、`validation jsonb`（证明记录）、`citations jsonb`、`status`、`version` | `type` 仅白名单 8 类（§6.5.5；M10 扩容 3 类见 §6.6.5，随 `spec_version=2` 冻结）；`spec` 服务端按 schema 复检；`validation` 必须包含全部断言的通过证明，缺失即拒绝入库；`draft` 对学员不可见；每节建议 1–3 个 |
-| `section_case_stocks`（M10） | `stock_ref_id`、`section_id`、`course_id`、`name`、`exchange(SZSE/SSE/BSE)`、`code`（6 位数字）、`window_start/window_end`（DATE）、`events jsonb`（`[{date,label,unitId}]`）、`note`、`status`、`position` | `(section_id, code)` 唯一；事件 `date` 必须落在 `[window_start, window_end]` 内；`unitId` 必须可回溯 source unit；`draft` 不下发；由生产端提取、云端复检后落库（§6.6.3） |
+| `section_case_stocks`（M10） | `stock_ref_id`、`section_id`、`course_id`、`name`、`exchange(SZSE/SSE/BSE)`、`code`（6 位数字）、`period`（K 线周期 `1d` 日线 / `1w` 周线，缺省 `1d`）、`window_start/window_end`（DATE）、`events jsonb`（`[{date,label,unitId}]`）、`note`、`status`、`position` | `(section_id, code)` 唯一；事件 `date` 必须落在 `[window_start, window_end]` 内；`unitId` 必须可回溯 source unit；`draft` 不下发；由生产端提取、云端复检后落库（§6.6.3） |
 | `course_stock_quotes`（M10） | `code`、`trade_date`、`open/high/low/close`、`volume`、`source('tencent-qfq')`、`fetched_at` | `(code, trade_date)` 唯一；仅前复权日线 OHLCV 原始值，不混复权口径；只同步已入库案例股清单内 code；复权价差在渲染层声明，不改数据 |
 
 建库插件：`pgvector`（`halfvec`）、`pg_trgm`；检索索引与向量索引分离于业务表，可在线重建（M3 后台触发）。
@@ -633,7 +634,7 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 - **管理台先行**：全部能力先在管理台节预览落地，不耦合学员端；渲染组件以独立包边界实现（monorepo `packages/widgets`，即 `@trend/widgets`，不依赖 admin/portal 私有运行时，二者只作宿主）；学员端启用随 `contractVersion=3`。
 - 存量 6 节教材按 DSL **一次性重写回灌**，不做新旧格式双轨（实施顺序 R1→R3 见 §6.6.6）。
-- **实现状态（2026-11-06）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `@trend/widgets` 渲染组件包与管理台节预览接入；**R2 已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）、K 线组件（含成交量/M60/事件锚点/十字线/缩放平移/回放遮罩）与管理台课程预览页（`GET /v1/admin/content/courses/:courseId/preview`）、§6.6.5 课件新题型 `bar-replay-decision` 与断言证明；**学员端节级契约已落地**——M3b B6：`contractVersion=3` 课程树附带节摘要、`GET /v1/catalog/courses/:courseId/sections/:sectionId` 下发正文/课件/图示签名地址/案例股、`POST /v1/catalog/sections/:sectionId/playback` 校验播放窗完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`）；**R3 已落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 渲染与本地作答隐私护栏、**6 节全量 DSL 重写回灌**（TC-ZONGLUN 全 6 节 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass；43 个标注与回放交易日全部落在行情缓存的实际交易日上；6 节主编自评全 approve）；**S1 学员端富媒体课程页已落地**（§6.6.7：零新增云端端点，客户端装配共享 `CoursePreviewView`，播放会话按节签发，节载荷增 `summary`/`conceptNames`）。
+- **实现状态（2026-11-06）**：**R1 已落地**——§6.6.1 DSL 解析与服务端校验（`src/production/dsl/`）、§6.6.2 figures 写入端点与四模板 SVG 渲染器（`src/production/figures/`）、资产时间窗播放会话与 publish 门禁扩展、§6.6.4 的 `@trend/widgets` 渲染组件包与管理台节预览接入；**R2 已落地**——§6.6.3 案例股端点与行情缓存（M3b B5：腾讯前复权日 K 同步 + 学员行情查询 + `course_stock_quotes` 缓存表）、K 线组件（含成交量/M60/事件锚点/十字线/缩放平移/回放遮罩）与管理台课程预览页（`GET /v1/admin/content/courses/:courseId/preview`）、§6.6.5 课件新题型 `bar-replay-decision` 与断言证明；**学员端节级契约已落地**——M3b B6：`contractVersion=3` 课程树附带节摘要、`GET /v1/catalog/courses/:courseId/sections/:sectionId` 下发正文/课件/图示签名地址/案例股、`POST /v1/catalog/sections/:sectionId/playback` 校验播放窗完整落在该节已发布正文的 clip 窗内（越窗 `409 playback_window_invalid`）；**R3 已落地**——§6.6.1 的 v2 组件（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 渲染与本地作答隐私护栏、**6 节全量 DSL 重写回灌**（TC-ZONGLUN 全 6 节 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass；43 个标注与回放交易日全部落在行情缓存的实际交易日上；6 节主编自评全 approve）；**S1 学员端富媒体课程页已落地**（§6.6.7：零新增云端端点，客户端装配共享 `CoursePreviewView`，播放会话按节签发，节载荷增 `summary`/`conceptNames`）；**K 线口径增量已落地**（2026-11-06：多均线位叠加 + 周期声明式口径，见 §6.6.3 交互基线与 §6.6.5 spec 形状；存量 6 节案例股周期与 6 份回放课件已回填）。
 
 **R3 回灌暴露并已修的三处生产缺陷**（真实返工，非演练）：① 云端管线作业查询路由限 operator/admin，producer 读不到自己的作业状态 → GET 两条路由改 `producerGuard`（重试/取消仍限 operator/admin）；② `cloud_case_stocks_write` 的 `items` 形状只写在描述里、schema 里是 `additionalProperties: true`，模型反复把 `events` 写成对象或字符串 → 补全嵌套 `items` schema；③ `cloud_quotes_read` 的渲染只回交易日且截断到 8 根，**OHLCV 根本没进模型**，模型遂绕道外部行情源取价（这是「筹码分布 1」首轮 grounded 不过的根因）→ 渲染改为回全部交易日 + 最近 60 根完整 bar，并写明「价格与成交量只能取自缓存、禁止外部取价」。
 
@@ -727,7 +728,8 @@ R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_li
 
 - 输入纯数据 `{bars:[{d,o,h,l,c,v}], events:[{date,label}], window:[start,end]}`，组件自身无网络依赖；行情获取在宿主侧（管理台走 admin 通道，学员端走上述学员接口）。
 - 标注层（M10 v2）：输入可含 `annotations?:[{d,kind,label}]`——来自正文 `:::annotation`（宿主解析后注入），组件只收定位数据，详情文本（原话/术语）留在教材详情卡；按 `d` 映射 bar 索引，三类标注（structure/invalidation/rhythm）按类型着色与过滤。
-- 交互基线（V3 原型定版）：K 线 + 成交量双面板、红涨绿跌、M60 叠加、悬停十字线读数、滚轮缩放（光标锚定）/拖动平移、事件锚点三角标记与点选定位、案例窗口默认视野、双击复位。
+- 交互基线（V3 原型定版）：K 线 + 成交量双面板、红涨绿跌、均线位叠加、悬停十字线读数、滚轮缩放（光标锚定）/拖动平移、事件锚点三角标记与点选定位、案例窗口默认视野、双击复位。
+- **均线位与周期口径（2026-11-06 增量）**：均线位为**多值**——白名单 `M5/M10/M20/M30/M60`（`COURSE_OVERLAYS`），默认 `M5/M10/M60`，按周期固定配色并在图内右上角出图例；周期口径**声明式**——`section_case_stocks.period` 与 `bar-replay-decision` spec 的 `period`（`1d` 日线 / `1w` 周线，缺省 `1d`）决定画日线还是周线，**由生产端按本节实际讲解的图表口径填写**，渲染层不得替内容做选择。**周线由日线在渲染端按 ISO 周聚合**（开=周内首根开、收=周内末根收、高低取极值、量额求和），`course_stock_quotes` 仍只存日线一份真相源，不落第二份行情。
 - 案例股清单由节响应携带（`caseStocks[]` 含窗口与事件锚点）；个股锚 `[[stock:...]]` 点击即在侧栏切换标的。
 
 #### 6.6.4 参数化 SVG 模板图示（取代 Mermaid）
@@ -754,7 +756,7 @@ R1 未覆盖的校验项在本文逐条标注（如 §6.6.1 的 `stock_not_in_li
 |---|---|---|---|
 | `image-juxtaposition` | 两图对比滑块（筹码/形态前后对照） | `left/right` 各为 `{figureId}`（课程画面）或 `{generator,seed,bars}`（合成 K 线）、`labels{left,right}` | `pairSidesValid`（两侧引用存在且可渲染）、`captionsGrounded`（标注术语 ∈ concepts） |
 | `branching-scenario` | 决策树情境练习 | `scenario`（情境文本）、`nodes[{id,prompt,options[{label,next,feedback}]}]`、`entryId`、`optimalPath[]` | `graphAcyclic`（options 构成 DAG）、`allPathsTerminate`（全部路径可达终点节点）、`optimalPathReachable`（最优路径自 entry 连通）、`feedbackNonEmpty`（每 option feedback 1–500 字符） |
-| `bar-replay-decision` | 真实案例股逐根回放（先判断后揭晓的检索练习闭环；ADR C34） | `code`、`window{from,to}`（⊆ 本股案例窗口）、`overlays?`（默认 `M60`，课程级常量）、`annotations[]{unitId,atMs,kind,d,label}`（稳定键引用正文 `:::annotation`，详情文本不重复落库）、`decisions[]{atDate,question,options[2-4]{label},correct,revealText(1-2000),unitId,atMs}`、`citations[]`（≥1）；**`bars` 不入 spec**——由宿主按 §6.6.3 接口取得，spec 不随行情回填漂移 | `decisionPointsGrounded`（每条 decision/annotation 的 unit 存在、atMs 落窗、atDate/d 落案例窗口且为交易日）、`revealMonotonic`（decisions[].atDate 严格递增且早于对应标注 `d`；遮罩区间单调不重叠）、`annotationTermsGrounded`（glossary/revealText 术语 ∈ concepts 且非空）＋ 复用 `answerUnique` |
+| `bar-replay-decision` | 真实案例股逐根回放（先判断后揭晓的检索练习闭环；ADR C34） | `code`、`window{from,to}`（⊆ 本股案例窗口）、`period?`（`1d` 日线 / `1w` 周线，缺省 `1d`，须与本节讲解口径一致）、`overlays?`（均线位数组，白名单 `M5/M10/M20/M30/M60`，≤3 条，默认 `M5/M10/M60`）、`annotations[]{unitId,atMs,kind,d,label}`（稳定键引用正文 `:::annotation`，详情文本不重复落库）、`decisions[]{atDate,question,options[2-4]{label},correct,revealText(1-2000),unitId,atMs}`、`citations[]`（≥1）；**`bars` 不入 spec**——由宿主按 §6.6.3 接口取得，spec 不随行情回填漂移 | `decisionPointsGrounded`（每条 decision/annotation 的 unit 存在、atMs 落窗、atDate/d 落案例窗口且为交易日）、`revealMonotonic`（decisions[].atDate 严格递增且早于对应标注 `d`；遮罩区间单调不重叠）、`annotationTermsGrounded`（glossary/revealText 术语 ∈ concepts 且非空）＋ 复用 `answerUnique` |
 
 - 回放运行时（渲染器契约，非 spec 数据）：逐根揭示（纵轴全区间定标防跳动）→ 到 `decision.atDate` 暂停并遮罩未揭示区 → 弹判断题 → 学员提交（答案锁定不可回改）→ 揭晓 `revealText` + 老师原话 + 原片时间码（`unitId+atMs` 可跳回原片）→ 继续至下一判断点 → 结束小结（对了几处、错因在哪一步）；控制项：播放/暂停、单步、1×/2×、重置、进度条判断点刻度、标注按 `kind` 过滤。
 - **隐私护栏（硬约束）**：学员作答只做本地即时反馈——不落库、不进 `validation`、不进 M2 事件白名单（§5）、不随 provenance 上报；`validation` 只记录**正确答案**的程序证明。若未来要做「哪一步最容易错」统计，须另立需求评审同意模型与字段白名单。
@@ -1211,7 +1213,7 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 25. **M9 试点验收（P0）**：以"总论"卷（7 集）全链路试跑，对照本节验收标准；rc 版 dsh 长任务稳定性在该试点验证，失败重入由云 DB 状态兜底。
 26. `dsh-plugin-trend-producer` 独立仓库**已建**（T1 工具集 14 工具、skill 九包、dsh headless 真机理解/综合/逐节链路已跑通；PRD v0.3 / 架构 v0.4 与本文对齐；`cloud_figure_write` / `cloud_case_stocks_write` 两个 M10 工具**已接线**）；生产卡点走 dsh 审批 UI。
 27. `sections` 上线后 `chapter_articles` 是否保留卷级导读，待试运营反馈决定；不保留则契约只下发节层。
-28. **M10 待标定**：新题型断言词表（含回放三条）与 rubric 0.4.0 阈值随 R2/R3 试点节标定；DSL 组件在 6 节重写中的实际使用密度决定是否扩容组件（如引用块、步骤列表）；回放的键盘操作、canvas 文字替代与移动端降级是否纳入 R3 无障碍验收，随试点节一并定。增补提案开放问题已裁决（2026-11-05）：标注候选由生产端写作时抽取（零接口改动）、`:::replay` 按 code 解析、`overlays` 统一 M60 课程级常量、教员微调走既有 operator/admin widget 编辑能力、作答统计明确不做。
+28. **M10 待标定**：新题型断言词表（含回放三条）与 rubric 0.4.0 阈值随 R2/R3 试点节标定；DSL 组件在 6 节重写中的实际使用密度决定是否扩容组件（如引用块、步骤列表）；回放的键盘操作、canvas 文字替代与移动端降级是否纳入 R3 无障碍验收，随试点节一并定。增补提案开放问题已裁决（2026-11-05）：标注候选由生产端写作时抽取（零接口改动）、`:::replay` 按 code 解析、`overlays` 统一 M60 课程级常量（2026-11-06 已扩展为多均线位白名单 M5/M10/M20/M30/M60，≤3 条）、教员微调走既有 operator/admin widget 编辑能力、作答统计明确不做。
 29. **行情源单点**：腾讯 ifzq 为唯一源，无备用；连续失败依赖任务重试与「行情暂不可用」降级。是否引入备用源（新浪/东财日线）待日更稳定性观察后决定。
 30. **片段离线场景**：HLS 时间窗直放依赖在线签名会话；学员离线阅读时片段卡降级为关键帧封面 + 窗口文字描述，是否需要预切片兜底待学员端启用时另议。
 
