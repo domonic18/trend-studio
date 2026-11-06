@@ -1,7 +1,7 @@
 ---
 name: courseware-design
 description: 课件设计工艺：8 类白名单组件选型与 spec/assertions 撰写规范（断言证明的供给侧）
-version: 0.1.0
+version: 0.2.0
 ---
 
 # 课件设计工艺
@@ -72,11 +72,23 @@ version: 0.1.0
 - **必带断言**：`decisionPointsGrounded`、`revealMonotonic`、`annotationTermsGrounded`、`answerUnique`。
   - `decisionPointsGrounded`: 每个 `decisions[].atDate` 都是交易日且在 window 内；`unitId/atMs` 可回溯。
   - `revealMonotonic`: `decisions` 按 `atDate` 严格递增，不能倒流。
-  - `annotationTermsGrounded`: 标注里出现的术语必须 ∈ 本课程 concepts（含别名）。
+  - `annotationTermsGrounded`: `annotations[].label` 必须**逐字等于**某个概念名（主词或别名，
+    判定是集合包含不是子串匹配）；`decisions[].revealText` 只需**包含**至少一个概念名。
+    标签写「龙头股与助攻股」这种并列表述会不过，改成裸术语「龙头股」。
   - `answerUnique`: 每道题有且只有一个正确答案。
 - 写入顺序：必须先 `cloud_case_stocks_write` 落案例股 → `cloud_quotes_sync` 同步行情 →
   再写 `bar-replay-decision`；否则 window 或交易日校验会失败。
-- 与正文配合：正文用 `:::replay code=... caption="..."` 引入该回放；`code` 在本节必须唯一。
+- **必须早于正文**：正文 `:::replay code=... caption="..."` 按 code 解析本节唯一一份回放课件，
+  课件未落库就写正文会 `400 replay_widget_unknown`（同 code 两份则 `400 replay_widget_ambiguous`）。
+  `code` 在本节必须唯一。
+
+## spec 白名单的已知回灌点（都是 400，不是断言问题）
+
+- **`spec` 里不能带 `type` 字段**——`400 spec.type is not allowed`。类型由外层 `type` 参数表达，
+  spec 只放该类型的专属字段。标杆节里的旧课件带 `type` 是旧服务端版本的产物，照抄会挂。
+- **`assertions` 的参数形状按类型定**：`cardCount` 是对象 `{min,max}`，不是数字；
+  `slopeRange` 是数组 `[min,max]`；`trendlineTouches` 是 `{min}`。
+- 这些是形状校验失败（400），不会进 409 断言回灌流程——按错误信息改形状即可，别反复重写。
 
 ## citations 与溯源
 

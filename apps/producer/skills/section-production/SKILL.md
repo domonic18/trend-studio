@@ -1,7 +1,7 @@
 ---
 name: section-production
 description: 逐节生产编排（阶段 3）：研究→读证据→案例股→图示→写作→课件→主编评审的单节工作流与收敛规则
-version: 0.4.0
+version: 0.5.0
 ---
 
 # 逐节生产编排
@@ -14,6 +14,18 @@ version: 0.4.0
 - 门禁① 已批准（骨架/术语表/概念图谱落库生效）。
 - 节骨架已存在（`cloud_sections_write` list 可查）。
 - 该节钉住素材的理解产物完整（`cloud_source_units_search` 覆盖素材时间轴）。
+
+## 实际写入顺序（由依赖倒推，不是流水账）
+
+```
+案例股 → 行情同步 → 行情读回 → 图示 → 回放课件 → 正文 → 其余课件 → 评审 → 溯源
+```
+
+- 案例股先于正文：正文 `[[stock:]]` 内联锚校验该股在本节案例股清单内。
+- 行情同步先于正文与回放课件：`:::annotation` 的 `d` 与回放判断点 `atDate` 都必须是缓存里的
+  实际交易日；`cloud_quotes_sync` 按本节案例股清单取代码，案例股没落库就同步不到行情。
+- 回放课件先于正文：正文 `:::replay` 按 `code` 解析本节唯一一份回放课件。
+- 图示先于正文：正文 `:::figure figureId=...` 校验该 figure 属于本节。
 
 ## 工作流（每节顺序执行，顺序不可换）
 
@@ -31,22 +43,30 @@ version: 0.4.0
    `400 annotation_date_not_trading_day`。可重跑，幂等。
    同步完用 `cloud_quotes_read({courseId, codes})` 读回缓存，**`d` / `atDate` 只能从返回的
    tradeDate 里挑**——视频里出现的日期未必落在缓存窗口内（缓存只回溯最近约 320 根日K）。
+   **正文里的价格与成交量只能取自这次读回的 bar**（返回里逐根列出日期/开/高/低/收/量）；
+   **禁止绕道自行抓取外部行情源**——渲染层画的就是这份缓存，外部源会与之漂移，
+   数字对不上就等于正文没 grounded。要看更早的 bar，用 `from`/`to` 缩小窗口再读一次。
 6. **图示**：按 `diagram-authoring` 选型——diagram 路产出 `{template, params}`，keyframe 路从
    units 的 keyframes.sec 选讲解帧——逐个 `cloud_figure_write({sectionId, ...})` 落库拿 `figureId`。
    **必须早于正文**——正文的 `:::figure figureId=...` 容器块会校验该 figure 属于本节，
    未落库即 `400 figure_ref_unknown`。每节 diagram ≤2、keyframe ≤6，超配额
    `409 figure_quota_exceeded`，`sec` 不落 source unit `400 sec_not_grounded`。
-7. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
+7. **回放课件（必须早于正文）**：本节要用的 `bar-replay-decision` 先落库。正文 `:::replay`
+   按 `code` 解析本节唯一一份回放课件——课件未落库就写正文必然 `400 replay_widget_unknown`
+   （同 code 两份则 `400 replay_widget_ambiguous`）。其余题型（mcq-quiz / checklist /
+   flashcards / timeline-explorer）不受此约束，可在本步之后补写。
+   逐个 `cloud_widget_write`；409 assertion_unproven 按 failed 断言修正（≤3 次）。
+   同节同 code 的回放课件**只能有一份**——写错了先
+   `cloud_widget_delete({sectionId, widgetId})` 删旧再写新，不要留两份让回放入口歧义。
+8. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
    `cloud_section_article_write({sectionId, markdown, citations})`；400/409 按错误修正重写。
    正文里的段落级证据用 `[[unit:su_xxx|label]]` 内联锚（见下节「证据锚点」）。
-8. **课件**：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
+9. **其余课件**：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
    409 assertion_unproven 按 failed 断言修正（≤3 次）。
-   同节同 code 的回放课件**只能有一份**（正文 `:::replay` 按 code 解析）——写错了先
-   `cloud_widget_delete({sectionId, widgetId})` 删旧再写新，不要留两份让回放入口歧义。
-9. **主编评审**：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
-   再按 `quality-rubric` 打分——**不靠记忆评分**；verdict=reject 按修改指令重写对应部分
-   （≤3 轮），仍不过转人工待办并如实汇报。
-10. **溯源**：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
+10. **主编评审**：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
+    再按 `quality-rubric` 打分——**不靠记忆评分**；verdict=reject 按修改指令重写对应部分
+    （≤3 轮），仍不过转人工待办并如实汇报。
+11. **溯源**：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
     评审结果另报一条 `content.rubric_review`（`summary` 带 scores/verdict/failed/comments，
     `targetId` 为 sectionId）。
 
@@ -96,6 +116,8 @@ version: 0.4.0
 - **只经 `cloud_*` 工具访问云端**：禁止用 bash/curl 直连服务端 API（含"探测"请求）。
   2026-11-04 事故：agent 直 curl 探测 widgets 端点产生探针课件、并绕过工具层直灌伪造
   token 的溯源记录，两者都成了人工清理项。
+- **行情数据只来自 `cloud_quotes_read`**：禁止用 bash/curl 去任何行情站取价算指标。
+  渲染层画的就是课程缓存这份数据，外部取价会与图上数字漂移，且绕过工具层无法溯源。
 - **溯源 token/latency 严禁估算**：你在会话内拿不到自己的真实用量。工具结果里明确
   带出用量的（如 `cloud_understanding_run`）按返回值上报；其余调用省略 token/latency
   字段，只报 taskKey/model/provider/status/skillVersions/targetId。宁可留空，不可编造。

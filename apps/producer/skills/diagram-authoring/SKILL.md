@@ -1,7 +1,7 @@
 ---
 name: diagram-authoring
 description: 图示工艺：参数化 SVG 模板的选型、参数写法与 grounded 标注规则；keyframe/generated 分工红线
-version: 0.2.0
+version: 0.2.1
 ---
 
 # 图示工艺
@@ -70,6 +70,8 @@ diagram 与 keyframe 是**两路**，不是互斥：一张图承载不了讲师�
 要点：
 - `head`/`label`/`title` 等展示文字 ≤ 20 字，`note`/`desc` ≤ 100 字；超限云端 `400`。
 - `peakPrice`/`price`/`value` 写**字符串**（保留讲师原话里的写法，如 `8.68`、`8.7 元`），不写数字。
+  **`value` 还要写成不可被解析为纯数字的字符串**——传输层会把 `"8.32"` 强制转成 number 再被
+  zod 拒掉（400），写成 `"8.32 元"` 才过。`stat-inline` 的 `spark` 是必填，漏了 400。
 - 百分比类参数（`peakWidthPct`/`dispersionPct`/`weightPct`）是 0–100 的数字，不带 `%` 号。
 - `date` 一律 `YYYY-MM-DD`；`points` 至少 2 个、最多 24 个有限数值。
 - 服务端按模板 zod 严格校验（同参数重放逐字节一致），**多写一个未声明字段即 400**。

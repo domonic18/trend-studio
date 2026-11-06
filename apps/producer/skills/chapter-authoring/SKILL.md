@@ -1,7 +1,7 @@
 ---
 name: chapter-authoring
 description: 节教材写作工艺：五段结构、富文本 DSL 容器块写法与 grounded 规则（阶段 3 逐节生产）
-version: 0.4.0
+version: 0.5.0
 ---
 
 # 节教材写作工艺
@@ -61,7 +61,14 @@ version: 0.4.0
   reveal 文本写在 `bar-replay-decision` 课件里。`:::replay` 的 `code` 必须与本节某个
   `bar-replay-decision` 课件的 `code` 唯一对应，否则 `400 replay_widget_unknown/ambiguous`。
 - 两种 v2 块都必须在 `cloud_quotes_sync` 之后写入：标注的交易日 `d` 需要行情缓存验证，
-  回放需要行情 bars 作为渲染输入。
+  回放需要行情 bars 作为渲染输入。**回放课件还要早于正文**——`:::replay` 是按 code 去本节
+  找课件的，课件没落库就写正文必然 `400 replay_widget_unknown`。
+- **正文的 `annotation.label` 是自由文本**（给人读的描述），做术语校验的是 body 里的
+  `glossary[]`——其每一项必须 ∈ 本课程 concepts（主词或别名），否则 `400 annotation_term_unknown`。
+  别把两处搞混：课件 spec 里的 `annotations[].label` 反而**必须逐字等于**概念名。
+- **正文里的价格与成交量只能取自 `cloud_quotes_read` 返回的 bar**，且必须带交易日。
+  原片截图上的历史价位要显式标注原片日期，不能以现价口吻陈述——这一条是上一轮
+  「筹码分布 1」被判 grounded 不过的根因。
 
 ## Grounded 规则（三层校验第 2 层的通过条件）
 
