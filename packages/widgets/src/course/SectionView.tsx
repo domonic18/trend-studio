@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArticleRenderer } from '../article.js'
 import { Kline } from '../kline/Kline.js'
 import {
   PERIOD_LABEL,
   filterPeriodWindow,
   findPeriodIndex,
-  toPeriodBars,
+  periodBarsOf,
   type KlinePeriod,
   type PeriodBar,
 } from '../kline/period.js'
@@ -19,23 +19,61 @@ function periodEventDate(bars: PeriodBar[], tradeDate: string): string {
   return bars[index]?.tradeDate ?? tradeDate
 }
 
+/** 课件规格里声明的周期：只有逐根回放课件带 period，取不出时按日线。 */
+function widgetPeriod(spec: unknown): KlinePeriod {
+  if (spec === null || typeof spec !== 'object') return '1d'
+  const value = (spec as { period?: unknown }).period
+  return value === '1w' ? '1w' : '1d'
+}
+
+/** 课件标的（逐根回放用），取不出时返回空串。 */
+function widgetCode(spec: unknown): string {
+  if (spec === null || typeof spec !== 'object') return ''
+  const value = (spec as { code?: unknown }).code
+  return typeof value === 'string' ? value : ''
+}
+
 export function SectionView({ section, host }: { section: SectionViewModel; host: CoursePreviewHost }) {
   const { section: meta, article, widgets, figures, caseStocks } = section
   const draftBadge = meta.status !== 'published' || article?.status !== 'published'
-  const codes = useMemo(() => caseStocks.map((s) => s.code), [caseStocks])
   const [quotesState, setQuotesState] = useState<{ pending: boolean; quotes: CourseQuote[] }>({ pending: false, quotes: [] })
 
+  // 一节课可能同时讲日线与周线：按周期分别取行情，再合并成一份 bar 列表。
+  // 每个周期只取该周期真正需要的代号（单次请求上限 10 只，不能把所有代号都塞进每次请求）。
+  const requestsByPeriod = useMemo(() => {
+    const map = new Map<KlinePeriod, Set<string>>()
+    const add = (period: KlinePeriod, code: string): void => {
+      if (code === '') return
+      const set = map.get(period) ?? new Set<string>()
+      set.add(code)
+      map.set(period, set)
+    }
+    for (const stock of caseStocks) add(stock.period ?? '1d', stock.code)
+    for (const w of widgets) {
+      if (w.type !== 'bar-replay-decision') continue
+      add(widgetPeriod(w.spec), widgetCode(w.spec))
+    }
+    return [...map.entries()].map(([period, set]) => ({ period, codes: [...set] }))
+  }, [caseStocks, widgets])
+
+  const requestKey = requestsByPeriod
+    .map(({ period, codes: wanted }) => `${period}:${wanted.join('|')}`)
+    .join(';')
+  // 父组件可能每次渲染重建 caseStocks/widgets，故 effect 以字符串键为准，数组走 ref 取最新。
+  const requestsRef = useRef(requestsByPeriod)
+  requestsRef.current = requestsByPeriod
+
   useEffect(() => {
-    if (codes.length === 0) {
+    if (requestKey === '') {
       setQuotesState({ pending: false, quotes: [] })
       return
     }
     let cancelled = false
-    host
-      .loadQuotes(codes)
-      .then((result) => {
+    Promise.all(requestsRef.current.map(({ period, codes: wanted }) => host.loadQuotes(wanted, period)))
+      .then((results) => {
         if (cancelled) return
-        setQuotesState({ pending: result.pending, quotes: result.quotes })
+        const quotes = results.flatMap(result => result.quotes)
+        setQuotesState({ pending: results.some(result => result.pending), quotes })
       })
       .catch(() => {
         if (cancelled) return
@@ -44,7 +82,7 @@ export function SectionView({ section, host }: { section: SectionViewModel; host
     return () => {
       cancelled = true
     }
-  }, [host, codes.join(',')])
+  }, [host, requestKey])
 
   const bars = useMemo(() => toBars(quotesState.quotes), [quotesState.quotes])
   const articleHost = useMemo(
@@ -162,7 +200,7 @@ function CaseStockDetail({
   pending: boolean
 }) {
   const period: KlinePeriod = stock.period ?? '1d'
-  const allBars = useMemo(() => toPeriodBars(bars, period), [bars, period])
+  const allBars = useMemo(() => periodBarsOf(bars, period), [bars, period])
   const viewBars = useMemo(() => {
     return period === '1w'
       ? filterPeriodWindow(allBars, { from: stock.windowStart, to: stock.windowEnd })

@@ -236,6 +236,7 @@ const quoteItemSchema = z.object({
   volume: z.number(),
   amount: z.number().nullable(),
   source: z.string(),
+  period: z.enum(['1d', '1w']).default('1d'),
 })
 
 const quoteListSchema = z.object({
@@ -506,6 +507,13 @@ const spec: TypertRemoteSpec = {
           source: 'json',
           codec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:codes', () => z.array(z.string())),
           strictCodec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:codes', () => z.array(z.string())),
+        },
+        {
+          name: 'period',
+          wire: 'period',
+          source: 'json',
+          codec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:period', () => z.enum(['1d', '1w'])),
+          strictCodec: codec('dsh-plugin-trend-coach#trendCoach/courseQuotes:period', () => z.enum(['1d', '1w'])),
         },
       ],
       cancellation: { parameter: 'signal' },
@@ -1625,8 +1633,8 @@ export function apply(ctx: Context): void {
               scoped.remote.trendCoach.catalogSection(courseId, sectionId),
             sectionPlayback: (sectionId: string, assetId: string, fromSec: number, toSec: number) =>
               scoped.remote.trendCoach.sectionPlayback(sectionId, assetId, fromSec, toSec),
-            courseQuotes: (courseId: string, codes: string[]) =>
-              scoped.remote.trendCoach.courseQuotes(courseId, codes),
+            courseQuotes: (courseId: string, codes: string[], period: '1d' | '1w') =>
+              scoped.remote.trendCoach.courseQuotes(courseId, codes, period),
           }),
         }, SectionView))
 
@@ -1637,8 +1645,8 @@ export function apply(ctx: Context): void {
             catalogCourse: (courseId: string) => scoped.remote.trendCoach.catalogCourse(courseId),
             catalogSection: (courseId: string, sectionId: string) =>
               scoped.remote.trendCoach.catalogSection(courseId, sectionId),
-            courseQuotes: (courseId: string, codes: string[]) =>
-              scoped.remote.trendCoach.courseQuotes(courseId, codes),
+            courseQuotes: (courseId: string, codes: string[], period: '1d' | '1w') =>
+              scoped.remote.trendCoach.courseQuotes(courseId, codes, period),
             sectionPlayback: (sectionId: string, assetId: string, fromSec: number, toSec: number) =>
               scoped.remote.trendCoach.sectionPlayback(sectionId, assetId, fromSec, toSec),
           }),

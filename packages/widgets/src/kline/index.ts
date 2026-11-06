@@ -5,6 +5,7 @@ export {
   filterPeriodWindow,
   findPeriodIndex,
   isoWeekKey,
+  periodBarsOf,
   toPeriodBars,
   type KlinePeriod,
   type PeriodBar,

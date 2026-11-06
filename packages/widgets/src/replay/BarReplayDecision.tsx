@@ -5,7 +5,7 @@ import {
   PERIOD_LABEL,
   filterPeriodWindow,
   findPeriodIndex,
-  toPeriodBars,
+  periodBarsOf,
   type KlinePeriod,
   type PeriodBar,
 } from '../kline/period.js'
@@ -51,7 +51,7 @@ function parseSpec(raw: unknown): BarReplaySpec | null {
   }
 }
 
-/** 取回放用的周期 bar：先按标的取全序列，再按周期聚合，最后按案例窗口取交集。 */
+/** 取回放用的周期 bar：先按标的取全序列，再按周期取（原生优先），最后按案例窗口取交集。 */
 function usePeriodBars(
   bars: KlineBar[],
   code: string,
@@ -59,8 +59,8 @@ function usePeriodBars(
   window: { from: string; to: string },
 ): { windowed: PeriodBar[]; all: PeriodBar[] } {
   return React.useMemo(() => {
-    const daily = selectByCode(bars, code)
-    const periodBars = toPeriodBars(daily, period)
+    const own = selectByCode(bars, code)
+    const periodBars = periodBarsOf(own, period)
     const windowed = period === '1w'
       ? filterPeriodWindow(periodBars, window)
       : periodBars.filter(bar => bar.tradeDate >= window.from && bar.tradeDate <= window.to)

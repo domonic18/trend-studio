@@ -346,6 +346,7 @@ function isQuoteItem(value: unknown): value is QuoteItem {
   }
   if (typeof candidate.volume !== 'number' || !Number.isInteger(candidate.volume) || candidate.volume < 0) return false
   if (candidate.amount !== null && (typeof candidate.amount !== 'number' || !Number.isFinite(candidate.amount))) return false
+  if (candidate.period !== '1d' && candidate.period !== '1w') return false
   return typeof candidate.source === 'string' && candidate.source.length > 0 && candidate.source.length <= 32
 }
 
@@ -749,15 +750,16 @@ export async function createSectionPlayback(
   return payload
 }
 
-/** 学员行情：codes 省略时取课程全部已发布案例股。 */
+/** 学员行情：codes 省略时取课程全部已发布案例股；period 决定周期（1d 日线 / 1w 周线）。 */
 export async function getCourseQuotes(
   auth: AuthManager,
   courseId: string,
   codes: string[] | undefined,
+  period: '1d' | '1w',
   signal: AbortSignal,
 ): Promise<QuoteList> {
   const normalizedCourseId = requireCourseId(courseId)
-  let query = ''
+  const queryParts: string[] = []
   if (codes !== undefined) {
     if (codes.length === 0 || codes.length > MAX_QUOTE_CODES) {
       throw new InvalidResponseError('行情标的数量不合法')
@@ -765,10 +767,11 @@ export async function getCourseQuotes(
     for (const code of codes) {
       if (!/^[0-9]{6}$/.test(code)) throw new InvalidResponseError('行情标的代码不合法')
     }
-    query = `?codes=${encodeURIComponent(codes.join(','))}`
+    queryParts.push(`codes=${encodeURIComponent(codes.join(','))}`)
   }
+  queryParts.push(`period=${period}`)
   const response = await auth.request(
-    `/v1/catalog/courses/${encodeURIComponent(normalizedCourseId)}/quotes${query}`,
+    `/v1/catalog/courses/${encodeURIComponent(normalizedCourseId)}/quotes?${queryParts.join('&')}`,
     {},
     signal,
   )

@@ -100,13 +100,22 @@ export interface CourseQuote {
   volume: number
   amount: number | null
   source: string
+  /** 该 bar 的周期：日线 1d / 周线 1w。 */
+  period: KlinePeriod
 }
 
 import type { ArticleHost } from '../types.js'
 import type { KlinePeriod } from '../kline/period.js'
 
 export interface CoursePreviewHost extends ArticleHost {
-  loadQuotes: (codes: string[]) => Promise<{ pending: boolean; quotes: CourseQuote[] }>
+  /**
+   * 按周期取行情：一节课可能同时有日线案例股与周线案例股，故按周期分次取。
+   * 返回的 bar 均为该周期的原生序列（周线即周线 bar，不是日线聚合）。
+   */
+  loadQuotes: (
+    codes: string[],
+    period: KlinePeriod,
+  ) => Promise<{ pending: boolean; quotes: CourseQuote[] }>
   /**
    * 按节签发播放会话：学员端播放会话须落在该节已发布正文的片段窗内，故须带 sectionId。
    * 不提供时回落到 ArticleHost 的无节签发（管理台预览用）。
@@ -143,6 +152,8 @@ export interface KlineBar {
   volume: number
   amount: number | null
   code?: string
+  /** 该 bar 的周期：日线 1d / 周线 1w；取数方按它筛选。 */
+  period?: '1d' | '1w'
 }
 
 export type ExchangeLabel = '深交所' | '上交所' | '北交所'
@@ -169,6 +180,7 @@ export function toBars(quotes: CourseQuote[]): KlineBar[] {
       volume: q.volume,
       amount: q.amount,
       code: q.code,
+      period: q.period,
     }))
 }
 

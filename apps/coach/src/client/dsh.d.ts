@@ -143,7 +143,7 @@ interface ClientRemoteService {
       fromSec: number,
       toSec: number,
     ): Promise<RemoteSectionPlaybackResult>
-    courseQuotes(courseId: string, codes: string[]): Promise<RemoteCourseQuotesResult>
+    courseQuotes(courseId: string, codes: string[], period: '1d' | '1w'): Promise<RemoteCourseQuotesResult>
     knowledgePoint(knowledgePointId: string): Promise<RemoteKnowledgePointResult>
     reportProgress(knowledgePointId: string, watchedSec: number, completed: boolean): Promise<RemoteProgressResult>
     setLearnerContext(sessionId: string, update: LearnerContextUpdate): Promise<RemoteLearnerContextResult>

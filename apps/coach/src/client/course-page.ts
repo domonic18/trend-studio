@@ -31,7 +31,7 @@ export interface CoursePagePanelProps {
   useTabInfo?: TabInfoHook
   catalogCourse: (courseId: string) => Promise<RemoteCatalogCourseResult>
   catalogSection: (courseId: string, sectionId: string) => Promise<RemoteCatalogSectionResult>
-  courseQuotes: (courseId: string, codes: string[]) => Promise<RemoteCourseQuotesResult>
+  courseQuotes: (courseId: string, codes: string[], period: '1d' | '1w') => Promise<RemoteCourseQuotesResult>
   sectionPlayback: (
     sectionId: string,
     assetId: string,
@@ -137,8 +137,8 @@ export function CoursePagePanel(props: CoursePagePanelProps): React.ReactElement
         if (!result.ok) throw new Error(result.error.message)
         return result.value
       },
-      loadQuotes: async (codes: string[]) => {
-        const result = await courseQuotes(courseId, codes)
+      loadQuotes: async (codes: string[], period: '1d' | '1w') => {
+        const result = await courseQuotes(courseId, codes, period)
         if (!result.ok) throw new Error(result.error.message)
         return { pending: result.value.pending, quotes: result.value.quotes }
       },

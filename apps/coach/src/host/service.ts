@@ -141,15 +141,16 @@ export class TrendCoachService extends TypertRemoteService {
       createSectionPlayback(this.auth, sectionId, assetId, fromSec, toSec, signal))
   }
 
-  /** v3 学员行情：只读课程已发布案例股。 */
+  /** v3 学员行情：只读课程已发布案例股；按周期取（1d 日线 / 1w 周线）。 */
   @Remote
   async courseQuotes(
     courseId: string,
     codes: string[] | undefined,
+    period: '1d' | '1w',
     signal: AbortSignal,
   ): Promise<QuoteList> {
     return await this.invoke('课程行情读取', () =>
-      getCourseQuotes(this.auth, courseId, codes, signal))
+      getCourseQuotes(this.auth, courseId, codes, period, signal))
   }
 
   /** 进度是业务写入，失败只记 debug，不阻塞播放。 */

@@ -14,6 +14,8 @@ export interface KlineBar {
   volume: number
   amount: number | null
   code?: string
+  /** 该 bar 的周期（1d 日线 / 1w 周线）；图表本身不区分，取数方按它筛选。 */
+  period?: '1d' | '1w'
 }
 
 export interface KlineEvent {

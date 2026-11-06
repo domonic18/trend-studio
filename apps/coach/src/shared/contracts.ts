@@ -129,6 +129,8 @@ export interface CatalogCaseStock {
   code: string
   name: string
   exchange: 'SZSE' | 'SSE' | 'BSE'
+  /** 该案例股讲解的周期：日线 1d / 周线 1w；K 线按此周期取。 */
+  period: '1d' | '1w'
   windowStart: string
   windowEnd: string
   events: unknown[]
@@ -160,7 +162,7 @@ export interface CatalogPlayback {
   expiresAt: number
 }
 
-/** 行情条目：腾讯前复权日K 原始口径。 */
+/** 行情条目：腾讯前复权 K 线原始口径（周期原生：1d 日线 / 1w 周线）。 */
 export interface QuoteItem {
   code: string
   tradeDate: string
@@ -171,6 +173,8 @@ export interface QuoteItem {
   volume: number
   amount: number | null
   source: string
+  /** 该 bar 的周期：日线 1d / 周线 1w（课程讲周线就下发周线）。 */
+  period: '1d' | '1w'
 }
 
 export interface QuoteList {
@@ -285,7 +289,8 @@ export const MAX_SECTIONS_PER_COURSE = 200
 export const MAX_WIDGETS_PER_SECTION = 50
 export const MAX_CASE_STOCKS_PER_SECTION = 20
 export const MAX_QUOTE_CODES = 10
-export const MAX_QUOTE_BARS = 320
+/** 每只标的的 bar 上限：日线 641 根 ≈ 2.6 年，周线 640 根 ≈ 12 年（云端同口径）。 */
+export const MAX_QUOTE_BARS = 640
 
 export const MAX_LEARNER_SELECTED_RAW = 4000
 export const MAX_LEARNER_SELECTED_CHARS = 500

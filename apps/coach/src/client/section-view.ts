@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ArticleRenderer, LearnerWidgetPlayer } from '@trend/widgets'
 import { barsByCode, exchangeLabel, toBars } from '@trend/widgets/course'
+import { periodBarsOf } from '@trend/widgets/kline'
 import type { CatalogCaseStock, CatalogSection, QuoteItem } from '../shared/contracts.js'
 import type {
   RemoteCatalogSectionResult,
@@ -21,7 +22,7 @@ export interface SectionViewProps {
     fromSec: number,
     toSec: number,
   ) => Promise<RemoteSectionPlaybackResult>
-  courseQuotes: (courseId: string, codes: string[]) => Promise<RemoteCourseQuotesResult>
+  courseQuotes: (courseId: string, codes: string[], period: '1d' | '1w') => Promise<RemoteCourseQuotesResult>
 }
 
 function formatDate(value: number): string {
@@ -73,14 +74,30 @@ export function SectionView({
     }
   }, [courseId, sectionId, catalogSection])
 
-  const codes = React.useMemo(
-    () => (section?.caseStocks ?? []).map((stock) => stock.code),
-    [section],
-  )
-  const codesKey = codes.join(',')
+  /** 案例股与逐根回放课件各自声明周期，按周期分次取行情后合并。 */
+  const periodRequests = React.useMemo(() => {
+    const requests = new Map<'1d' | '1w', string[]>()
+    const add = (period: '1d' | '1w', code: string): void => {
+      const list = requests.get(period) ?? []
+      if (!list.includes(code)) list.push(code)
+      requests.set(period, list)
+    }
+    for (const stock of section?.caseStocks ?? []) add(stock.period ?? '1d', stock.code)
+    for (const widget of section?.widgets ?? []) {
+      if (widget.type !== 'bar-replay-decision') continue
+      const spec = widget.spec as { code?: unknown; period?: unknown }
+      if (typeof spec.code !== 'string' || spec.code === '') continue
+      add(spec.period === '1w' ? '1w' : '1d', spec.code)
+    }
+    return [...requests.entries()]
+  }, [section])
+
+  const periodRequestsKey = periodRequests
+    .map(([period, list]) => `${period}:${list.join(',')}`)
+    .join('|')
 
   React.useEffect(() => {
-    if (codes.length === 0) {
+    if (periodRequests.length === 0) {
       setQuotes([])
       setPending(false)
       return undefined
@@ -88,14 +105,21 @@ export function SectionView({
     let cancelled = false
     void (async () => {
       try {
-        const result = await courseQuotes(courseId, codes)
+        const results = await Promise.all(
+          periodRequests.map(async ([period, list]) => await courseQuotes(courseId, list, period)),
+        )
         if (cancelled) return
-        if (result.ok) {
-          setQuotes(result.value.quotes)
-          setPending(result.value.pending)
-        } else {
-          setError(result.error.message)
+        const failed = results.find(result => !result.ok)
+        if (failed !== undefined && !failed.ok) {
+          setError(failed.error.message)
+          return
         }
+        const merged: QuoteItem[] = []
+        for (const result of results) {
+          if (result.ok) merged.push(...result.value.quotes)
+        }
+        setQuotes(merged)
+        setPending(results.some(result => result.ok && result.value.pending))
       } catch (failure: unknown) {
         if (!cancelled) setError(failure instanceof Error ? failure.message : '行情读取失败')
       }
@@ -103,7 +127,7 @@ export function SectionView({
     return () => {
       cancelled = true
     }
-  }, [courseId, codesKey, courseQuotes])
+  }, [courseId, periodRequestsKey, courseQuotes])
 
   const barsMap = React.useMemo(() => barsByCode(quotes), [quotes])
   const allBars = React.useMemo(() => toBars(quotes), [quotes])
@@ -240,7 +264,8 @@ export function SectionView({
           ? React.createElement('p', { key: 'pending', style: { color: '#888', fontSize: 12 } }, '等待行情同步…')
           : null,
         ...section.caseStocks.map((stock) => {
-          const bars = barsMap.get(stock.code) ?? []
+          const own = barsMap.get(stock.code) ?? []
+          const bars = periodBarsOf(own, stock.period ?? '1d')
           return React.createElement(
             'section',
             {

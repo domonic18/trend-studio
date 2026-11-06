@@ -1,6 +1,10 @@
 /**
  * K 线周期口径：课程讲日线就画日线，讲周线就画周线。
- * 行情真相源只存日线，周线在此聚合，避免第二份行情副本。
+ *
+ * 行情真相源按周期存（1d 日线 / 1w 周线），周线由腾讯周K 原生给出——
+ * 日线接口只能回溯约 641 根，聚合出的周线仅约 128 根，周线 M60 与更早的
+ * 历史窗口都算不出来。周线原生序列可回溯约 640 根（12 年），口径才成立。
+ * 本模块的日线聚合仅作兜底（宿主只给到日线时）。
  */
 
 import type { KlineBar } from './kline-chart.js'
@@ -61,4 +65,17 @@ export function findPeriodIndex(bars: PeriodBar[], tradeDate: string): number {
     if (tradeDate >= bar.startDate && tradeDate <= bar.endDate) return index
   }
   return -1
+}
+
+/**
+ * 取某标的某周期的 bar：优先用该周期的原生序列；没有原生周线时回落到日线聚合。
+ * 传入的 bars 须已按标的过滤（同一标的不同周期的 bar 混在一起会串位）。
+ */
+export function periodBarsOf(bars: KlineBar[], period: KlinePeriod): PeriodBar[] {
+  const periodOf = (bar: KlineBar): KlinePeriod => bar.period ?? '1d'
+  const native = bars.filter(bar => periodOf(bar) === period)
+  if (period === '1d' || native.length > 0) {
+    return native.map(bar => ({ ...bar, startDate: bar.tradeDate, endDate: bar.tradeDate }))
+  }
+  return toPeriodBars(bars.filter(bar => periodOf(bar) === '1d'), '1w')
 }
