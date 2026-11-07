@@ -3277,7 +3277,7 @@ components:
 
     ProductionBoardResponse:
       type: object
-      required: [courseId, courseTitle, sections]
+      required: [courseId, courseTitle, sections, materialChoices]
       additionalProperties: false
       properties:
         courseId:
@@ -3290,6 +3290,76 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProductionBoardSection'
+        materialChoices:
+          type: array
+          description: 课程最近的追加素材决策（按时间倒序，最多 10 条）
+          items:
+            $ref: '#/components/schemas/MaterialChoice'
+
+    MaterialChoice:
+      type: object
+      required: [choiceId, courseId, assetId, sectionId, choice, affectedSectionIds, note, createdAt]
+      additionalProperties: false
+      properties:
+        choiceId:
+          type: string
+          pattern: '^pmc_[0-9a-f]{16}$'
+        courseId:
+          type: string
+          maxLength: 64
+        assetId:
+          type: string
+          pattern: '^asset_[0-9a-f]{16}$'
+        sectionId:
+          type: 'null'
+          description: A 场景的目标节；B/C 为 null
+          pattern: '^sec_[0-9a-f]{16}$'
+        choice:
+          type: string
+          enum: [A, B, C]
+        affectedSectionIds:
+          type: array
+          description: 会被重跑的节
+          items:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+        note:
+          type: 'null'
+          description: 人补充说明；≤2000 字
+        createdAt:
+          type: integer
+          minimum: 0
+
+    MaterialImpactResponse:
+      type: object
+      required: [choice, affectedSectionIds, affectedTitles, resetStepCount]
+      additionalProperties: false
+      properties:
+        choice:
+          type: string
+          enum: [A, B, C]
+        affectedSectionIds:
+          type: array
+          items:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+        affectedTitles:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+        resetStepCount:
+          type: integer
+          minimum: 0
+          description: 将被重置为 pending 的步骤数（受影响节数 × 9）
+
+    MaterialChoiceResponse:
+      type: object
+      required: [choice]
+      additionalProperties: false
+      properties:
+        choice:
+          $ref: '#/components/schemas/MaterialChoice'
 
   responses:
     BadRequest:
@@ -8079,6 +8149,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductionBoardResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/material-impact:
+    post:
+      summary: 追加素材影响面（只读，operator/admin/producer，M9 生产体验线）
+      description: >-
+        人决策前先看清这次追加素材会让哪几节被重跑。
+        A 需给 sectionId（只补这节）；B 影响全课程（重做骨架）；C 不影响任何节（只入库）。
+        本端点只算不落库，落决策用 /v1/admin/content/material-choices。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, assetId, choice]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                assetId:
+                  type: string
+                  pattern: '^asset_[0-9a-f]{16}$'
+                choice:
+                  type: string
+                  enum: [A, B, C]
+                sectionId:
+                  type: string
+                  pattern: '^sec_[0-9a-f]{16}$'
+                  description: A 场景必填
+      responses:
+        '200':
+          description: 影响面
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialImpactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/material-choices:
+    post:
+      summary: 追加素材决策落库（operator/admin/producer，M9 生产体验线）
+      description: >-
+        落决策并把受影响节的九步状态重置为 pending（断点续跑从 pending 起步）。
+        A 场景同时把新素材挂进该节的 source_asset_ids。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, assetId, choice]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                assetId:
+                  type: string
+                  pattern: '^asset_[0-9a-f]{16}$'
+                choice:
+                  type: string
+                  enum: [A, B, C]
+                sectionId:
+                  type: string
+                  pattern: '^sec_[0-9a-f]{16}$'
+                  description: A 场景必填
+                note:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: 已落库的决策
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialChoiceResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

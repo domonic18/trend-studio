@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto'
 import type { Pool } from 'pg'
 import { PRODUCTION_STEPS, type ProductionStep, type ProductionTaskStatus } from '@trend/contracts'
 import { HttpError } from '../errors.js'
+import { listMaterialChoices, type MaterialChoiceRow } from './material-choices.js'
 
 export interface ProductionTaskRow {
   taskId: string
@@ -37,6 +38,7 @@ export interface ProductionBoardRow {
   courseId: string
   courseTitle: string
   sections: ProductionBoardSectionRow[]
+  materialChoices: MaterialChoiceRow[]
 }
 
 interface TaskDbRow {
@@ -160,6 +162,7 @@ export async function readProductionBoard(pool: Pool, courseId: string): Promise
   return {
     courseId: course.course_id,
     courseTitle: course.title,
+    materialChoices: await listMaterialChoices(pool, courseId),
     sections: sectionRows.map(row => ({
       sectionId: row.section_id,
       chapterId: row.chapter_id,

@@ -1,7 +1,7 @@
 ---
 name: material-ingest
-description: 素材入库工艺：本地视频/音频直传云端并入队转写（生产体验线入口场景）
-version: 0.1.0
+description: 素材入库工艺：本地视频/音频直传云端并入队转写（生产体验线入口场景）+ 追加素材的 A/B/C 处理决策
+version: 0.2.0
 ---
 
 # 素材入库工艺
@@ -36,6 +36,24 @@ version: 0.1.0
 > **B. 重做课程骨架**——新素材可能带出新章节/新节，重新跑目录校验与课程骨架，已有节保留不删。
 > **C. 只入库，先不生产**——素材转写好放着，等决定了再动内容。
 
-- 选择 A 时必须**列出影响范围**（哪几节会被重评）；人最怕「不知道它会动什么」。
-- 选 B 触发**目录先验校验**：新章节必须来自人工目录，不得自行发明章节或节。
-- 选择结果要**记进生产任务**（`production_task` 表），不是一次性问答。
+### 三步决策链（工具名按此顺序）
+
+1. **算影响面**：`cloud_material_impact({courseId, assetId, choice, sectionId?})`——
+   只读，不落库。回的是「这个选择会让哪几节被重跑、几个步骤重置为待开始」。
+   A 必须给 `sectionId`（缺了服务端报 400）；B 不给；C 不给。
+   **把 `affectedTitles`（哪几节）与 `resetStepCount`（几个步骤要重做）原样报给人看**——
+   人最怕「不知道它会动什么」。先算再问，不要先问再算。
+2. **让人选**：把 A/B/C 三条连同影响面列给人，**等明确答复**。
+   不得由你代选，也不得默认选 A。
+3. **落决策**：`cloud_material_choice({courseId, assetId, choice, sectionId?, note?})`——
+   把选择写进云端生产任务（`production_material_choices` 表），并把受影响节的九步状态
+   重置为 `pending`（`attempt` 清零、回灌预算保留），A 还会把新素材挂进该节的素材清单。
+   回执里的 `affectedSectionIds` 就是接下来要重跑的节。
+
+### 落决策之后
+
+- **重跑从 `cloud_production_tasks_read` 读到的 `currentStep` 起**：受影响节的九步已回到
+  `pending`，按 `section-production` 的九步状态机逐步重跑并重新上报状态。
+- **选 B 触发目录先验校验**：新章节必须来自人工目录，不得自行发明章节或节。
+- 决策是**持久记录不是一次性问答**：`cloud_production_board_read({courseId})` 会带回
+  本课程最近的追加素材决策，交接时看它即可。

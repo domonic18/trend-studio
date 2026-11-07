@@ -1,7 +1,7 @@
 ---
 name: section-production
-description: 逐节生产编排（阶段 3）：研究→读证据→案例股→图示→写作→课件→主编评审的单节工作流与收敛规则
-version: 0.6.0
+description: 逐节生产编排（阶段 3）：九步生产状态机（引擎强制顺序）+ 研究→读证据→案例股→图示→写作→课件→主编评审的单节工作流与收敛规则
+version: 0.7.0
 ---
 
 # 逐节生产编排
@@ -27,6 +27,25 @@ version: 0.6.0
 - 回放课件先于正文：正文 `:::replay` 按 `code` 解析本节唯一一份回放课件。
 - 图示先于正文：正文 `:::figure figureId=...` 校验该 figure 属于本节。
 
+## 九步状态机（每步都要上报，引擎强制顺序）
+
+这九步同时是**生产任务状态机**的九步，`cloud_production_task_write` 的 `step` 枚举：
+`case_stocks` 案例股 → `quotes_sync` 行情同步 → `quotes_read` 行情读回 → `figures` 图示 →
+`replay_widget` 回放课件 → `article` 正文 → `widgets` 其余课件 → `review` 评审 → `provenance` 溯源。
+
+- **开工先读进度**：`cloud_production_tasks_read({courseId, sectionId})` 回九步状态、
+  「当前该做第几步」与被挡步骤。返回的 `currentStep` 就是下一件该做的事。
+  **已 `done` 的步骤不要重做**——续跑从 `currentStep` 起。
+- **开始做某步先报 `running`，做完报 `done` 并在 `note` 写明产出**（≤2000 字）；
+  出错报 `failed` 并在 `note` 写错误码；还没轮到报 `pending`；被上游挡住报 `blocked`。
+- **顺序由引擎强制**：报 `running`/`done` 时前置步骤必须已 `done`，否则工具报错并告诉你
+  「当前该做第几步」。`pending`/`blocked`/`failed` 只是记录，不受顺序约束。
+- **回灌预算 3 次**：`attempt` 是这一步已开始的次数（首次 1，失败后重跑 +1），
+  超预算工具会拒（提示转人工待办）——**不要继续重跑**，如实转人工。
+- **状态落在云端 DB**（云 DB 即 checkpoint）：任何时候中断，重开会话读
+  `cloud_production_tasks_read` 就能续跑，不必依赖对话历史。
+- 评审 `reject` 重写后**重跑的那步要重新上报**（`attempt` 自增），不要在原地改 note 假装通过。
+
 ## 工作流（每节顺序执行，顺序不可换）
 
 1. **研究**：按节素材拉全量 source units，产出研究简报（概念清单/实例/可用 keyframe 时间点）。
@@ -35,23 +54,25 @@ version: 0.6.0
    取回转写原文、视觉描述、窗内关键帧与播放会话。**正文里每个具体说法都要有这一步的依据**；
    摘要级信息不得直接落笔。全有或全无：409 `unit_not_readable` 时剔除不可读项后重试。
 3. **概念回填**：把本节实际覆盖的概念 id 写回节（`cloud_sections_write` 更新 conceptRefs）与 summary。
-4. **案例股**：`cloud_case_stocks_write` 落本节案例股清单。**必须早于正文**——正文的
+4. **案例股**（状态机 `case_stocks`）：`cloud_case_stocks_write` 落本节案例股清单。**必须早于正文**——正文的
    `[[stock:sz000713|丰乐种业]]` 内联锚会校验该股在本节案例股清单内，未落库即
    `400 stock_not_in_list`。
    每只股票同时定 `period`（`"1d"` 日线 / `"1w"` 周线，缺省 `"1d"`）：**按本节实际讲解的周期写**，
    讲周线结构就写 `"1w"`。这个值决定案例股面板画日线还是周线图，与正文口径必须一致；
    也决定行情同步取哪条源——**日线源只回溯到 2024-03 前后，早于该年的历史窗口必须写 `"1w"`**
    （周线源可回溯到 2013–2014）。写 `"1d"` 却讲 2015/2019 的行情，缓存里会一根都没有。
-5. **行情同步**：`cloud_quotes_sync({courseId})` 触发课程级行情缓存。**必须早于正文**——
+   开工报 `running`，清单落库后报 `done`（note 写「N 只案例股，周期口径 …」）。
+5. **行情同步**（`quotes_sync`）：`cloud_quotes_sync({courseId})` 触发课程级行情缓存。**必须早于正文**——
    正文 `:::annotation` 的交易日 `d` 必须是该股行情缓存的实际交易日，否则
-   `400 annotation_date_not_trading_day`。可重跑，幂等。
-   同步完用 `cloud_quotes_read({courseId, codes, period})` 读回缓存，**`d` / `atDate` 只能从返回的
+   `400 annotation_date_not_trading_day`。可重跑，幂等。报 `running` → `done`（note 写同步了哪些代码）。
+6. **行情读回**（`quotes_read`）：用 `cloud_quotes_read({courseId, codes, period})` 读回缓存，**`d` / `atDate` 只能从返回的
    tradeDate 里挑**——视频里出现的日期未必落在缓存窗口内（日线缓存只回溯约 641 根日K，
    周线约 640 根周K；周期按案例股声明取，跨周期读会读空）。
    **正文里的价格与成交量只能取自这次读回的 bar**（返回里逐根列出日期/开/高/低/收/量）；
    **禁止绕道自行抓取外部行情源**——渲染层画的就是这份缓存，外部源会与之漂移，
    数字对不上就等于正文没 grounded。要看更早的 bar，用 `from`/`to` 缩小窗口再读一次。
-6. **图示**：按 `diagram-authoring` 选型——diagram 路产出 `{template, params}`，keyframe 路从
+   读回成功报 `done`（note 写读到多少根、窗口范围）。
+7. **图示**（`figures`）：按 `diagram-authoring` 选型——diagram 路产出 `{template, params}`，keyframe 路从
    units 的 keyframes.sec 选讲解帧——逐个 `cloud_figure_write({sectionId, ...})` 落库拿 `figureId`。
    **必须早于正文**——正文的 `:::figure figureId=...` 容器块会校验该 figure 属于本节，
    未落库即 `400 figure_ref_unknown`。每节 diagram ≤2、keyframe ≤6，超配额
@@ -59,7 +80,7 @@ version: 0.6.0
    **写错了要删**：同节同 kind 同 caption 重写是覆盖（`figure_id` 不变），但覆盖救不回
    「废图烧掉配额」与「这张图不该存在」——用 `cloud_figure_delete({sectionId, figureId})`
    删掉重来（不可恢复；正文若已 `:::figure` 引用该 id，须一并改写正文）。
-7. **回放课件（必须早于正文）**：本节要用的 `bar-replay-decision` 先落库。正文 `:::replay`
+8. **回放课件（必须早于正文）**（`replay_widget`）：本节要用的 `bar-replay-decision` 先落库。正文 `:::replay`
    按 `code` 解析本节唯一一份回放课件——课件未落库就写正文必然 `400 replay_widget_unknown`
    （同 code 两份则 `400 replay_widget_ambiguous`）。其余题型（mcq-quiz / checklist /
    flashcards / timeline-explorer）不受此约束，可在本步之后补写。
@@ -70,17 +91,18 @@ version: 0.6.0
    （均线位，白名单 M5/M10/M20/M30/M60，≤3 条）：**与本节正文所讲周期、均线口径一致**，
    否则图上画的线与正文说的线对不上。
    `image-juxtaposition` 同样要早于正文（它可能引用本节图示的 `figureId`），
-   且**必须晚于第 6 步的图示落库**——`figureId` 侧未落库会 409 assertion_unproven。
+   且**必须晚于第 7 步的图示落库**——`figureId` 侧未落库会 409 assertion_unproven。
    `branching-scenario` 是纯文本决策树，不依赖任何顺序。
-8. **节教材**：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
+9. **节教材**（`article`）：按 `chapter-authoring` 工艺写 grounded 正文（Markdown + 富文本 DSL 容器块），
    `cloud_section_article_write({sectionId, markdown, citations})`；400/409 按错误修正重写。
    正文里的段落级证据用 `[[unit:su_xxx|label]]` 内联锚（见下节「证据锚点」）。
-9. **其余课件**：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
-   409 assertion_unproven 按 failed 断言修正（≤3 次）。
-10. **主编评审**：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
+10. **其余课件**（`widgets`）：按 `courseware-design` 选型与撰写，逐个 `cloud_widget_write`；
+    409 assertion_unproven 按 failed 断言修正（≤3 次）。
+11. **主编评审**（`review`）：先 `cloud_section_preview({sectionId})` 读回本节成品（教材正文 + 课件 spec + 图示），
     再按 `quality-rubric` 打分——**不靠记忆评分**；verdict=reject 按修改指令重写对应部分
-    （≤3 轮），仍不过转人工待办并如实汇报。
-11. **溯源**：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
+    （≤3 轮），仍不过转人工待办并如实汇报。**reject 后重写的那步要把对应状态重新报一遍**
+    （该步 `attempt` 自增；重写后报 `done`）。
+12. **溯源**（`provenance`）：本节完成的写作与课件分别上报 `content.section_draft` / `content.widget_spec`；
     评审结果另报一条 `content.rubric_review`（`summary` 带 scores/verdict/failed/comments，
     `targetId` 为 sectionId）。
 
@@ -114,6 +136,7 @@ version: 0.6.0
 
 ```
 ## 节生产完成 · <节标题>
+- 九步状态：案例股 done / 行情同步 done / 行情读回 done / 图示 done / 回放课件 done / 正文 done / 其余课件 done / 评审 approve / 溯源 done
 - 教材：v<N>，<字数> 字，citations <M> 条（其中锚 <K> 个）
 - 课件：<k> 个（类型清单，validation 全 pass）
 - 图示：<k> 个（<类型清单>）
@@ -122,6 +145,9 @@ version: 0.6.0
 - 主编自评：<各维分数>，verdict=<approve|reject>
 - 遗留：<人工待办或无；发布待 operator/admin 审批>
 ```
+
+要看整门课的进度用 `cloud_production_board_read({courseId})`（每节一行九步状态 + 正文版本 +
+课件/图示/案例股计数 + 最近评审结论 + 最近的追加素材决策），**不要凭记忆汇报进度**。
 
 ## 正文版本升级回灌（呈现层扩容时）
 

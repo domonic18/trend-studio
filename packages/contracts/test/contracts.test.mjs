@@ -12,6 +12,7 @@ import {
   mediaAssetCreateInput, uploadTicketInput, uploadTicketOutput, uploadConfirmInput,
   assetIngestInput, PRODUCTION_STEPS, PRODUCTION_STEP_LABELS, PRODUCTION_TASK_STATUSES,
   productionTaskUpsertInput, productionTaskListInput, productionBoardOutput,
+  materialImpactInput, materialImpactOutput, materialChoiceInput, materialChoiceOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -583,6 +584,16 @@ test('生产任务：9 步顺序固定、标签齐备、任务与看板形状', 
       caseStockCount: 3,
       reviewVerdict: 'approve',
     }],
+    materialChoices: [{
+      choiceId: 'pmc_0123456789abcdef',
+      courseId: 'TC-ZONGLUN',
+      assetId: ASSET,
+      sectionId: SECTION,
+      choice: 'A',
+      affectedSectionIds: [SECTION],
+      note: null,
+      createdAt: 0,
+    }],
   })
   assert.equal(board.success, true)
   assert.equal(productionBoardOutput.safeParse({
@@ -593,5 +604,58 @@ test('生产任务：9 步顺序固定、标签齐备、任务与看板形状', 
       articleVersion: null, widgetCount: 0, figureCount: 0, caseStockCount: 0,
       reviewVerdict: 'pending',
     }],
+    materialChoices: [],
   }).success, false)
+})
+
+test('追加素材：A/B/C 影响面与决策形状', () => {
+  assert.equal(materialImpactInput.safeParse({
+    courseId: 'TC-ZONGLUN', assetId: ASSET, choice: 'A', sectionId: SECTION,
+  }).success, true)
+  assert.equal(materialImpactInput.safeParse({
+    courseId: 'TC-ZONGLUN', assetId: ASSET, choice: 'A',
+  }).success, true, 'A 缺 sectionId 由服务端补 400，契约层只管形状')
+  assert.equal(materialImpactInput.safeParse({
+    courseId: 'TC-ZONGLUN', assetId: ASSET, choice: 'D',
+  }).success, false)
+  assert.equal(materialImpactInput.safeParse({
+    courseId: 'TC-ZONGLUN', assetId: 'bad', choice: 'C',
+  }).success, false)
+
+  assert.equal(materialImpactOutput.safeParse({
+    choice: 'B',
+    affectedSectionIds: [SECTION],
+    affectedTitles: ['总论 1'],
+    resetStepCount: 9,
+  }).success, true)
+
+  assert.equal(materialChoiceInput.safeParse({
+    courseId: 'TC-ZONGLUN', assetId: ASSET, choice: 'C', note: '先入库',
+  }).success, true)
+
+  assert.equal(materialChoiceOutput.safeParse({
+    choice: {
+      choiceId: 'pmc_0123456789abcdef',
+      courseId: 'TC-ZONGLUN',
+      assetId: ASSET,
+      sectionId: null,
+      choice: 'C',
+      affectedSectionIds: [],
+      note: '先入库',
+      createdAt: 0,
+    },
+  }).success, true)
+  assert.equal(materialChoiceOutput.safeParse({
+    choice: {
+      choiceId: 'pmc_0123456789abcdef',
+      courseId: 'TC-ZONGLUN',
+      assetId: ASSET,
+      sectionId: null,
+      choice: 'C',
+      affectedSectionIds: [],
+      note: null,
+      createdAt: 0,
+      extra: 1,
+    },
+  }).success, false, 'strict：多余字段拒绝')
 })

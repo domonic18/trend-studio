@@ -21,10 +21,19 @@ import {
   mediaAssetCreateOutput,
   mediaAssetListInput,
   mediaAssetListOutput,
+  materialChoiceInput,
+  materialChoiceOutput,
+  materialImpactInput,
+  materialImpactOutput,
   parseInput,
   parseOutput,
   pipelineStatusInput,
   pipelineStatusOutput,
+  productionBoardOutput,
+  productionTaskListInput,
+  productionTaskListOutput,
+  productionTaskUpsertInput,
+  productionTaskUpsertOutput,
   quotesSyncInput,
   quotesSyncOutput,
   quotesReadInput,
@@ -62,7 +71,12 @@ import {
   type FramesOutput,
   type MediaAssetCreateOutput,
   type MediaAssetListOutput,
+  type MaterialChoiceOutput,
+  type MaterialImpactOutput,
   type PipelineStatusOutput,
+  type ProductionBoardOutput,
+  type ProductionTaskListOutput,
+  type ProductionTaskUpsertOutput,
   type ProvenanceOutput,
   type QuotesSyncOutput,
   type QuotesListOutput,
@@ -406,6 +420,59 @@ export class TrendCloudClient {
   async reportProvenance(input: unknown, signal?: AbortSignal): Promise<ProvenanceOutput> {
     const body = parseInput(provenanceEntry, input, 'provenance')
     return parseOutput(provenanceOutput, await this.post(`${CONTENT_BASE}/provenance`, body, signal), 'provenance')
+  }
+
+  /** 上报生产任务状态：按 (课程, 节, 步骤) 幂等 upsert，taskId 跨次稳定。 */
+  async upsertProductionTask(input: unknown, signal?: AbortSignal): Promise<ProductionTaskUpsertOutput> {
+    const body = parseInput(productionTaskUpsertInput, input, 'productionTaskWrite')
+    return parseOutput(
+      productionTaskUpsertOutput,
+      await this.post(`${CONTENT_BASE}/production-tasks`, body, signal),
+      'productionTaskWrite',
+    )
+  }
+
+  /** 读生产任务：可按节过滤。断点续跑靠它判断做到哪一步。 */
+  async listProductionTasks(input: unknown, signal?: AbortSignal): Promise<ProductionTaskListOutput> {
+    const query = parseInput(productionTaskListInput, input, 'productionTasksRead')
+    const params = new URLSearchParams()
+    params.set('courseId', query.courseId)
+    if (query.sectionId !== undefined) params.set('sectionId', query.sectionId)
+    return parseOutput(
+      productionTaskListOutput,
+      await this.get(`${CONTENT_BASE}/production-tasks?${params.toString()}`, signal),
+      'productionTasksRead',
+    )
+  }
+
+  /** 生产看板聚合：每节一行（步骤 + 产出计数 + 最近评审结论）+ 追加素材决策。 */
+  async readProductionBoard(input: unknown, signal?: AbortSignal): Promise<ProductionBoardOutput> {
+    const query = parseInput(productionTaskListInput, input, 'productionBoardRead')
+    return parseOutput(
+      productionBoardOutput,
+      await this.get(`${CONTENT_BASE}/courses/${encodeURIComponent(query.courseId)}/production-board`, signal),
+      'productionBoardRead',
+    )
+  }
+
+  /** 追加素材的影响面（只读）：人决策前先看清会让哪几节被重跑。 */
+  async readMaterialImpact(input: unknown, signal?: AbortSignal): Promise<MaterialImpactOutput> {
+    const body = parseInput(materialImpactInput, input, 'materialImpact')
+    return parseOutput(
+      materialImpactOutput,
+      await this.post(`${CONTENT_BASE}/material-impact`, body, signal),
+      'materialImpact',
+    )
+  }
+
+  /** 落追加素材决策：写决策并把受影响节的九步重置为 pending。 */
+  async recordMaterialChoice(input: unknown, signal?: AbortSignal): Promise<MaterialChoiceOutput> {
+    const body = parseInput(materialChoiceInput, input, 'materialChoice')
+    return parseOutput(
+      materialChoiceOutput,
+      await this.post(`${CONTENT_BASE}/material-choices`, body, signal),
+      'materialChoice',
+    )
   }
 }
 

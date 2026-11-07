@@ -13,6 +13,7 @@ import { signKeyframeUrl } from '../media/keyframe-sign.js'
 import { readQuotes, parseQuoteCodes, parseQuoteDate, parseQuotePeriod } from '../quotes/read.js'
 import type { PlaybackService } from '../playback/service.js'
 import { RateLimiter } from '../rate-limit.js'
+import { planMaterialImpact, recordMaterialChoice } from './material-choices.js'
 import { listProductionTasks, readProductionBoard, upsertProductionTask } from './production-tasks.js'
 import { parseSectionId, parseSourceUnitId, ProductionService } from './service.js'
 import { stringRecord } from './widgets/schema.js'
@@ -54,6 +55,15 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
   function optionalInt(body: Record<string, unknown>, key: string, min: number, max: number): number | undefined {
     if (body[key] === undefined) return undefined
     return intField(body, key, { min, max })
+  }
+
+  /** 追加素材的三种处理方式：A 只补这节 / B 重做课程骨架 / C 只入库。 */
+  function materialChoiceField(body: Record<string, unknown>): 'A' | 'B' | 'C' {
+    const choice = stringField(body, 'choice', { min: 1, max: 1 })
+    if (choice !== 'A' && choice !== 'B' && choice !== 'C') {
+      throw badRequest('choice must be one of A/B/C')
+    }
+    return choice
   }
 
   app.get('/v1/admin/content/media-assets/:assetId/frames', async (request, reply) => {
@@ -374,6 +384,41 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     const params = asObject(request.params as unknown)
     const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
     return reply.send(await readProductionBoard(pool, courseId))
+  })
+
+  /**
+   * 追加素材的影响面（只读）：人决策前先看清「会让哪几节被重跑」。
+   * A 需给 sectionId；B 影响全课程；C 不影响任何节。
+   */
+  app.post('/v1/admin/content/material-impact', async (request, reply) => {
+    await guard(request)
+    const body = asObject(request.body)
+    const impact = await planMaterialImpact(pool, {
+      courseId: parseContentId(stringField(body, 'courseId', { max: 64 }), 'courseId'),
+      assetId: stringField(body, 'assetId', { max: 22, pattern: /^asset_[0-9a-f]{16}$/ }),
+      choice: materialChoiceField(body),
+      ...(body.sectionId === undefined
+        ? {}
+        : { sectionId: parseSectionId(stringField(body, 'sectionId', { max: 20 })) }),
+    })
+    return reply.send(impact)
+  })
+
+  /** 落决策：写 production_material_choices，并把受影响节的九步状态重置为 pending。 */
+  app.post('/v1/admin/content/material-choices', async (request, reply) => {
+    await guard(request)
+    const body = asObject(request.body)
+    const note = optionalStringField(body, 'note', { min: 1, max: 2000 })
+    const choice = await recordMaterialChoice(pool, {
+      courseId: parseContentId(stringField(body, 'courseId', { max: 64 }), 'courseId'),
+      assetId: stringField(body, 'assetId', { max: 22, pattern: /^asset_[0-9a-f]{16}$/ }),
+      choice: materialChoiceField(body),
+      ...(body.sectionId === undefined
+        ? {}
+        : { sectionId: parseSectionId(stringField(body, 'sectionId', { max: 20 })) }),
+      ...(note === undefined ? {} : { note }),
+    })
+    return reply.send({ choice })
   })
 
   app.post('/v1/admin/content/provenance', async (request, reply) => {

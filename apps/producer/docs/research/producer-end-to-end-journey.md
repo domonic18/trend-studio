@@ -409,7 +409,7 @@ A9 装机向导（单 profile / 单模型 / 交互 login / 自检）
 | **A2** | ① `POST /media-assets` 放开 producer；② 新增 `POST .../upload-ticket`（签发 PUT 凭据）；③ 新增 `POST .../upload-confirm`（落元数据）；④ 直传 PUT 落在管线路由上（`PUT .../media-assets/:id/source`，会话或签名凭据二选一，复用 `mediaSigningSecret`；不另开媒体服务路由，避免 CDN 前置的媒体域承担校验）⑤ 放开建课程/章/节/知识点/测验 | `apps/cloud/src/pipeline/routes.ts`、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/media/upload-sign.ts`、`apps/cloud/src/content/routes.ts` | **M** |
 | **A3** | 4 个新工具 + `TrendCloudClient` 二进制通道；直传由 dsh 侧发起（附件本地路径 → PUT） | `apps/producer/src/host/tools.ts`、`src/host/cloud-client.ts`、`src/host/contracts.ts` | **M** |
 | **A4** | 生产任务表（节 × 步骤 × 状态 × 预算）+ 迁移 + 只读聚合端点（看板用） | `apps/cloud/src/production/`、迁移脚本、`packages/contracts` | **M** |
-| **A5** | 编排改造：按任务状态推进 9 步；场景 B 选择点；选择结果持久化 | `apps/producer/src/host/orchestrator.ts`、skills | **M** |
+| **A5** | 编排改造：按任务状态推进 9 步（引擎在生产端本地判定，云端只存状态）；场景 B 选择点（A 只补这节 / B 重做课程骨架 / C 只入库），影响面先算后问、决策持久化 | `apps/producer/src/host/production-steps.ts`、`src/host/production-tools.ts`、`apps/cloud/src/production/material-choices.ts`、skills | **M** |
 | **A6** | 转写未完成即可消费部分 source units（增量就绪语义） | `apps/cloud/src/pipeline/`、`media_transcripts` / `source_units` | **M** |
 | **A7** | 生产看板页；`quotes-sync` 按钮；按钮按角色显隐；错误文案补齐（签批/素材/任务三类） | `apps/cloud/web/admin/` | **M** |
 | **A8** | SKILL.md 双渲染：同一份真相源既给模型（现有）又给人（步骤卡） | `apps/producer/skills/*` + 看板 | **M** |
@@ -420,7 +420,13 @@ A2 ✅ 云端 `upload-ticket` / `upload-confirm` / PUT 直传（带凭据即以�
 A3 ✅ 生产端 `cloud_asset_create` / `cloud_asset_upload` / `cloud_asset_ingest` / `cloud_asset_list`
 + 流式直传通道（字节不经插件进程）+ `material-ingest` 技能包；
 A4 ✅ 云端 `production_tasks` 表（节 × 步骤 × 状态 × 预算，迁移 022）+ 三个端点
-（`POST/GET /production-tasks`、`GET /courses/:id/production-board`），看板聚合含步骤、产出计数与最近评审结论。
+（`POST/GET /production-tasks`、`GET /courses/:id/production-board`），看板聚合含步骤、产出计数与最近评审结论；
+A5 ✅ 生产端 `production-steps.ts`（纯引擎：当前步 / 门禁 / 回灌计数）+ 5 个工具
+（`cloud_production_task_write` / `cloud_production_tasks_read` / `cloud_production_board_read` /
+`cloud_material_impact` / `cloud_material_choice`）；云端 `production_material_choices` 表（迁移 023）
++ `POST /material-impact` / `POST /material-choices` 两个端点；`section-production` 与
+`material-ingest` 两个技能包同步九步状态机与 A/B/C 决策链。
+**引擎在本地、云端只存状态**——顺序/预算/影响面规则不落云端，「云 DB 即 checkpoint」不变。
 
 ### 12.3 每批次的完成定义
 
