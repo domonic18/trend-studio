@@ -1,12 +1,17 @@
 /** 装机向导的纯函数单测：模型位唯一、patch 合并不吞用户条目、凭据库读写保形。 */
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 import { buildManagedEntries, mergePatchEntries, PLATFORM_BUNDLES, readManagedConfig, readPatch, renderPatch, writeProfilePackage } from '../scripts/setup/profile.mjs'
 import { readRef, writeRef } from '../scripts/setup/credentials.mjs'
+import { resolveInstallContext } from '../scripts/setup/context.mjs'
+import { installSkills, listSkills } from '../scripts/setup/skills.mjs'
+
+const producerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const CONFIG = {
   model: {
@@ -131,4 +136,100 @@ test('凭据库：文件不存在时建一份 version 1 的新库', () => {
   writeRef(file, 'TREND_PRODUCER_MODEL_KEY', 'sk-new')
   assert.equal(readRef(file, 'TREND_PRODUCER_MODEL_KEY'), 'sk-new')
   assert.equal(YAML.parse(readFileSync(file, 'utf8')).version, 1)
+})
+
+/** 造一个解包后的安装包目录：只有 package.json 与 skills，没有仓库里的 pack.mjs。 */
+function fakeUnpackedPackage(root, version = '0.1.4') {
+  const dir = path.join(root, 'package')
+  mkdirSync(path.join(dir, 'skills'), { recursive: true })
+  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+    name: 'dsh-plugin-trend-producer',
+    version,
+  }), 'utf8')
+  return dir
+}
+
+test('装机上下文：仓库模式指向仓库里的工艺包，不复制', () => {
+  const context = resolveInstallContext({
+    packageDir: producerDir,
+    profile: 'trend-producer',
+    profileDir: '/tmp/profiles/trend-producer',
+  })
+  assert.equal(context.mode, 'repo')
+  assert.equal(context.copySkills, false, '仓库模式不复制——工艺包改了要立刻生效')
+  assert.equal(context.skillsSourceDir, path.join(producerDir, 'skills'))
+  assert.equal(context.skillsTargetDir, path.join(producerDir, 'skills'))
+  assert.equal(context.tarball, null, '仓库模式现打 tarball')
+  assert.equal(context.pluginName, 'dsh-plugin-trend-producer')
+})
+
+test('装机上下文：免仓库模式把工艺包落进 profile 目录', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'trend-unpacked-'))
+  const packageDir = fakeUnpackedPackage(root)
+  const tarball = path.join(root, 'dsh-plugin-trend-producer-0.1.4.tgz')
+  writeFileSync(tarball, 'fake', 'utf8')
+
+  const context = resolveInstallContext({
+    packageDir,
+    profile: 'trend-producer',
+    profileDir: '/tmp/profiles/trend-producer',
+  })
+  assert.equal(context.mode, 'standalone')
+  assert.equal(context.copySkills, true)
+  assert.equal(context.skillsTargetDir, path.join('/tmp/profiles/trend-producer', 'skills'))
+  assert.equal(context.tarball, tarball, '自动认下载目录里同版本的安装包')
+})
+
+test('装机上下文：--tarball 显式指定安装包', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'trend-unpacked-'))
+  const packageDir = fakeUnpackedPackage(root)
+  const tarball = path.join(root, 'downloaded.tgz')
+  writeFileSync(tarball, 'fake', 'utf8')
+
+  const context = resolveInstallContext({
+    packageDir,
+    profile: 'trend-producer',
+    tarballOption: tarball,
+    profileDir: '/tmp/profiles/trend-producer',
+  })
+  assert.equal(context.mode, 'standalone')
+  assert.equal(context.tarball, tarball)
+  assert.equal(context.skillsTargetDir, path.join('/tmp/profiles/trend-producer', 'skills'))
+})
+
+test('装机上下文：免仓库模式找不到安装包时明说怎么办', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'trend-unpacked-'))
+  const packageDir = fakeUnpackedPackage(root)
+  assert.throws(
+    () => resolveInstallContext({ packageDir, profile: 'trend-producer', profileDir: '/tmp/profiles/trend-producer' }),
+    /找不到生产插件安装包/,
+  )
+})
+
+test('工艺包：只认含 SKILL.md 的目录，仓库里是九个', () => {
+  const source = path.join(producerDir, 'skills')
+  const names = listSkills(source)
+  assert.equal(names.length, 9)
+  assert.ok(!names.includes('README.md'))
+})
+
+test('工艺包：复制进 profile，并清掉上次留下的旧包', () => {
+  const source = path.join(producerDir, 'skills')
+  const target = path.join(mkdtempSync(path.join(tmpdir(), 'trend-skills-')), 'skills')
+  mkdirSync(path.join(target, 'stale-pkg'), { recursive: true })
+  writeFileSync(path.join(target, 'stale-pkg', 'SKILL.md'), 'old', 'utf8')
+  mkdirSync(path.join(target, 'not-a-skill'), { recursive: true })
+
+  const copied = installSkills(source, target)
+  assert.equal(copied.length, 9)
+  for (const name of copied) {
+    assert.ok(existsSync(path.join(target, name, 'SKILL.md')), `${name} 要复制到位`)
+  }
+  assert.ok(!existsSync(path.join(target, 'stale-pkg')), '上次留下的旧工艺包要清掉')
+  assert.ok(existsSync(path.join(target, 'not-a-skill')), '不是工艺包的目录不动')
+})
+
+test('工艺包：源目录没有工艺包时报错', () => {
+  const empty = mkdtempSync(path.join(tmpdir(), 'trend-empty-'))
+  assert.throws(() => installSkills(empty, path.join(empty, 'target')), /没有工艺包/)
 })

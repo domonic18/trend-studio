@@ -10,12 +10,15 @@
  * 机密只落 dsh 托管凭据库（~/.dsh/.credentials.yaml 的 refs），profile 里只留引用名。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ask, askSecret } from './setup/prompt.mjs'
 import { writeRef } from './setup/credentials.mjs'
 import { buildManagedEntries, mergePatchEntries, readManagedConfig, readPatch, writePatch, writeProfilePackage } from './setup/profile.mjs'
-import { credentialsFile, dshHome, profileDir, producerDir, skillsDir } from './setup/paths.mjs'
+import { credentialsFile, dshHome, profileDir, producerDir } from './setup/paths.mjs'
+import { resolveInstallContext } from './setup/context.mjs'
+import { installSkills } from './setup/skills.mjs'
+import { runDsh } from './setup/dsh.mjs'
 import { login as cloudLogin } from './setup/cloud.mjs'
 import { runDoctor } from './setup/doctor.mjs'
 
@@ -64,8 +67,17 @@ function packPlugin() {
 /** 把 profile 的依赖装上（dsh plugin 转发 pnpm）。 */
 function installDependencies(profile) {
   process.stdout.write(`▸ 装进 profile ${profile}…\n`)
-  const add = spawnSync('dsh', ['plugin', '--profile', profile, 'install'], { stdio: 'inherit' })
+  const add = runDsh(['plugin', '--profile', profile, 'install'])
   if (add.status !== 0) throw new Error('profile 依赖安装失败（网络或 registry 不可达？）')
+}
+
+/** 把下载的安装包复制进 profile 的 artifacts 目录——教员清空下载目录后仍能重装。 */
+function copyArtifact(tarball, dir) {
+  const artifacts = path.join(dir, 'artifacts')
+  mkdirSync(artifacts, { recursive: true })
+  const target = path.join(artifacts, path.basename(tarball))
+  copyFileSync(tarball, target)
+  return target
 }
 
 /** 装机参数：命令行 > 已有 profile > 交互提问。 */
@@ -112,8 +124,27 @@ async function install(options) {
   const patchFile = path.join(dir, 'cordis.patch.yml')
   const plan = await planSlots(options, patchFile)
 
-  const tarball = packPlugin()
-  writeProfilePackage(dir, pluginName(), tarball)
+  const context = resolveInstallContext({
+    packageDir: producerDir,
+    profile: options.profile,
+    tarballOption: options.tarball,
+    profileDir: dir,
+  })
+
+  let tarball
+  let skillsTarget
+  if (context.mode === 'repo') {
+    tarball = packPlugin()
+    skillsTarget = context.skillsTargetDir
+  } else {
+    tarball = copyArtifact(context.tarball, dir)
+    process.stdout.write(`▸ 使用下载的安装包：${context.tarball}\n`)
+    const names = installSkills(context.skillsSourceDir, context.skillsTargetDir)
+    process.stdout.write(`▸ 工艺包已复制到 ${context.skillsTargetDir}（${names.length} 个）\n`)
+    skillsTarget = context.skillsTargetDir
+  }
+
+  writeProfilePackage(dir, context.pluginName, tarball)
   installDependencies(options.profile)
 
   const managed = buildManagedEntries({
@@ -130,7 +161,7 @@ async function install(options) {
     },
     cloud: { baseUrl: plan.cloudBaseUrl, environment: plan.environment },
     tokenRef: plan.tokenRef,
-    skillsDir,
+    skillsDir: skillsTarget,
   })
   writePatch(patchFile, mergePatchEntries(readPatch(patchFile), managed))
   process.stdout.write(`▸ profile 已写入：${dir}\n`)
@@ -176,7 +207,7 @@ async function doctor(options) {
     profileDir: dir,
     patchFile: path.join(dir, 'cordis.patch.yml'),
     credentialsFile: credentialsFile(),
-    repoVersion: pluginVersion(),
+    expectedVersion: pluginVersion(),
     pluginName: pluginName(),
   })
   process.stdout.write(`\n装机自检（profile ${options.profile}，dsh home ${dshHome()}）\n`)

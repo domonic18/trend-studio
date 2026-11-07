@@ -3,13 +3,13 @@
  * 每项独立采集、独立报告——一项不过不掩盖其他项。
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { readRef } from './credentials.mjs'
 import { health, session } from './cloud.mjs'
 import { probeModel } from './model.mjs'
 import { readManagedConfig } from './profile.mjs'
+import { runDsh } from './dsh.mjs'
 
 function skillCount(dir) {
   if (!existsSync(dir)) return 0
@@ -35,7 +35,7 @@ function hostRowDisabled(dump, id) {
 
 /** dsh 组合后的配置树；起不来时返回 null。 */
 function dumpConfig(profile) {
-  const dump = spawnSync('dsh', ['--profile', profile, '--dump-config'], {
+  const dump = runDsh(['--profile', profile, '--dump-config'], {
     cwd: os.tmpdir(),
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
@@ -51,16 +51,16 @@ export async function runDoctor(input) {
     ? readManagedConfig(input.patchFile)
     : { model: null, cloud: { baseUrl: '', environment: '', tokenRef: '' }, skillsDirs: [] }
 
-  // ① 插件版本：装进 profile 的版本必须等于仓库版本，否则行为与源码不一致
+  // ① 插件版本：装进 profile 的版本必须等于安装包版本，否则行为与源码不一致
   const installedManifest = path.join(input.profileDir, 'node_modules', input.pluginName, 'package.json')
   const installedVersion = existsSync(installedManifest)
     ? (JSON.parse(readFileSync(installedManifest, 'utf8')).version ?? '')
     : ''
-  checks.push(installedVersion === input.repoVersion
-    ? { id: 'plugin_version', label: '插件版本', status: 'pass', detail: `${installedVersion}（与仓库一致）` }
+  checks.push(installedVersion === input.expectedVersion
+    ? { id: 'plugin_version', label: '插件版本', status: 'pass', detail: `${installedVersion}（与安装包一致）` }
     : { id: 'plugin_version', label: '插件版本', status: 'fail', detail: installedVersion === ''
       ? `profile 里没装 ${input.pluginName}——先跑 setup install`
-      : `装的是 ${installedVersion}，仓库是 ${input.repoVersion}——重跑 setup install` })
+      : `装的是 ${installedVersion}，安装包是 ${input.expectedVersion}——重跑 setup install` })
 
   // ② skills 活挂载：目录存在且确实有技能包
   const mounted = managed.skillsDirs.filter(dir => skillCount(dir) > 0)
