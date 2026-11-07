@@ -267,6 +267,7 @@ test('OpenAPI 与注册路由双向一致', async () => {
       .filter(route => !route.includes(' /admin'))
       .filter(route => route !== 'GET /metrics')
       .filter(route => !/^GET \/(assets\/|downloads\/)/.test(route))
+      .filter(route => route !== 'GET /install-producer.sh')
       .filter(route => !/^GET \/.*\.html$/.test(route))
       .filter(route => !['GET /routes.json', 'GET /sitemap.xml', 'GET /robots.txt', 'GET /favicon.ico'].includes(route)),
   )

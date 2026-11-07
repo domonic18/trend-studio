@@ -281,6 +281,19 @@ export async function buildApp({
     app.get('/admin', async (_request, reply) => reply.redirect('/admin/'))
   }
 
+  // 教员生产端一键安装脚本：脚本本体在 content/ 下（compose 挂宿主目录，
+  // 改完即时生效），响应时把站点地址填进去——教员一条命令就能装。
+  const installerFile = join(process.cwd(), 'content', 'install-producer.sh')
+  if (existsSync(installerFile)) {
+    app.get('/install-producer.sh', async (_request, reply) => {
+      const template = await readFile(installerFile, 'utf8')
+      return reply
+        .header('cache-control', 'no-store')
+        .type('text/plain; charset=utf-8')
+        .send(template.replaceAll('__BASE_URL__', config.publicBaseUrl))
+    })
+  }
+
   // 公开门户：预渲染产物按文件精确注册，不做通配，避免遮蔽 /v1。
   const portalDir = join(process.cwd(), 'dist', 'portal')
   const portalStatic = existsSync(join(portalDir, 'index.html'))
@@ -328,6 +341,9 @@ export async function buildApp({
       setHeaders: (reply: FastifyReply, filePath: string) => {
         const name = filePath.split(sep).pop() ?? ''
         if (name.endsWith('.html') || name === 'routes.json') {
+          reply.header('cache-control', 'no-store')
+        } else if (name.endsWith('.sh')) {
+          // 安装脚本随站点演进，缓存住会教员拿到旧版。
           reply.header('cache-control', 'no-store')
         } else if (name === 'sitemap.xml' || name === 'robots.txt') {
           reply.header('cache-control', 'public, max-age=3600')

@@ -10,6 +10,9 @@ const outDir = join(root, 'dist', 'portal')
 const ssrDir = join(root, 'dist', 'portal-ssr')
 const entry = join(portalRoot, 'src', 'entry-server.tsx')
 const origin = (process.env.PUBLIC_BASE_URL ?? 'http://127.0.0.1:3939').replace(/\/+$/, '')
+// 门户前端要知道站点根地址（教员页的一键安装命令用）。构建期写死一份，
+// 运行期浏览器实际地址优先——内网访问时构建期地址未必对得上。
+process.env.VITE_SITE_ORIGIN = origin
 
 function escapeHtml(value) {
   return value

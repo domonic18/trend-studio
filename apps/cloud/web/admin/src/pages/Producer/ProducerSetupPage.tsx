@@ -137,7 +137,7 @@ export function ProducerSetupPage() {
           </Typography.Paragraph>
           <Command>node scripts/setup.mjs</Command>
           <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-            脚本会写 dsh profile、复制九个工艺包进 profile、装依赖、换发云端会话令牌，最后跑完七项自检。
+            脚本会写 dsh profile、复制九个工艺包进 profile、装依赖、换发云端会话令牌，最后跑完八项自检。
           </Typography.Paragraph>
         </Card>
 

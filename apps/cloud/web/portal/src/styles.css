@@ -709,6 +709,44 @@ a:hover {
   margin-right: 2px;
 }
 
+/* ---- 折叠区（手动安装步骤） ---- */
+
+.manual-fold {
+  margin-top: 26px;
+  border: 1px solid var(--portal-border);
+  border-radius: 14px;
+  background: var(--portal-panel);
+}
+
+.manual-fold > summary {
+  padding: 16px 22px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--portal-primary);
+  list-style: none;
+}
+
+.manual-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.manual-fold > summary::before {
+  content: '▸ ';
+}
+
+.manual-fold[open] > summary::before {
+  content: '▾ ';
+}
+
+.manual-fold > *:not(summary) {
+  margin-left: 22px;
+  margin-right: 22px;
+}
+
+.manual-fold > *:last-child {
+  margin-bottom: 22px;
+}
+
 /* ---- 下载 ---- */
 
 .download-card {
