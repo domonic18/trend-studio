@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join, sep } from 'node:path'
 import cors from '@fastify/cors'
@@ -336,23 +336,25 @@ export async function buildApp({
         }
       },
     })
-
-    const downloadsDir = join(process.cwd(), 'dist', 'downloads')
-    if (existsSync(downloadsDir)) {
-      await app.register(fastifyStatic, {
-        root: downloadsDir,
-        prefix: '/downloads/',
-        wildcard: false,
-        decorateReply: false,
-        index: false,
-        cacheControl: false,
-        setHeaders: (reply: FastifyReply, filePath: string) => {
-          reply.header('cache-control', 'public, max-age=86400')
-          reply.header('content-disposition', `attachment; filename="${basename(filePath).replace(/"/g, '')}"`)
-        },
-      })
-    }
   }
+
+  // 下载制品：独立于门户静态（插件包不依赖门户构建），且 wildcard 必须为 true——
+  // wildcard:false 时 @fastify/static 在注册那一刻 glob 目录并按文件建路由，之后发布的
+  // 制品（发布脚本在服务运行中落盘）会一直 404 直到重启服务。下载目录是运行期产物。
+  const downloadsDir = join(process.cwd(), 'dist', 'downloads')
+  mkdirSync(downloadsDir, { recursive: true })
+  await app.register(fastifyStatic, {
+    root: downloadsDir,
+    prefix: '/downloads/',
+    wildcard: true,
+    decorateReply: false,
+    index: false,
+    cacheControl: false,
+    setHeaders: (reply: FastifyReply, filePath: string) => {
+      reply.header('cache-control', 'public, max-age=86400')
+      reply.header('content-disposition', `attachment; filename="${basename(filePath).replace(/"/g, '')}"`)
+    },
+  })
 
   // 深链由前端路由处理；只接管浏览器导航，API 404 保持原样。
   app.setNotFoundHandler(async (request, reply) => {
