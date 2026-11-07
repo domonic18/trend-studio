@@ -418,7 +418,9 @@ A9 装机向导（单 profile / 单模型 / 交互 login / 自检）
 **落地状态（2026-11-07）**：A1 ✅ 契约 `assets.ts` / `production-task.ts`，云端需求 v0.23 / 清单 v0.21；
 A2 ✅ 云端 `upload-ticket` / `upload-confirm` / PUT 直传（带凭据即以凭据为准，会话不顶替）+ producer 权限放开；
 A3 ✅ 生产端 `cloud_asset_create` / `cloud_asset_upload` / `cloud_asset_ingest` / `cloud_asset_list`
-+ 流式直传通道（字节不经插件进程）+ `material-ingest` 技能包。
++ 流式直传通道（字节不经插件进程）+ `material-ingest` 技能包；
+A4 ✅ 云端 `production_tasks` 表（节 × 步骤 × 状态 × 预算，迁移 022）+ 三个端点
+（`POST/GET /production-tasks`、`GET /courses/:id/production-board`），看板聚合含步骤、产出计数与最近评审结论。
 
 ### 12.3 每批次的完成定义
 

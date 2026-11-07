@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.25）
+# 趋势课程云端服务 · 架构设计（v0.26）
 
-版本：v0.25（2026-11-07；M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签；此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语；发布失败改为按机器可读错误码给中文指引（`approval_required`/`approval_stale`/`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven`）；零新增云端端点、零新增表、零契约字段变更）
+版本：v0.26（2026-11-07；**生产任务状态机落地**（§6.5.10）——新增表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022）与三个端点：`POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出）、`GET /v1/admin/content/courses/{courseId}/production-board`（看板聚合：每节一行，含已落库步骤、正文版本、课件/图示/案例股计数与最近评审结论）。九步顺序 `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance` 由生产端引擎强制（§6.5.10），云端只存状态不做调度；权限 operator/admin/producer）
+v0.25（2026-11-07；M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签；此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语；发布失败改为按机器可读错误码给中文指引（`approval_required`/`approval_stale`/`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven`）；零新增云端端点、零新增表、零契约字段变更）
 v0.24（2026-11-06；P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`，每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体（def/rule/misuse/risk）齐全且原 `:::warn` body 逐字保留只加 `variant`；既有 grounded 内容零丢失（逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code）；经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链）
 v0.23（2026-11-06；P0 收口：新增 `DELETE /v1/admin/content/sections/{sectionId}/figures/{figureId}` 图示纠错删除端点（§6.6.2）——图示行与候选行同事务删除、候选字节文件一并清理，图示不在该节下 `404`，草稿/已发布均可删；删除改课程内容指纹 → 既有终审审批转 `approval_stale`；补上生产端唯一的图示纠错回路，此前写错的图示只能人工清理。M10 里程碑行与 §8 待冻结项按已落地事实回写）
 v0.22（2026-11-06；M10 呈现层对齐原型：DSL 升 **v3**——新增 `:::think`（折叠思考）、`:::sidenote`（术语边注）、`:::cards`（目标卡网格）三块，`:::warn` 增 `def/rule/misuse/risk` 四型变体（配额 think ≤3 / sidenote ≤8 / cards ≤2）；课件白名单扩至 11 类，新增 `image-juxtaposition`（前后对比滑块）与 `branching-scenario`（分支情景练习），两者 `spec_version=2` 且 6 条断言证明器已落地（迁移 021 扩 `widget_specs.type` CHECK 约束）；渲染侧 `@trend/widgets` 补三个新块渲染器、对比滑块与决策树组件，管理台节预览与课程预览同源接入）
@@ -193,6 +194,7 @@ erDiagram
   CONCEPTS ||--o{ CONCEPT_EDGES : relates
   SECTIONS }o--o{ SOURCE_UNITS : grounded_in
   SECTIONS ||--o{ SECTION_CASE_STOCKS : anchors
+  SECTIONS ||--o{ PRODUCTION_TASKS : tracks
   USERS ||--o{ DEVICES : authorizes
   DEVICES ||--o{ TOKENS : holds
   USERS ||--o{ PLAYBACK_SESSIONS : starts
@@ -249,6 +251,7 @@ erDiagram
 | `concept_edges`（M9） | `edge_id`、`course_id`、`from_concept_id`、`to_concept_id`、`kind(prerequisite/related)` | 有向边；禁止自环；`prerequisite` 用于节排序校验与 `timeline-explorer` |
 | `widget_specs`（M9，M10 扩容） | `widget_id`、`section_id`、`course_id`、`type`、`spec_version`、`spec jsonb`、`assertions jsonb`、`validation jsonb`（证明记录）、`citations jsonb`、`status`、`version` | `type` 仅白名单 8 类（§6.5.5；M10 扩容 3 类见 §6.6.5，随 `spec_version=2` 冻结）；`spec` 服务端按 schema 复检；`validation` 必须包含全部断言的通过证明，缺失即拒绝入库；`draft` 对学员不可见；每节建议 1–3 个 |
 | `section_case_stocks`（M10） | `stock_ref_id`、`section_id`、`course_id`、`name`、`exchange(SZSE/SSE/BSE)`、`code`（6 位数字）、`period`（K 线周期 `1d` 日线 / `1w` 周线，缺省 `1d`）、`window_start/window_end`（DATE）、`events jsonb`（`[{date,label,unitId}]`）、`note`、`status`、`position` | `(section_id, code)` 唯一；事件 `date` 必须落在 `[window_start, window_end]` 内；`unitId` 必须可回溯 source unit；`draft` 不下发；由生产端提取、云端复检后落库（§6.6.3） |
+| `production_tasks`（M9+，A4 落地） | `task_id`、`course_id`、`section_id`、`step`、`status`、`attempt`、`max_attempts`、`note`、`created_at/updated_at` | 一节一步一行：`(course_id, section_id, step)` 唯一；`step` 限九步固定顺序、`status` 限 `pending/running/done/blocked/failed`；`note` ≤2000 字放阻塞原因；随节级联删；只记状态不存正文 |
 | `course_stock_quotes`（M10） | `code`、`period`（`1d` 日线 / `1w` 周线，缺省 `1d`）、`trade_date`、`open/high/low/close`、`volume`、`source('tencent-qfq')`、`fetched_at` | `(code, period, trade_date)` 唯一；仅前复权 OHLCV 原始值，不混复权口径；日线与周线各存原生一份（迁移 020），周期由案例股声明；只同步已入库案例股清单内 code；复权价差在渲染层声明，不改数据 |
 
 建库插件：`pgvector`（`halfvec`）、`pg_trgm`；检索索引与向量索引分离于业务表，可在线重建（M3 后台触发）。
@@ -626,6 +629,23 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 - **发布门禁**：无 `gate=final` 记录 → `409 approval_required`；有但指纹不符 → `409 approval_stale`（附 expected/actual 指纹前 16 位便于比对）。修正方式：重新签批。
 - **实现位置**：指纹计算为纯函数模块 `src/production/digest.ts`（`canonicalJson`/`sha256Hex`/`digestOfManifest`），审批读写为 `src/production/approvals.ts`；门禁挂在 `PipelineService.publishCourse` 的全部内容门禁之后。
 - **章节课程兼容**：M8/管线生成的课程只有章节、无节，指纹必须同时覆盖章节与节（否则章节课程的审批指纹为空、门禁形同虚设）。
+
+#### 6.5.10 生产任务状态机与看板聚合（M9+，A4 落地）
+
+**问题**：九步生产顺序此前只是 `skills/section-production` 的文档纪律——生产端跳步、云端无痕、看板上什么都看不见，人只能靠问「这节做到哪了」。
+
+**方案**：九步落成「节 × 步骤」的任务行，云端只存状态不调度，生产端引擎负责按序推进并回报。
+
+| 环节 | 定义 |
+|---|---|
+| 步骤 | `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance`（契约 `packages/contracts/src/production-task.ts`，中文标签同源，供看板列名与流程向导共用） |
+| 状态 | `pending`（未开始）/ `running`（进行中）/ `done`（完成）/ `blocked`（阻塞，等人决策）/ `failed`（失败，待重试）；`attempt` 记尝试次数、`max_attempts` 记预算、`note` 记阻塞原因（≤2000 字） |
+| 写入 | `POST /v1/admin/content/production-tasks`，按 `(courseId, sectionId, step)` 幂等 upsert（重试覆盖同一行，`task_id` 不变）；节不存在 `404`，非法 step/status `400` |
+| 读取 | `GET /v1/admin/content/production-tasks?courseId=&sectionId=`；`GET /v1/admin/content/courses/{courseId}/production-board` 聚合每节一行——已落库步骤（按九步顺序）+ 正文版本 + 课件/图示/案例股计数 + 最近一次评审结论（取 `ai_runs` 中 `content.rubric_review` 的 `summary.verdict`） |
+| 权限 | operator/admin/producer；**只记状态，不改内容**——任务行不参与发布门禁，也不影响内容指纹（§6.5.9） |
+
+- **不变量**：任务行只描述「做到哪」，不含任何正文或产物内容；`note` 是唯一的自由文本出口，长度受限。
+- **看板只渲染已落库步骤**：未开始的步骤不入列，由前端按九步顺序补位——避免「空行」与「尚未开始」混淆。
 
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 
