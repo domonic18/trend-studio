@@ -45,6 +45,10 @@ let adminToken = ''
 let imageCalls = 0
 let holdProbe = false
 let releaseProbe: (() => void) | null = null
+let probeDurationMs = 60_000
+let asrHoldAfterFirst = false
+let asrHeldCount = 0
+const asrResolvers: (() => void)[] = []
 let reindexCalls = 0
 let reindexFails = false
 const STUDENT_PASSWORD = 'pipeline-student-pass-1234'
@@ -135,7 +139,7 @@ const fakeProcessor: MediaProcessor = {
       })
       holdProbe = false
     }
-    return { durationMs: 60_000, videoCodec: 'h264', audioCodec: 'aac', width: 1280, height: 720 }
+    return { durationMs: probeDurationMs, videoCodec: 'h264', audioCodec: 'aac', width: 1280, height: 720 }
   },
 
   async transcode(assetId, options) {
@@ -184,6 +188,13 @@ const fakeProcessor: MediaProcessor = {
 
 const fakeAsr: LongFormAsr = {
   async transcribe({ durationMs }) {
+    if (asrHoldAfterFirst) {
+      asrHeldCount += 1
+      if (asrHeldCount > 1) {
+        // 除第一块外都挂起——模拟长转写，用来验证增量产出。
+        await new Promise<void>((resolve) => { asrResolvers.push(resolve) })
+      }
+    }
     const half = Math.max(1, Math.floor(durationMs / 2))
     return [
       { startMs: 0, endMs: half, text: '趋势反转的初步信号。' },
@@ -460,6 +471,63 @@ function releaseGate(): void {
   const release = releaseProbe
   releaseProbe = null
   release?.()
+}
+
+function armAsrHold(): void {
+  asrHoldAfterFirst = true
+  asrHeldCount = 0
+  asrResolvers.length = 0
+}
+
+function releaseAsr(): void {
+  asrHoldAfterFirst = false
+  const pending = asrResolvers.splice(0, asrResolvers.length)
+  for (const resolve of pending) resolve()
+}
+
+interface TranscriptBody {
+  transcript: {
+    transcriptId: string
+    assetId: string
+    status: string
+    language: string
+    durationMs: number | null
+    chunkCount: number
+    segmentCount: number
+    errorCode: string | null
+    partial: boolean
+  }
+  segments: { idx: number; startMs: number; endMs: number; text: string }[]
+  total: number
+  offset: number
+  limit: number
+}
+
+/** 转写行还没建时返回 null（404），不是错误。 */
+async function fetchTranscript(assetId: string): Promise<TranscriptBody | null> {
+  const response = await app.inject({
+    method: 'GET',
+    url: `/v1/admin/content/media-assets/${assetId}/transcript?offset=0&limit=500`,
+    headers: adminHeaders(),
+  })
+  if (response.statusCode === 404) return null
+  assert.equal(response.statusCode, 200, response.body)
+  return response.json() as TranscriptBody
+}
+
+async function waitForTranscript(
+  assetId: string,
+  predicate: (page: TranscriptBody) => boolean,
+  timeoutMs = 10_000,
+): Promise<TranscriptBody> {
+  const deadline = Date.now() + timeoutMs
+  let last: TranscriptBody | null = null
+  while (Date.now() < deadline) {
+    last = await fetchTranscript(assetId)
+    if (last !== null && predicate(last)) return last
+    await delay(50)
+  }
+  assert.fail(`transcript did not reach expected state: ${JSON.stringify(last)}`)
 }
 
 before(async () => {
@@ -1016,6 +1084,80 @@ test('管线：转码转写闭环、重复入队、任务列表与指标', async
   assert.match(metricsResponse.body, /trend_coach_pipeline_jobs_total\{kind="ingest",status="succeeded"\} 1/)
   assert.match(metricsResponse.body, /trend_coach_pipeline_queue_depth/)
   assert.match(metricsResponse.body, /trend_coach_pipeline_stage_duration_seconds/)
+})
+
+test('A6 增量产出：转写未完时已转写段落与 source unit 均可读', async () => {
+  const previousDuration = probeDurationMs
+  probeDurationMs = 1_200_000
+  armAsrHold()
+  try {
+    const asset = await createAsset(COURSE_ID, '增量视频')
+    await uploadSource(asset.assetId, SOURCE, sha256(SOURCE))
+
+    const job = await enqueueIngest(asset.assetId)
+    await waitForJob(job.jobId, current => current.status === 'running')
+
+    // 第一块转写完成即增量发布——此时 ingest 还没结束。
+    const partial = await waitForTranscript(asset.assetId, page => page.segments.length > 0)
+    assert.equal(partial.transcript.status, 'processing')
+    assert.equal(partial.transcript.partial, true)
+    assert.ok(partial.total > 0)
+    assert.equal(partial.total, partial.segments.length)
+    assert.ok(partial.transcript.chunkCount >= 2, '长音频应切成多块')
+
+    const assetList = await app.inject({
+      method: 'GET',
+      url: `/v1/admin/content/media-assets?courseId=${COURSE_ID}`,
+      headers: adminHeaders(),
+    })
+    const processing = (assetList.json() as { assets: AssetBody[] }).assets
+      .find(item => item.assetId === asset.assetId)
+    assert.equal(processing?.status, 'processing', '转写未完时素材不得翻成 ready')
+
+    // 素材仍在处理中，source unit 照样可读——但要如实回 partial。
+    const written = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/content/source-units',
+      headers: adminHeaders(),
+      payload: {
+        units: [{
+          assetId: asset.assetId,
+          startMs: 0,
+          endMs: 1000,
+          transcriptText: '趋势反转的初步信号。',
+          summary: '趋势反转的初步信号',
+        }],
+      },
+    })
+    assert.equal(written.statusCode, 200, written.body)
+    const unitId = (written.json() as { saved: { unitId: string }[] }).saved[0]?.unitId
+    assert.ok(unitId !== undefined)
+
+    const readUnits = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/content/source-units/read',
+      headers: adminHeaders(),
+      payload: { unitIds: [unitId] },
+    })
+    assert.equal(readUnits.statusCode, 200, readUnits.body)
+    const readBody = readUnits.json() as { units: unknown[]; partial: boolean }
+    assert.equal(readBody.units.length, 1)
+    assert.equal(readBody.partial, true)
+
+    // 放行剩余转写——结束后转终值。
+    releaseAsr()
+    const succeeded = await waitForJob(job.jobId, current => current.status === 'succeeded')
+    assert.equal(succeeded.errorCode, null)
+
+    const final = await fetchTranscript(asset.assetId)
+    assert.ok(final !== null)
+    assert.equal(final.transcript.status, 'ready')
+    assert.equal(final.transcript.partial, false)
+    assert.equal(final.total, final.transcript.segmentCount)
+  } finally {
+    probeDurationMs = previousDuration
+    releaseAsr()
+  }
 })
 
 test('管线：运行中取消、失败状态与重试恢复', async () => {

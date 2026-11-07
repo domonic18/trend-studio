@@ -102,6 +102,8 @@ export interface TranscriptPage {
     chunkCount: number
     segmentCount: number
     errorCode: string | null
+    /** A6：转写未完成时为 true——segments 是已转写部分的前缀，后续还会增长。 */
+    partial: boolean
   }
   segments: { idx: number; startMs: number; endMs: number; text: string }[]
   total: number
@@ -788,8 +790,9 @@ export class PipelineService implements PipelineApi {
       start_ms: string | number
       end_ms: string | number
       text: string
+      total: string | number | null
     }>(
-      `SELECT idx, start_ms, end_ms, text FROM transcript_segments
+      `SELECT idx, start_ms, end_ms, text, count(*) OVER () AS total FROM transcript_segments
        WHERE transcript_id = $1
        ORDER BY idx
        OFFSET $2 LIMIT $3`,
@@ -804,6 +807,10 @@ export class PipelineService implements PipelineApi {
     for (const segment of segments) {
       if (codePointLength(segment.text) > 4000) throw new HttpError(500, 'stored transcript invalid')
     }
+    // A6：total 是「当前可读段数」而非终值——增量产出期间它会随转写推进增长。
+    const total = segmentRows[0]?.total === null || segmentRows[0]?.total === undefined
+      ? row.segment_count
+      : Number(segmentRows[0].total)
     return {
       transcript: {
         transcriptId: row.transcript_id,
@@ -814,9 +821,10 @@ export class PipelineService implements PipelineApi {
         chunkCount: row.chunk_count,
         segmentCount: row.segment_count,
         errorCode: row.error_code,
+        partial: row.status === 'processing',
       },
       segments,
-      total: row.segment_count,
+      total,
       offset: page.offset,
       limit: page.limit,
     }

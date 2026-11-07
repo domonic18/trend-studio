@@ -359,6 +359,17 @@ export class PipelineWorker {
       )
     }
 
+    // 关键帧轨道（M9 · A6）：抽帧与 ASR 无关，提前到转写之前跑完——
+    // 转写未完成时生产端也能拿到画面证据做部分理解。
+    await onProgress('keyframes', 56)
+    try {
+      await this.ensureKeyframeTrack(assetId, durationMs, signal, onProgress)
+    } catch (error) {
+      if (error instanceof JobCanceledError) throw error
+      if (error instanceof MediaToolError && error.reason === 'canceled') throw new JobCanceledError()
+    }
+    assertNotCanceled(signal)
+
     await onProgress('transcribe', 60)
     assertNotCanceled(signal)
 
@@ -410,6 +421,8 @@ export class PipelineWorker {
           assertNotCanceled(signal)
           await this.transcribeChunk(row, assetId, language, signal, asr, resolved.model)
           completed += 1
+          // A6 增量产出：已完成 chunk 立刻落成 segment，转写未完也可消费前缀。
+          await this.publishSegments(transcriptId)
           await onProgress('transcribe', 60 + Math.round((completed / total) * 35))
         } catch (error) {
           failure ??= error
@@ -419,16 +432,6 @@ export class PipelineWorker {
     })
     await Promise.all(runners)
     if (failure !== null) throw failure
-    assertNotCanceled(signal)
-
-    // 关键帧轨道（M9）：转写完成后抽帧，供生产端 VLM 做画面理解；失败不阻断建课。
-    await onProgress('keyframes', 88)
-    try {
-      await this.ensureKeyframeTrack(assetId, durationMs, signal, onProgress)
-    } catch (error) {
-      if (error instanceof JobCanceledError) throw error
-      if (error instanceof MediaToolError && error.reason === 'canceled') throw new JobCanceledError()
-    }
     assertNotCanceled(signal)
 
     await onProgress('finalize', 95)
@@ -489,7 +492,7 @@ export class PipelineWorker {
       }
       done += 1
       if (done % 10 === 0) {
-        await onProgress('keyframes', 88 + Math.round((done / total) * 6)).catch(() => undefined)
+        await onProgress('keyframes', 56 + Math.round((done / total) * 3)).catch(() => undefined)
       }
     }
     await buildKeyframeManifest(keyframeDir)
@@ -610,6 +613,59 @@ export class PipelineWorker {
       [transcriptId],
     )
     return rows
+  }
+
+  /**
+   * A6 增量产出：把已完成 chunk 的句子落成 segment——转写未完也可消费前缀。
+   * 并发 runner 的发布用 transcript 行锁串行化，且在锁内重读 chunk 状态，
+   * 避免后到的发布用旧快照覆盖先到的。只更新计数，不改 status——
+   * ready 仍由 finalizeTranscript 单独决定。
+   */
+  private async publishSegments(transcriptId: string): Promise<void> {
+    const client = await this.deps.pool.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query(
+        'SELECT transcript_id FROM media_transcripts WHERE transcript_id = $1 FOR UPDATE',
+        [transcriptId],
+      )
+      const { rows } = await client.query<ChunkRow>(
+        `SELECT chunk_id, idx, start_ms, end_ms, status, sentences
+         FROM transcript_chunks WHERE transcript_id = $1 ORDER BY idx`,
+        [transcriptId],
+      )
+      const done = rows.filter(row => row.status === 'done')
+      if (done.length === 0) {
+        await client.query('COMMIT')
+        return
+      }
+      const sentences = mergeChunkSentences(done.map(row => ({
+        startMs: milliseconds(row.start_ms),
+        endMs: milliseconds(row.end_ms),
+        sentences: parseSentences(row.sentences),
+      })))
+      const segments = groupTranscriptSegments(sentences, this.deps.config.transcriptSegmentMaxSec)
+      await client.query('DELETE FROM transcript_segments WHERE transcript_id = $1', [transcriptId])
+      for (const [index, segment] of segments.entries()) {
+        await client.query(
+          `INSERT INTO transcript_segments (transcript_id, idx, start_ms, end_ms, text)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [transcriptId, index, segment.startMs, segment.endMs, segment.text],
+        )
+      }
+      await client.query(
+        `UPDATE media_transcripts
+         SET chunk_count = $2, segment_count = $3, updated_at = now()
+         WHERE transcript_id = $1`,
+        [transcriptId, rows.length, segments.length],
+      )
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   private async finalizeTranscript(

@@ -80,11 +80,14 @@ export class PlaybackService {
   /**
    * 按 asset + 可选时间窗签发会话；调用方负责归属校验（admin 预览不限归属，学员端校验节正文 clip 窗）。
    * principal 只需 userId：学员端是设备令牌主体，没有会话角色。
+   * A6：allowPartial 放行「转写未完但 HLS 已就绪」的素材给生产端；
+   * 学员端不传此选项，行为不变。
    */
   async createAssetSession(
     principal: { userId: string; deviceId?: string },
     assetId: string,
     window: AssetPlaybackWindow,
+    options: { allowPartial?: boolean } = {},
   ): Promise<AssetPlaybackSessionOut> {
     const { fromSec, toSec } = window
     if ((fromSec === undefined) !== (toSec === undefined)) {
@@ -102,7 +105,9 @@ export class PlaybackService {
     )
     const asset = rows[0]
     if (asset === undefined) throw new HttpError(404, 'media asset not found')
-    if (asset.status !== 'ready' || asset.hls_path === null) throw new HttpError(503, 'media asset unavailable')
+    const usable = asset.status === 'ready'
+      || (options.allowPartial === true && asset.status === 'processing')
+    if (!usable || asset.hls_path === null) throw new HttpError(503, 'media asset unavailable')
 
     const sessionId = `ps_${randomToken(8)}`
     const expiresAt = Date.now() + this.config.playbackSessionTtlSec * 1000

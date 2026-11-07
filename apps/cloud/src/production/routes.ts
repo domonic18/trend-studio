@@ -98,7 +98,7 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     return reply.code(201).send(await playback.createAssetSession(principal, assetId, {
       ...(fromSec === undefined ? {} : { fromSec }),
       ...(toSec === undefined ? {} : { toSec }),
-    }))
+    }, { allowPartial: true }))
   })
 
   app.post('/v1/admin/content/source-units', async (request, reply) => {
@@ -133,7 +133,7 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     for (const unit of evidence.units) {
       const fromSec = Math.floor(unit.startMs / 1000)
       const toSec = Math.min(Math.ceil(unit.endMs / 1000), fromSec + 3600)
-      const session = await playback.createAssetSession(principal, unit.assetId, { fromSec, toSec })
+      const session = await playback.createAssetSession(principal, unit.assetId, { fromSec, toSec }, { allowPartial: true })
       units.push({
         unitId: unit.unitId,
         assetId: unit.assetId,
@@ -158,7 +158,7 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
         },
       })
     }
-    return reply.send({ units })
+    return reply.send({ units, partial: evidence.partial })
   })
 
   app.post('/v1/admin/content/source-units/reindex', async (request, reply) => {

@@ -652,7 +652,8 @@ export class ProductionService {
 
   /**
    * M3b：source unit 完整证据读取——转写原文、视觉描述与窗内关键帧。
-   * 全有或全无：任一 unitId 不存在或其素材未就绪 → 409 unit_not_readable。
+   * A6：素材仍在处理（转写未完）时也放行——已落库的 unit 本身有效，
+   * 但要如实回 partial=true，让调用方知道素材的 unit 集合尚未齐。
    */
   async readSourceUnits(rawUnitIds: unknown): Promise<{
     units: {
@@ -664,6 +665,7 @@ export class ProductionService {
       visual: Record<string, unknown>
       keyframes: { sec: number; width: number; height: number }[]
     }[]
+    partial: boolean
   }> {
     const unitIds = idArray(rawUnitIds, 'unitIds', SOURCE_UNIT_ID, 20)
     if (unitIds.length < 1) throw badRequest('unitIds must contain 1–20 items')
@@ -674,12 +676,14 @@ export class ProductionService {
       end_ms: string | bigint
       transcript_text: string
       visual: unknown
+      asset_status: string
     }>(
-      `SELECT su.unit_id, su.asset_id, su.start_ms, su.end_ms, su.transcript_text, su.visual
+      `SELECT su.unit_id, su.asset_id, su.start_ms, su.end_ms, su.transcript_text, su.visual,
+              ma.status AS asset_status
          FROM source_units su
          JOIN media_assets ma ON ma.asset_id = su.asset_id
         WHERE su.unit_id = ANY($1::text[])
-          AND ma.status = 'ready' AND ma.hls_path IS NOT NULL`,
+          AND ma.status IN ('ready', 'processing') AND ma.hls_path IS NOT NULL`,
       [unitIds],
     )
     if (rows.length !== unitIds.length) {
@@ -708,7 +712,8 @@ export class ProductionService {
         keyframes,
       })
     }
-    return { units }
+    const partial = rows.some(row => row.asset_status !== 'ready')
+    return { units, partial }
   }
 
   /**
