@@ -134,6 +134,11 @@ export function toolErrorCode(error: unknown): ToolErrorCode {
   return 'internal'
 }
 
+/** 会话失效与角色不足是两回事：前者要换发令牌，后者要换账号。 */
+function sessionExpired(error: UpstreamError): boolean {
+  return error.status === 401 || /session invalid or expired/i.test(error.message)
+}
+
 export function userMessage(error: unknown, operation: string): string {
   if (error instanceof InputError) return error.message
   if (error instanceof AuthError) return error.message
@@ -142,6 +147,13 @@ export function userMessage(error: unknown, operation: string): string {
     const failed = error.detail.failed
     if (error.businessCode === 'assertion_unproven' && Array.isArray(failed)) {
       return `${base}（未通过断言: ${failed.map(String).join('、')}）`
+    }
+    if (sessionExpired(error)) {
+      return `${base}｜云端后台会话已失效：用 producer 账号 POST /v1/auth/session 换发令牌，`
+        + '并写入 dsh credentials 的 TREND_PRODUCER_CONSOLE_TOKEN（换发不需要重建账号）'
+    }
+    if (error.status === 403) {
+      return `${base}｜当前账号无权执行该操作（发布、签批、账号与模型配置限 operator/admin）`
     }
     return base
   }

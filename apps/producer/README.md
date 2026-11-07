@@ -39,6 +39,10 @@ monorepo（`~/Code/trend-studio`）的生产插件应用。趋势交易课程**�
    默认 ref 名 `TREND_PRODUCER_CONSOLE_TOKEN`）。令牌只在请求头出现，不进日志/配置/代码。
 4. 令牌过期就重新走第 2 步换发；换发不需要重建账号。
 
+   令牌过期时所有 `cloud_*` 工具会回 `[forbidden] session invalid or expired`，并附带换发指引
+   （`POST /v1/auth/session` 换发 → 写入 dsh credentials 的 `TREND_PRODUCER_CONSOLE_TOKEN`）；
+   角色不足（producer 调发布/签批）回的是另一种提示——两者不可混为一谈。
+
 发布链路由 operator/admin 走：`POST /v1/admin/content/courses/:courseId/approvals`
 （gate=`final`，服务端算课程内容指纹）→ 发布端点。发布时服务端重算指纹比对，内容在
 审批后被改过即 `409 approval_stale`，无 final 审批即 `409 approval_required`。

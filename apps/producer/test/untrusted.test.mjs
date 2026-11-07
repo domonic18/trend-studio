@@ -61,3 +61,11 @@ test('assertion_unproven 的用户消息携带失败断言清单', () => {
   assert.match(userMessage(error, '提交课件'), /slopeRange/)
   assert.match(userMessage(error, '提交课件'), /noBreakBelow/)
 })
+
+test('会话失效与角色不足给不同的可行动提示', () => {
+  const expired = new UpstreamError(401, undefined, {}, 'session invalid or expired')
+  assert.match(userMessage(expired, '写节草稿'), /TREND_PRODUCER_CONSOLE_TOKEN/)
+  const forbidden = new UpstreamError(403, undefined, {}, 'forbidden')
+  assert.match(userMessage(forbidden, '写节草稿'), /operator\/admin/)
+  assert.doesNotMatch(userMessage(forbidden, '写节草稿'), /TREND_PRODUCER_CONSOLE_TOKEN/)
+})
