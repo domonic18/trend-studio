@@ -85,6 +85,14 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" \
             psql -U trend_coach -d postgres -c "CREATE DATABASE trend_coach_test OWNER trend_coach"
 
+      # coach 的 pretest 要用 ffmpeg 现场转出加密 HLS 夹具；runner 镜像不带
+      # ffmpeg，缺了会静默失败在夹具构建上，报错还看不出缺的是什么。
+      - name: Install ffmpeg / 安装 ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
       - name: Test / 跑全仓测试
         run: pnpm test
 
