@@ -1,7 +1,7 @@
 # 趋势课程生产插件 · 架构设计
 
-版本：v0.8（2026-11-06）
-状态：与云端架构 v0.24 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.8 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源）；回灌工艺固化为「保留既有内容、只增新块」——新增块的事实须先经 `cloud_source_units_read` 读回证据，不得自造。v0.7 P0 收口：新增 `cloud_figure_delete` 工具与云端 `DELETE .../sections/{id}/figures/{figureId}` 端点——图示写入的覆盖语义（同节同 kind 同 caption，`figure_id` 不变）救不回「废图烧掉配额」与「图示本身不该存在」两类情形，生产端此前唯一的纠错手段是覆盖，等于没有回路；补齐后图示纠错与课件纠错（`cloud_widget_delete`）对称。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
+版本：v0.9（2026-11-07）
+状态：与云端架构 v0.33 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.9 收口：**装机与分发（免仓库教员装机）**——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包与装机脚本、bundle `@trend/contracts` 与 `yaml`；装机脚本吃参数不读仓库，按「仓库模式 / 免仓库模式」分叉（仓库模式保留工艺包热迭代、免仓库模式把九个包复制进 profile 并让 `customSkillDirs` 指向它）；dsh 解析加 npx 兜底（教员机不必预装 harness）；doctor 的版本语义由「与仓库一致」改为「与安装包一致」。详见 §9。v0.8 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源）；回灌工艺固化为「保留既有内容、只增新块」——新增块的事实须先经 `cloud_source_units_read` 读回证据，不得自造。v0.7 P0 收口：新增 `cloud_figure_delete` 工具与云端 `DELETE .../sections/{id}/figures/{figureId}` 端点——图示写入的覆盖语义（同节同 kind 同 caption，`figure_id` 不变）救不回「废图烧掉配额」与「图示本身不该存在」两类情形，生产端此前唯一的纠错手段是覆盖，等于没有回路；补齐后图示纠错与课件纠错（`cloud_widget_delete`）对称。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
 
 ## 1. 定位与边界
 
@@ -120,7 +120,7 @@ M10 扩充（随 R1–R3 迭代）：
 |---|---|---|
 | ① install | 填模型 provider / 模型 id / base url / 协议 + 模型 API key | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 → 密钥写托管凭据库 |
 | ② login | 填云端账号密码 | `POST /v1/auth/session` 换发令牌 → 写托管凭据库 |
-| ③ doctor | 看结果 | 七项独立自检：插件版本 == 仓库版本 / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
+| ③ doctor | 看结果 | 七项独立自检：插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
 
 落点与不变量：
 
@@ -132,3 +132,52 @@ M10 扩充（随 R1–R3 迭代）：
 - **机密层**：`~/.dsh/.credentials.yaml` 的 `refs`（模型密钥 + 控制台令牌），profile 里只有引用名。
 - **自检读现状不读意图**：doctor 解析的是**装进 profile 的那份** patch、插件版本，以及
   `dsh --dump-config` 的**组合配置**——技能链路是否真被加载，看的是 dsh 合出来的结果，不是我们写了什么。
+
+## 10. 装机与分发（免仓库教员装机，v0.9）
+
+§9 的装机脚本此前**只在仓库里有意义**：它调 `scripts/pack.mjs` 现打 tarball，工艺包从仓库目录读。
+教员拿不到仓库——此前唯一的路是克隆整个 monorepo。本节把这条路径对外化。
+
+### 10.1 打包内容清单
+
+打包走**手工 stage 目录**（pnpm 的 isolated linker 不支持 `bundleDependencies`，`workspace:*` 依赖在包内不可解析）：
+
+| 路径 | 内容 | 为什么必须在包里 |
+|---|---|---|
+| `lib/` | 插件运行代码 | — |
+| `skills/` | 九个工艺包（各含 `SKILL.md`） | **`customSkillDirs` 指的是目录**——不带 `skills/`，脱离仓库装完即静默丢全部工艺包 |
+| `scripts/setup.mjs` + `scripts/setup/` | 独立装机脚本 | 教员机不装 dsh 也要能跑（脚本内部 npx 兜底） |
+| `node_modules/@trend/contracts`、`node_modules/yaml` | bundle 依赖 | `yaml` 是装机脚本的实际运行依赖（`profile.mjs` 的 `import YAML from 'yaml'`） |
+| `cordis.patch.yml`、`README.md` | 托管条目与说明 | — |
+
+- **坑**：pnpm 的 `node_modules/yaml` 是指向 `.pnpm/` 的符号链接，直接复制会把**悬空链接**打进包，教员侧 `import YAML from 'yaml'` 直接 `ERR_MODULE_NOT_FOUND`。复制必须 `realpathSync` + `dereference: true`。`yaml@2` 零运行时依赖，可整目录复制。
+- **制品内容实质变化即升版本**：`0.1.3 → 0.1.4`。
+
+### 10.2 两种模式
+
+`scripts/setup/context.mjs` 的 `resolveInstallContext({ packageDir, profile, tarballOption, profileDir })` 判模式，返回 `{mode, pluginName, pluginVersion, tarball, skillsSourceDir, skillsTargetDir, copySkills}`：
+
+| | 仓库模式 | 免仓库模式 |
+|---|---|---|
+| 触发 | 包内有 `scripts/pack.mjs` | `--tarball` 指定，或**自动识别**解包目录旁的 `dsh-plugin-trend-producer-*.tgz`（先精确匹配版本，再取最新 mtime） |
+| tarball | 现打（`pack.mjs`） | 用已下载的那份，**复制进 `<profileDir>/artifacts/<fileName>`** 再让 `file:` 依赖指这份副本 |
+| 工艺包来源 | 仓库 `apps/producer/skills` | 包内 `skills/` |
+| 工艺包落点 | **不复制**（保留热迭代），patch 指向仓库路径 | 复制进 `~/.dsh/profiles/<profile>/skills`，patch 指向该目录 |
+| 版本来源 | 仓库 `package.json` | 解包出的 `package/package.json` |
+
+- **找不到安装包要报错不要猜**：解包目录旁没有 tgz 且未给 `--tarball` 时抛「从官网重新下载安装包后解压再跑，或用 `--tarball` 指定路径」。
+- **`installSkills`** 只复制含 `SKILL.md` 的目录，目标目录里的同名旧包先清掉（避免留半旧包）。
+
+### 10.3 profile 目录布局（免仓库）
+
+```
+~/.dsh/profiles/trend-producer/
+├── package.json          # 插件依赖指向 artifacts/<fileName>（file:）
+├── cordis.patch.yml      # customSkillDirs → ./skills
+├── skills/               # 九个工艺包（从包内复制而来）
+└── artifacts/            # 安装包副本（重装不依赖「下载」目录）
+```
+
+### 10.4 dsh 解析
+
+`scripts/setup/dsh.mjs`：`dshCommand()` —— PATH 上有 `dsh` 就用它，否则 `npx --yes @deepseek-ai/dsh@<engines.dsh 版本>` 兜底。依赖安装（`dsh plugin --profile … install`）与 doctor 的 `--dump-config` 都走它——**教员机不必预装 harness**。

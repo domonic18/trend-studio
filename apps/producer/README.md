@@ -47,6 +47,25 @@ pnpm setup:doctor       # 只自检
 dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 ```
 
+## 免仓库装机（教员）
+
+教员**不必克隆本 monorepo**——从官网下载插件安装包（门户 `/teacher` 或 `/downloads`），
+校验 sha256 → 解压 → 跑同一个装机脚本：
+
+```bash
+npm i -g @deepseek-ai/dsh@0.2.1-rc.5   # harness；版本必须精确匹配（或全程用 npx 兜底）
+shasum -a 256 dsh-plugin-trend-producer-0.1.4.tgz   # 与页面给出的 sha256 比对
+tar -xzf dsh-plugin-trend-producer-0.1.4.tgz
+cd package && node scripts/setup.mjs     # 交互填云端地址/模型 id/base url/协议/模型 key → 换发令牌 → 七项自检
+```
+
+- **安装包自带九个工艺包**（`skills/`）、装机脚本与 bundle 依赖——`customSkillDirs` 指的是目录，
+  不带 `skills/` 会静默丢掉全部工艺包。
+- 免仓库模式下工艺包复制进 `~/.dsh/profiles/trend-producer/skills`，patch 指向该目录；
+  安装包副本留在 `profile/artifacts/`，**重装不依赖「下载」目录**。
+- `doctor` 的版本检查是「**与安装包一致**」（免仓库时取自解包出的 `package/package.json`）。
+- 找不到安装包时脚本会报错并提示用 `--tarball` 指定路径——不猜路径。
+
 ## 角色与凭据（M3b 分权）
 
 云端把**生产**与**发布**拆成两个角色：插件用 `producer` 角色账号，审批与发布由

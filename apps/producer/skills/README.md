@@ -15,6 +15,7 @@ skills/<skill-name>/
 - `name`：kebab-case，与目录名一致；`version`：语义化版本，内容变更必须递增。
 - 正文只写"指令给谁、按什么结构产出什么、如何自检"；不写代码。
 - 加载：dsh `dsh-skill` + `dsh-skill-filesystem` + `dsh-tool-skill` 挂载本目录（profile patch 层配置，见云端架构 §6.5.1）。
+- **分发**：九个包随生产插件 tarball 一同分发（包内 `skills/`）——教员免仓库装机时复制进 `~/.dsh/profiles/<profile>/skills`；仓库路径仍供开发热迭代。
 
 ## 包清单
 
