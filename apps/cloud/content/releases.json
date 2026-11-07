@@ -15,12 +15,16 @@
   },
   "producerPlugin": {
     "name": "dsh-plugin-trend-producer",
-    "version": "0.1.4",
-    "fileName": "dsh-plugin-trend-producer-0.1.4.tgz",
-    "sha256": "9e6d3736784c7aac707fa584eb1bf57486d86d00ee19a47c39dd0849102fb5c8",
-    "sizeBytes": 249839,
+    "version": "0.1.9",
+    "fileName": "dsh-plugin-trend-producer-0.1.9.tgz",
+    "sha256": "7024a579160bb99dbe26bf5e551895d3103faba988c25ed549959af166033688",
+    "sizeBytes": 256248,
     "publishedAt": "2026-11-07",
     "notes": [
+      "出参 schema 补齐 courseId/chapterId：看板与九步进度读得出来",
+      "补课程/章建档与骨架读取工具（教员端建节前不再猜 chapterId）",
+      "0.1.6 修凭据库权限：写 ref 后收紧到 600（dsh 拒绝加载他人可读的凭据库，原先 644 导致密钥与令牌整体失效）；doctor 增「凭据库权限」一项，自检由七项变八项。",
+      "修装机向导命令行解析：--non-interactive 不再吃掉后随参数（--model-api 等会静默丢失）。",
       "tarball 自带九个工艺包与装机脚本，解包后跑 package/scripts/setup.mjs 即可，不碰仓库。",
       "教员生产端插件：语料级视频转图文课程与交互课件。",
       "需要 dsh 0.2.1-rc.5。"
