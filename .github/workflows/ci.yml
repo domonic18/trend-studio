@@ -1,0 +1,212 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TCR_REGISTRY: ccr.ccs.tencentyun.com
+  TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE || 'domonic18' }}
+  IMAGE_NAME: trend-cloud
+
+jobs:
+  # ---------------------------------------------------------------- 静态检查
+  check:
+    name: Check / 类型检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install / 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: Check / 类型检查（三包 + 管理台 + 门户）
+        run: pnpm check
+
+  # ---------------------------------------------------------------- 测试
+  test:
+    name: Test / 单元与契约测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # 必须与生产同款：检索依赖 pgvector 扩展与 pg_trgm
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: trend_coach
+          POSTGRES_PASSWORD: trend_coach
+          POSTGRES_DB: trend_coach
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trend_coach -d trend_coach"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # 两个库必须不同：测试会重放迁移并清空目标库，指向同一个库会抹掉开发数据
+      # （scripts/verify-test-db.mjs 会再校验一次，指错直接拒绝跑）
+      DATABASE_URL: postgres://trend_coach:trend_coach@127.0.0.1:5432/trend_coach
+      TEST_DATABASE_URL: postgres://trend_coach:trend_coach@127.0.0.1:5432/trend_coach_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install / 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: Create test database / 建测试库
+        run: |
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U trend_coach -d postgres -c "CREATE DATABASE trend_coach_test OWNER trend_coach"
+
+      - name: Test / 跑全仓测试
+        run: pnpm test
+
+  # ---------------------------------------------------------------- 镜像构建
+  build:
+    name: Build / 构建镜像
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [check, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve tag / 解析镜像标签（<branch>-<sha7>，不可变）
+        id: vars
+        run: |
+          sha_short="$(git rev-parse --short=7 "$GITHUB_SHA")"
+          case "$GITHUB_REF" in
+            refs/heads/main)    tag="main-${sha_short}" ;;
+            refs/heads/develop) tag="develop-${sha_short}" ;;
+            *)                 tag="pr-${sha_short}" ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME:$tag" >> "$GITHUB_OUTPUT"
+
+      # 只有 push 才推 TCR：PR 构建只验证 Dockerfile 可构建，不污染仓库
+      - name: Login TCR / 登录镜像仓库
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.TCR_REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+
+      - name: Build / 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/cloud/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.vars.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------- 生产发布
+  deploy-production:
+    name: Deploy Production / 生产环境发布
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    timeout-minutes: 60
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH key / 配置免密密钥与主机指纹
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Resolve tag / 解析镜像标签
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=7 "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot server state / 记录发布前现场
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && echo '--- 状态文件 ---' && cat .deploy-state 2>/dev/null; echo '--- 当前 IMAGE_TAG ---' && grep -E '^IMAGE_TAG=' .env.prod 2>/dev/null; echo '--- 当前容器 ---' && sudo docker compose --env-file .env.prod -f docker-compose.prod.yml ps --format '{{.Service}} {{.Image}} {{.State}}' 2>/dev/null"
+
+      - name: Sync deploy assets / 同步部署资产到服务器
+        # 生产机到 GitHub 的链路不稳，发布资产一律由 CI 直传（与 git checkout 等价，同一 commit）。
+        # 只送发布必需的资产：部署脚本、compose、Caddy 配置、备份脚本。
+        # 迁移文件不进资产包——迁移随应用镜像走，线上执行的迁移必然与本次发布的代码同 commit。
+        run: |
+          set -eu
+          cd apps/cloud
+          COPYFILE_DISABLE=1 tar -czf /tmp/deploy-assets.tar.gz \
+            deploy/deploy.sh \
+            deploy/caddy/Caddyfile \
+            scripts/backup.sh \
+            docker-compose.prod.yml
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            /tmp/deploy-assets.tar.gz "$DEPLOY_HOST:/tmp/deploy-assets.tar.gz"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            sudo bash -s -- "$DEPLOY_PATH" "$GITHUB_SHA" <<'REMOTE'
+          set -eu
+          cd "$1"
+          # --no-same-owner：不让归档里的 uid/gid 覆盖服务器属主
+          tar --no-same-owner -xzf /tmp/deploy-assets.tar.gz
+          rm -f /tmp/deploy-assets.tar.gz
+          chmod 755 deploy/deploy.sh scripts/backup.sh
+          printf '%s\n' "$2" > .deploy-commit
+          # 资产落地完整性校验：缺任何一项都中止，不带着半套资产继续发布
+          for f in deploy/deploy.sh deploy/caddy/Caddyfile scripts/backup.sh docker-compose.prod.yml; do
+              [ -f "$f" ] || { echo "ERROR: 资产缺失：$f" >&2; exit 1; }
+          done
+          # 运行期目录：数据都在 workspace/ 下（compose 挂载点）
+          mkdir -p workspace/postgres workspace/pipeline workspace/caddy/data workspace/caddy/config \
+                   workspace/media workspace/backups dist/downloads content
+          # app 容器以 node（uid 1000）写入管线与媒体目录
+          chown -R 1000:1000 workspace/pipeline workspace/media dist/downloads
+          echo "--- 已同步：发布资产齐全 ---"
+          REMOTE
+
+      - name: Deploy / 发布（备份 → 迁移先行 → 换容器 → 健康检查 → 失败自动回滚）
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && sudo bash deploy/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}'"
+
+      - name: Verify / 核对发布结果
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && echo '--- 状态文件 ---' && cat .deploy-state && echo '--- 容器 ---' && sudo docker compose --env-file .env.prod -f docker-compose.prod.yml ps --format '{{.Service}} {{.Image}} {{.State}}'"
