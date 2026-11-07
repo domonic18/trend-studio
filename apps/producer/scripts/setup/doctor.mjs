@@ -1,0 +1,147 @@
+/**
+ * 装机自检：装完当场验，不等到跑到一半才 403。
+ * 每项独立采集、独立报告——一项不过不掩盖其他项。
+ */
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import os from 'node:os'
+import path from 'node:path'
+import { readRef } from './credentials.mjs'
+import { health, session } from './cloud.mjs'
+import { probeModel } from './model.mjs'
+import { readManagedConfig } from './profile.mjs'
+
+function skillCount(dir) {
+  if (!existsSync(dir)) return 0
+  return readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && existsSync(path.join(dir, entry.name, 'SKILL.md')))
+    .length
+}
+
+/** 组合配置里宿主层某一行是否被禁用（只看顶层行，不看 preset 组内的行）。 */
+function hostRowDisabled(dump, id) {
+  const lines = dump.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i] !== `- id: ${id}`) continue
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j]
+      if (line.startsWith('- id:')) break
+      if (line.startsWith('  disabled:')) return line.includes('true')
+    }
+    return false
+  }
+  return null
+}
+
+/** dsh 组合后的配置树；起不来时返回 null。 */
+function dumpConfig(profile) {
+  const dump = spawnSync('dsh', ['--profile', profile, '--dump-config'], {
+    cwd: os.tmpdir(),
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  })
+  if (dump.status !== 0 || typeof dump.stdout !== 'string') return null
+  return dump.stdout
+}
+
+/** 逐项自检；任何一项失败都返回 fail，其余项照常采集。 */
+export async function runDoctor(input) {
+  const checks = []
+  const managed = existsSync(input.patchFile)
+    ? readManagedConfig(input.patchFile)
+    : { model: null, cloud: { baseUrl: '', environment: '', tokenRef: '' }, skillsDirs: [] }
+
+  // ① 插件版本：装进 profile 的版本必须等于仓库版本，否则行为与源码不一致
+  const installedManifest = path.join(input.profileDir, 'node_modules', input.pluginName, 'package.json')
+  const installedVersion = existsSync(installedManifest)
+    ? (JSON.parse(readFileSync(installedManifest, 'utf8')).version ?? '')
+    : ''
+  checks.push(installedVersion === input.repoVersion
+    ? { id: 'plugin_version', label: '插件版本', status: 'pass', detail: `${installedVersion}（与仓库一致）` }
+    : { id: 'plugin_version', label: '插件版本', status: 'fail', detail: installedVersion === ''
+      ? `profile 里没装 ${input.pluginName}——先跑 setup install`
+      : `装的是 ${installedVersion}，仓库是 ${input.repoVersion}——重跑 setup install` })
+
+  // ② skills 活挂载：目录存在且确实有技能包
+  const mounted = managed.skillsDirs.filter(dir => skillCount(dir) > 0)
+  checks.push(mounted.length > 0
+    ? { id: 'skills_mounted', label: '技能包挂载', status: 'pass', detail: mounted.map(dir => `${dir}（${skillCount(dir)} 个）`).join('、') }
+    : { id: 'skills_mounted', label: '技能包挂载', status: 'fail', detail: managed.skillsDirs.length === 0
+      ? 'profile 里没有 customSkillDirs——重跑 setup install'
+      : `挂载目录里没有技能包：${managed.skillsDirs.join('、')}` })
+
+  // ②' 组合配置里技能链路没被禁：patch 里写了目录不等于 dsh 真加载了它
+  // （dsh-web-app 就会在宿主层把 skill-filesystem / tool-skill 整行禁用）
+  const dump = dumpConfig(input.profile)
+  if (dump === null) {
+    checks.push({ id: 'skills_enabled', label: '技能链路启用', status: 'skip', detail: 'dsh 组合配置读不出来（dsh 不在 PATH？），跳过' })
+  } else {
+    const rows = ['skill-filesystem', 'tool-skill']
+    const disabled = rows.filter(id => hostRowDisabled(dump, id) === true)
+    checks.push(disabled.length === 0
+      ? { id: 'skills_enabled', label: '技能链路启用', status: 'pass', detail: `${rows.join(' / ')} 均已启用` }
+      : { id: 'skills_enabled', label: '技能链路启用', status: 'fail', detail: `组合配置里 ${disabled.join(' / ')} 被禁用——工艺包不会加载，别装 dsh-web-app` })
+  }
+
+  // ③ 模型位唯一：agent 与理解阶段共用一个 provider + 一个 model
+  const model = managed.model
+  const single = model !== null && model.id !== ''
+  checks.push(single
+    ? { id: 'model_slot', label: '模型位', status: 'pass', detail: `${model.provider}/${model.id}（agent 与理解阶段共用）` }
+    : { id: 'model_slot', label: '模型位', status: 'fail', detail: 'profile 里没有配 llm-pi-ai provider——重跑 setup install' })
+
+  // ④ 模型可达
+  if (model === null || model.id === '') {
+    checks.push({ id: 'model_reachable', label: '模型可达', status: 'skip', detail: '模型位缺失，跳过' })
+  } else {
+    const key = readRef(input.credentialsFile, model.keyRef)
+    if (key === null) {
+      checks.push({ id: 'model_reachable', label: '模型可达', status: 'fail', detail: `凭据库里没有 ${model.keyRef}——重跑 setup 写入模型密钥` })
+    } else {
+      try {
+        const result = await probeModel({ api: model.api, baseUrl: model.baseUrl, model: model.id, key })
+        checks.push({ id: 'model_reachable', label: '模型可达', status: 'pass', detail: `${model.id} 响应 ${result.latencyMs}ms` })
+      } catch (error) {
+        checks.push({ id: 'model_reachable', label: '模型可达', status: 'fail', detail: error instanceof Error ? error.message : String(error) })
+      }
+    }
+  }
+
+  // ⑤ 云端可达
+  if (managed.cloud.baseUrl === '') {
+    checks.push({ id: 'cloud_reachable', label: '云端可达', status: 'skip', detail: 'profile 里没有配云端地址——重跑 setup install' })
+  } else {
+    try {
+      await health(managed.cloud.baseUrl)
+      checks.push({ id: 'cloud_reachable', label: '云端可达', status: 'pass', detail: managed.cloud.baseUrl })
+    } catch (error) {
+      checks.push({ id: 'cloud_reachable', label: '云端可达', status: 'fail', detail: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  // ⑥ 令牌有效且角色是 producer
+  const tokenRef = managed.cloud.tokenRef
+  const token = tokenRef === '' ? null : readRef(input.credentialsFile, tokenRef)
+  if (token === null) {
+    checks.push({ id: 'token_valid', label: '会话令牌', status: 'fail', detail: tokenRef === ''
+      ? 'profile 里没有配 consoleTokenRef——重跑 setup install'
+      : `凭据库里没有 ${tokenRef}——跑 setup login 换发令牌` })
+  } else {
+    try {
+      const user = await session(managed.cloud.baseUrl, token)
+      const roleOk = user.role === 'producer'
+      checks.push({
+        id: 'token_valid',
+        label: '会话令牌',
+        status: roleOk ? 'pass' : 'fail',
+        detail: roleOk
+          ? `${user.username}（${user.role}）`
+          : `角色是 ${user.role}，生产端需要 producer——换一个 producer 账号登录`,
+      })
+    } catch (error) {
+      checks.push({ id: 'token_valid', label: '会话令牌', status: 'fail', detail: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  return checks
+}
