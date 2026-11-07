@@ -152,7 +152,14 @@ preflight() {
 
     local db_id db_health
     db_id="$(compose ps -q db 2>/dev/null || true)"
-    [ -n "$db_id" ] || fail "db 容器未运行（先执行 compose up -d db --wait）"
+    if [ -z "$db_id" ]; then
+        # 首次发布时服务器上还没有 db 容器。db 用版本固定的 pgvector 镜像，
+        # 不参与应用发布，这里拉起它；已有实例则完全不动。
+        log "db 未运行，先拉起（版本固定的 pgvector 镜像，不参与应用发布）"
+        compose up -d --wait db || fail "db 启动失败"
+        db_id="$(compose ps -q db 2>/dev/null || true)"
+    fi
+    [ -n "$db_id" ] || fail "db 容器未运行"
     db_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$db_id")"
     [ "$db_health" = "healthy" ] || [ "$db_health" = "running" ] \
         || fail "db 未就绪：$db_health"
