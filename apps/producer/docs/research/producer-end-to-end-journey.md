@@ -7,7 +7,7 @@
 - **§4 目标流程**：愿景「配好模型即可制作课件」下的应有形态
 - **§5–§7 决策与实施**：已拍板的决策、生产体验线（§12，A1–A9）与发布交接线（§13，B1–B4）的实施计划
 
-§4 起的内容均为**待实施目标**，不代表现状。现状与目标冲突处，以本文档显式标注为准。
+§4 起的内容均为**待实施目标**，不代表现状。现状与目标冲突处，以本文档显式标注为准。§12 / §13 的实施计划已按批次标注落地状态（✅ = 已落地），以各节「落地状态」段为准。
 
 ---
 
@@ -419,15 +419,15 @@ A9 装机向导（单 profile / 单模型 / 交互 login / 自检）
 
 | 批次 | 内容 | 落点 | 量 |
 |---|---|---|---|
-| **A1** | 新增契约：`mediaAssetCreate` / `uploadTicket` / `uploadConfirm` / `assetIngest` / `productionTask*`；云端需求 v0.23（分权矩阵 D3/D4）、清单 v0.21（端点与验收用例） | `packages/contracts`、云端 docs | S |
-| **A2** | ① `POST /media-assets` 放开 producer；② 新增 `POST .../upload-ticket`（签发 PUT 凭据）；③ 新增 `POST .../upload-confirm`（落元数据）；④ 直传 PUT 落在管线路由上（`PUT .../media-assets/:id/source`，会话或签名凭据二选一，复用 `mediaSigningSecret`；不另开媒体服务路由，避免 CDN 前置的媒体域承担校验）⑤ 放开建课程/章/节/知识点/测验 | `apps/cloud/src/pipeline/routes.ts`、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/media/upload-sign.ts`、`apps/cloud/src/content/routes.ts` | **M** |
-| **A3** | 4 个新工具 + `TrendCloudClient` 二进制通道；直传由 dsh 侧发起（附件本地路径 → PUT） | `apps/producer/src/host/tools.ts`、`src/host/cloud-client.ts`、`src/host/contracts.ts` | **M** |
-| **A4** | 生产任务表（节 × 步骤 × 状态 × 预算）+ 迁移 + 只读聚合端点（看板用） | `apps/cloud/src/production/`、迁移脚本、`packages/contracts` | **M** |
-| **A5** | 编排改造：按任务状态推进 9 步（引擎在生产端本地判定，云端只存状态）；场景 B 选择点（A 只补这节 / B 重做课程骨架 / C 只入库），影响面先算后问、决策持久化 | `apps/producer/src/host/production-steps.ts`、`src/host/production-tools.ts`、`apps/cloud/src/production/material-choices.ts`、skills | **M** |
-| **A6** | 转写未完成即可消费部分 source units（增量就绪语义） | `apps/cloud/src/pipeline/`、`media_transcripts` / `source_units` | **M** |
-| **A7** | 生产看板页；`quotes-sync` 按钮；按钮按角色显隐；错误文案补齐（签批/素材/任务三类） | `apps/cloud/web/admin/` | **M** |
-| **A8** | SKILL.md 双渲染：同一份真相源既给模型（现有）又给人（步骤卡） | `apps/producer/skills/*` + 看板 | **M** |
-| **A9** | 装机向导：单 profile / 单模型位 / 交互式 login / 连通性自检 | `apps/producer` + 安装脚本 | **M** |
+| **A1** ✅ | 新增契约：`mediaAssetCreate` / `uploadTicket` / `uploadConfirm` / `assetIngest` / `productionTask*`；云端需求 v0.23（分权矩阵 D3/D4）、清单 v0.21（端点与验收用例） | `packages/contracts`、云端 docs | S |
+| **A2** ✅ | ① `POST /media-assets` 放开 producer；② 新增 `POST .../upload-ticket`（签发 PUT 凭据）；③ 新增 `POST .../upload-confirm`（落元数据）；④ 直传 PUT 落在管线路由上（`PUT .../media-assets/:id/source`，会话或签名凭据二选一，复用 `mediaSigningSecret`；不另开媒体服务路由，避免 CDN 前置的媒体域承担校验）⑤ 放开建课程/章/节/知识点/测验 | `apps/cloud/src/pipeline/routes.ts`、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/media/upload-sign.ts`、`apps/cloud/src/content/routes.ts` | **M** |
+| **A3** ✅ | 4 个新工具 + `TrendCloudClient` 二进制通道；直传由 dsh 侧发起（附件本地路径 → PUT） | `apps/producer/src/host/tools.ts`、`src/host/cloud-client.ts`、`src/host/contracts.ts` | **M** |
+| **A4** ✅ | 生产任务表（节 × 步骤 × 状态 × 预算）+ 迁移 + 只读聚合端点（看板用） | `apps/cloud/src/production/`、迁移脚本、`packages/contracts` | **M** |
+| **A5** ✅ | 编排改造：按任务状态推进 9 步（引擎在生产端本地判定，云端只存状态）；场景 B 选择点（A 只补这节 / B 重做课程骨架 / C 只入库），影响面先算后问、决策持久化 | `apps/producer/src/host/production-steps.ts`、`src/host/production-tools.ts`、`apps/cloud/src/production/material-choices.ts`、skills | **M** |
+| **A6** ✅ | 转写未完成即可消费部分 source units（增量就绪语义） | `apps/cloud/src/pipeline/`、`media_transcripts` / `source_units` | **M** |
+| **A7** ✅ | 生产看板页；`quotes-sync` 按钮；按钮按角色显隐；错误文案补齐（签批/素材/任务三类） | `apps/cloud/web/admin/` | **M** |
+| **A8** ✅ | SKILL.md 双渲染：同一份真相源既给模型（现有）又给人（步骤卡） | `apps/producer/skills/*` + 看板 | **M** |
+| **A9** ✅ | 装机向导：单 profile / 单模型位 / 交互式 login / 连通性自检 | `apps/producer` + 安装脚本 | **M** |
 
 **落地状态（2026-11-07）**：A1 ✅ 契约 `assets.ts` / `production-task.ts`，云端需求 v0.23 / 清单 v0.21；
 A2 ✅ 云端 `upload-ticket` / `upload-confirm` / PUT 直传（带凭据即以凭据为准，会话不顶替）+ producer 权限放开；
@@ -537,9 +537,9 @@ B1 契约与云端文档（readiness / 概念归档 / 案例股列表 + 指纹�
 | **B1** ✅ | ① 新增 `courseReadinessOutput`（门禁级就绪度报告：每道门禁的 `status` / `summary` / `issues` + 当前指纹 + `publishable` + 待办清单）；② `caseStocksListOutput`（GET 案例股此前无契约）；③ `conceptUpdateInput`（按 `conceptId` 更新别名与定义）+ `conceptArchiveInput`（归档术语）；④ `conceptListItem` 补 `status`（`listConcepts` 不过滤状态，归档项当前与正常项混在一起）；⑤ 云端需求 / 清单 / 架构回填「发布就绪度端点 + 内容编辑端点 + 指纹覆盖扩展」 | `packages/contracts/src/admin.ts`、云端 docs | S |
 | **B2** ✅ | ① **门禁检查器抽离**：五个门禁（图示 / 课件断言 / 片段窗 / 标注与回放 / 终审签批）的判定体从 `publishCourse` 私有方法与 `publish-gates.ts` 抽成**返回检查结果**的函数，发布事务改为消费结果后抛错——**错误码与载荷逐字不变**；② `GET /v1/admin/content/courses/:courseId/readiness`（producer 可读：生产方要知道自己还差什么才能交接；发布权仍在 operator/admin）；③ 概念：按 `conceptId` 更新、归档（归档后该术语不再计入 `:::annotation` 的 glossary 校验，未解引用会在就绪度卡片上显形）；④ **指纹覆盖扩展**：节补 `summary` / `conceptRefs` / `sourceAssetIds`，manifest 补概念表（名称 / 别名 / 定义 / 状态）——此前改这些内容签批不失效，是发布链路的真实漏洞；⑤ OpenAPI 同步（路由与 OpenAPI 双向一致由契约测试强制） | `apps/cloud/src/production/readiness.ts`（新）、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/pipeline/publish-gates.ts`、`apps/cloud/src/production/{service,routes,digest}.ts`、`apps/cloud/openapi/openapi.yaml` | **L** |
 | **B3** ✅ | ① 课程编辑页「发布就绪度」卡片：五道门禁逐条 + 当前指纹 + 待办 + 签批 / 发布按钮按就绪度给禁用理由（按钮仍按角色显隐：producer 看不到签批与发布）；② 三个编辑抽屉：**节**（标题 / 摘要 / 序位 / 关联术语 / 来源素材）、**案例股**（名称 / 交易所代号 / 案例窗口 / 事件锚点）、**术语**（名称 / 别名 / 定义 / 归档）；③ 编辑一律落 draft 并提示「已签批内容需重新签批」；④ 失败文案按机器可读错误码给中文指引 | `apps/cloud/web/admin/src/pages/Content/TreeEditor.tsx`、`web/admin/src/pages/Content/*Drawer.tsx`、`web/admin/src/api.ts`、`web/admin/src/types.ts` | **L** |
-| **B4** | 三端行为基线（contracts / cloud / producer / coach）+ 根 `pnpm check` / `pnpm test`；云端三份文档与生产端文档回填落地状态 | `packages/contracts/test`、`apps/cloud/test`、各 docs | S |
+| **B4** ✅ | 三端行为基线（contracts / cloud / producer / coach）+ 根 `pnpm check` / `pnpm test`；云端三份文档与生产端文档回填落地状态 | `packages/contracts/test`、`apps/cloud/test`、各 docs | S |
 
-**落地状态（2026-11-07）**：B1、B2、B3 已落地——门禁判定抽到 `apps/cloud/src/production/readiness.ts`，
+**落地状态（2026-11-07）**：B1–B4 全部落地——门禁判定抽到 `apps/cloud/src/production/readiness.ts`，
 发布事务与就绪度端点读同一批检查结果（错误码与载荷逐字不变，`publish-gates.ts` 已并入 readiness 模块）；
 `GET /v1/admin/content/courses/:courseId/readiness` 与 `PUT /v1/admin/content/concepts/:conceptId` 已上线；
 内容指纹扩到节的 `summary` / `conceptRefs` / `sourceAssetIds` 与整张概念表（`DIGEST_VERSION` 1→2，
@@ -548,7 +548,12 @@ B1 契约与云端文档（readiness / 概念归档 / 案例股列表 + 指纹�
 管理台侧：课程编辑页新增「发布就绪度」卡片（五道门禁 + 指纹 + 待办），签批 / 发布按钮按就绪度给禁用理由；
 新增节 / 案例股 / 术语三个编辑抽屉，编辑落草稿并提示「已签批内容需重新签批」，失败文案按错误码给中文指引。
 配套两处云端收口：节编辑落 `status='draft'`（此前改了仍留已发布态），术语定义支持传 `null` 清空
-（契约允许可空，此前路由层把 `null` 当非法字符串挡掉）。B4 三端回归与三份云端文档回填待做。
+（契约允许可空，此前路由层把 `null` 当非法字符串挡掉）。
+
+B4 回归：根 `pnpm check` 8/8 通过（contracts / widgets / 云端 server+admin+portal / producer / coach /
+test-fixtures），根 `pnpm test` 12/12 通过（云端 226 例：225 通过 / 1 跳过 / 0 失败）——新增两例
+覆盖「节编辑落草稿并改指纹」与「术语定义可清空」。云端三份文档（需求 v0.30 / 架构 v0.32 / 清单 v0.26）
+已同步回填落地状态。
 
 ### 13.4 边界
 
