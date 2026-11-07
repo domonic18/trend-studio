@@ -1,7 +1,7 @@
 # 趋势课程生产插件需求
 
-版本：v0.8（2026-11-07）
-状态：与云端需求 v0.22（C13/C14）与云端清单 v0.20 §3.13/§3.14、云端架构 v0.25 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.8 收口两项：**云端会话失效与角色不足分提示**——生产端 token 过期时所有 `cloud_*` 工具此前只回 `[forbidden] session invalid or expired`，操作者看不出该换发令牌还是该换账号；现按 401/会话文案与 403 角色不足分流，前者附换发指引（`POST /v1/auth/session` → 写入 dsh credentials 的 `TREND_PRODUCER_CONSOLE_TOKEN`），后者附分权提示（发布/签批限 operator/admin），并补对应测试；**发布链路的管理台入口**——云端课程编辑页新增「签批终审」按钮与签批状态签（此前签批只有 curl 路径），插件侧无需改动但发布链路说明已回填。v0.7 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体 def/rule/misuse/risk 齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失——逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源），v3 契约首次在真实内容上跑通全链。v0.6 P0 收口：新增 `cloud_figure_delete` 工具（图示纠错回路，与 `cloud_widget_delete` 对称）——图示写入的覆盖语义救不回「废图烧掉配额」与「图示本身不该存在」两类情形，此前生产端无任何图示删除通道。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve）。v0.5 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（全部 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass，43 个标注与回放交易日全部落在行情缓存的实际交易日上，6 节主编自评全 approve，含 1 次真实打回→重写回灌）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）；Skill 工艺包同步升至 `section-production` 0.5.0 / `courseware-design` 0.2.0 / `chapter-authoring` 0.5.0 / `diagram-authoring` 0.2.1 / `quality-rubric` 0.4.1（写入顺序改为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」）。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
+版本：v0.9（2026-11-07）
+状态：与云端需求 v0.22（C13/C14）与云端清单 v0.20 §3.13/§3.14、云端架构 v0.25 §6.5/§6.6 对齐；本文只定义插件侧职责与验收。v0.9 收口：**装机向导（A9）**——新增 `apps/producer/scripts/setup.mjs`（`pnpm setup` / `setup:install` / `setup:login` / `setup:doctor`），教员本机装生产端从「20+ 步、含 3 处手工改配置文件」降到三步且**全程不碰配置文件**：① install 交互式填模型位与模型 API key，装 profile（单 profile 装 `base+headless+web-app+本插件`）与 `cordis.patch.yml` 五个托管条目（用户手加的条目原样保留）；② login 交互式收账号密码换发令牌；③ doctor 六项独立自检（插件版本 == 仓库版本 / 技能包挂载 / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer），任一不过当场报红。机密只落 dsh 托管凭据库 `~/.dsh/.credentials.yaml` 的 `refs`，profile 里只有引用名；顺带把视觉模型密钥接到凭据缝上（`host/model-key.ts`：凭据服务优先 → 进程环境兜底），此前理解阶段只读 `process.env`，密钥只在托管库里时必然取不到。v0.8 收口两项：**云端会话失效与角色不足分提示**——生产端 token 过期时所有 `cloud_*` 工具此前只回 `[forbidden] session invalid or expired`，操作者看不出该换发令牌还是该换账号；现按 401/会话文案与 403 角色不足分流，前者附换发指引（`POST /v1/auth/session` → 写入 dsh credentials 的 `TREND_PRODUCER_CONSOLE_TOKEN`），后者附分权提示（发布/签批限 operator/admin），并补对应测试；**发布链路的管理台入口**——云端课程编辑页新增「签批终审」按钮与签批状态签（此前签批只有 curl 路径），插件侧无需改动但发布链路说明已回填。v0.7 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体 def/rule/misuse/risk 齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失——逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源），v3 契约首次在真实内容上跑通全链。v0.6 P0 收口：新增 `cloud_figure_delete` 工具（图示纠错回路，与 `cloud_widget_delete` 对称）——图示写入的覆盖语义救不回「废图烧掉配额」与「图示本身不该存在」两类情形，此前生产端无任何图示删除通道。v0.4 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已接线（producer 可触发行情回填、读回实际交易日、删除课件纠错）；`bar-replay-decision` 与 DSL v2（`:::annotation`/`:::replay`）写作工艺、工具描述、断言口径已落地；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06，主编自评 approve）。v0.5 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（全部 `dsl_version=2`：24 图示 / 14 案例股 / 32 课件，每节唯一一份 `bar-replay-decision` 且四项断言全 pass，43 个标注与回放交易日全部落在行情缓存的实际交易日上，6 节主编自评全 approve，含 1 次真实打回→重写回灌）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）；Skill 工艺包同步升至 `section-production` 0.5.0 / `courseware-design` 0.2.0 / `chapter-authoring` 0.5.0 / `diagram-authoring` 0.2.1 / `quality-rubric` 0.4.1（写入顺序改为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」）。v0.3 梳理：F7 呈现层生产收敛为「产出什么 + 验收口径」，编排细节归架构 §4；题型清单补 `bar-replay-decision` 与架构 §6.6.5 对齐；关联文档版本号校准。
 
 ## 1. 背景与目标
 
@@ -84,6 +84,15 @@
 ### F6 溯源（T1 起，P0）
 
 - 每产物落库后上报 `{taskKey, model, provider, tokens, latency, skillVersions, targetId, status}`；未上报视为失败。
+
+### F8 装机（A9，P0）
+
+- 三步可完成：`install`（装 profile + 插件 + 模型位 + 技能包活挂载 + 写模型密钥）→ `login`（交互式换发云端令牌）→ `doctor`（连通性自检）。
+- **单 profile 单模型位**：一个 profile 装 `base + headless + 本插件`（**不装 `dsh-web-app`**——它会禁用
+  技能链路）；模型位是单一 provider + 单一 model，agent 与理解阶段共用。
+- **机密不落配置**：模型密钥与控制台令牌只写 dsh 托管凭据库的 refs；profile 的 patch 里只有引用名；装机全程不要求用户改配置文件。
+- **自检当场报**：插件版本、技能包挂载、**技能链路启用**（读组合配置而非只读 patch）、模型位唯一、模型可达、云端可达、令牌有效且角色为 producer——任一不过当场报红并给出可执行的下一步。
+- **合并语义安全**：`cordis.patch.yml` 的托管条目每次重写，用户手加的条目原样保留，旧文件留备份。
 
 ## 4. 非功能需求
 

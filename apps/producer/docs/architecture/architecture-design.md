@@ -24,12 +24,17 @@ src/
   index.ts                 Host 入口：name/inject/Config/apply 装配
   host/config.ts           配置 schema 与校验（environment/baseUrl/consoleTokenRef/timeoutMs/logLevel）
   host/log.ts              级别过滤日志
+  host/auth.ts             云端会话凭据（credential-ref 解析 + Bearer 请求）
+  host/model-key.ts        视觉模型密钥解析（凭据服务优先 → 进程环境兜底）
   host/cloud-client.ts     云端 admin API 客户端（会话凭据、超时、错误映射、响应校验）
   host/tools/*.ts          cloud_* 工具注册（每工具一个文件：入参 zod + 调用 + 出参裁剪）
   host/contracts.ts        与云端清单 §3.13/§3.14 对齐的类型与 zod schema（单一真相）
   host/untrusted.ts        不可信文本处理（边界包裹/控制字符剥离/转义）
   host/orchestrator.ts     生产编排状态机（阶段推进、预算、断点恢复查询）
+  host/production-steps.ts 九步生产状态机（纯引擎：当前步/门禁/回灌计数）
   host/review.ts           主编评审流程（rubric 结构化输出、回灌重试、门禁②装配）
+scripts/setup.mjs          装机向导入口（install / login / doctor）
+scripts/setup/*.mjs        装机向导模块（paths/profile/credentials/prompt/cloud/model/doctor）
 skills/                    Skill 工艺包（见 skills/README.md）
 test/                      Host 边界/契约测试（T1 起固化）
 ```
@@ -72,6 +77,11 @@ test/                      Host 边界/契约测试（T1 起固化）
 ## 5. 模型接入
 
 - 生产模型在 dsh「模型设置」以 pi-ai provider 配置（`anthropic-messages`/OpenAI 兼容 + 自定义 baseURL + 主备 retryPolicy），插件不托管密钥。
+- **单模型位（A9 装机向导）**：一个 profile 里只有**一个** pi-ai provider 与**一个** model，
+  `agent-default-model` 与 `trend-producer.understanding`（视觉模型）**共用同一个密钥引用名**——
+  此前是两个 profile 两套模型，且理解阶段另有一个 `MINIMAX_API_KEY`。
+- **密钥解析走凭据缝**：`understanding.ts` 经 `host/model-key.ts` 解析（凭据服务优先 → 进程环境兜底），
+  不再只读 `process.env`——否则「密钥只落托管凭据库」时装机向导配好的模型位取不到密钥。
 - VLM：帧图经多模态消息（签名 URL 图片块）进入理解子代理；模型须具备图像输入能力，provider 选型属运维配置（见云端清单 §8 待冻结）。
 - 任务键口径：生产端调用的 taskKey 命名空间（`vision.describe`、`content.chunk_summary` 等）写死在 contracts，与云端账本对齐。
 
@@ -92,9 +102,33 @@ M10 扩充（随 R1–R3 迭代）：
 ## 7. 安全与隐私
 
 - 凭据：云端会话令牌走 credentials credential-ref；模型密钥在 dsh 模型配置；均不落日志/文件。
+  装机向导把两条机密写进 **dsh 托管凭据库** `~/.dsh/.credentials.yaml` 的 `refs`，
+  profile 的 `cordis.patch.yml` 里**只有引用名**（见 §9），全流程不碰配置文件。
 - 不可信文本：云端转写/摘要/回执进模型前边界包裹、进工具输出前转义（`host/untrusted.ts`）。
 - 最小权限：不注册 shell/文件写入工具；帧图只经签名 URL；产物正文全文不进日志。
 
 ## 8. 里程碑与开放问题
 
 里程碑 T1–T5 见 AGENTS.md（T5：单节按富文本 DSL 重写含配图卡/片段卡/案例股锚点通过门禁②，媒体锚点全部可回溯；v2 批次代码已落地，首个试点节真产运行后冻结）；接口级待冻结项统一维护在云端清单 §8（新题型断言词表含回放三条、rubric 0.4.1 阈值口径、行情源容灾等），本仓库不另立清单。
+
+## 9. 装机（教员本机，A9）
+
+装机是**脚本**（`apps/producer/scripts/setup.mjs`，`pnpm setup`），不是 `dsh plugin` 子命令——
+`dsh plugin` 是 pnpm 的转发口，装不了交互式 login。
+
+| 步 | 人做什么 | 系统做什么 |
+|---|---|---|
+| ① install | 填模型 provider / 模型 id / base url / 协议 + 模型 API key | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 → 密钥写托管凭据库 |
+| ② login | 填云端账号密码 | `POST /v1/auth/session` 换发令牌 → 写托管凭据库 |
+| ③ doctor | 看结果 | 七项独立自检：插件版本 == 仓库版本 / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
+
+落点与不变量：
+
+- **profile**：`~/.dsh/profiles/trend-producer/`，装 `base + headless + 本插件` 三个 bundle；
+  bundle 取**并集**（装机只补齐缺的，不丢已有）。
+  **不装 `dsh-web-app`**：它在宿主层把 `skill-filesystem` / `tool-skill` 整行禁用（改由 agent preset
+  各自挂载），而本 profile 的工艺包走的是宿主层 `customSkillDirs`——装上等于静默废掉九个技能包。
+- **配置层**：`cordis.patch.yml` 五个托管条目每次重写，**用户手加的条目原样保留**，旧文件备份 `.bak`。
+- **机密层**：`~/.dsh/.credentials.yaml` 的 `refs`（模型密钥 + 控制台令牌），profile 里只有引用名。
+- **自检读现状不读意图**：doctor 解析的是**装进 profile 的那份** patch、插件版本，以及
+  `dsh --dump-config` 的**组合配置**——技能链路是否真被加载，看的是 dsh 合出来的结果，不是我们写了什么。

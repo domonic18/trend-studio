@@ -8,6 +8,45 @@ monorepo（`~/Code/trend-studio`）的生产插件应用。趋势交易课程**�
 
 详见 [AGENTS.md](./AGENTS.md)。
 
+## 装机（A9 装机向导）
+
+教员本机装生产端只需要三步，**全程不碰配置文件**——机密只落 dsh 托管凭据库
+（`~/.dsh/.credentials.yaml` 的 `refs`），profile 里只留引用名。
+
+```bash
+cd ~/Code/trend-studio/apps/producer
+
+pnpm setup              # 全流程：装 profile → 换发令牌 → 自检
+pnpm setup:install      # 只装：打包插件 → 写 profile + patch → 装依赖 → 写模型密钥
+pnpm setup:login        # 只换发云端会话令牌（交互式账号密码）
+pnpm setup:doctor       # 只自检
+```
+
+- **一个 profile、一个模型位**：`trend-producer` profile 里装 `base + headless + 本插件`
+  三个 bundle；模型位是**单一** provider + **单一** model，agent 与理解阶段共用同一个密钥。
+  （**不装 `dsh-web-app`**：该 bundle 在宿主层把 `skill-filesystem` / `tool-skill` 整行禁用，
+  工艺包会静默不加载；且本 profile 用的是 headless 应用面。）
+- **`install` 做什么**：打包插件 tarball → 写 `~/.dsh/profiles/trend-producer/package.json`
+  （bundle 并集 + 插件依赖）→ `dsh plugin --profile trend-producer install` 装依赖 →
+  写 `cordis.patch.yml`（五个托管条目：模型位 / agent 默认模型 / 生产端配置 / skills 活挂载 / 凭据开关；
+  用户手加的条目原样保留，旧文件备份为 `.bak`）→ 交互式收模型 API key 写进凭据库。
+- **`login` 做什么**：交互式收账号密码 → `POST /v1/auth/session` 换发令牌 → 写进凭据库
+  （`TREND_PRODUCER_CONSOLE_TOKEN`）。
+- **`doctor` 做什么**：七项独立自检，逐项报告、任一不过当场报：
+  插件版本（装进 profile 的 == 仓库的）、技能包挂载、**技能链路启用**（读 `dsh --dump-config`
+  的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）、模型位唯一、模型可达
+  （真发一次最小生成请求）、云端可达（`GET /health`）、会话令牌有效且**角色是 producer**
+  （角色不对会明确说「生产端需要 producer」）。
+
+非交互环境（CI / 脚本）用 `--non-interactive`，密钥与账号密码分别从环境变量
+`TREND_PRODUCER_MODEL_KEY` / `TREND_PRODUCER_USERNAME` / `TREND_PRODUCER_PASSWORD` 取。
+
+装完后的日常入口：
+
+```bash
+dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
+```
+
 ## 角色与凭据（M3b 分权）
 
 云端把**生产**与**发布**拆成两个角色：插件用 `producer` 角色账号，审批与发布由
@@ -28,16 +67,11 @@ monorepo（`~/Code/trend-studio`）的生产插件应用。趋势交易课程**�
      -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
      -d '{"username":"producer-teacher","displayName":"教员","role":"producer","password":"<强密码>"}'
    ```
-2. 该账号换会话令牌（console 域；student 角色被拒，producer/operator/admin 可）：
-   ```bash
-   curl -X POST "$CLOUD_BASE/v1/auth/session" \
-     -H 'content-type: application/json' \
-     -d '{"username":"producer-teacher","password":"<强密码>"}'
-   # → { token, expiresAt, user }
-   ```
-3. 令牌存进 dsh credentials，插件按 credential-ref 引用（配置项 `consoleTokenRef`，
-   默认 ref 名 `TREND_PRODUCER_CONSOLE_TOKEN`）。令牌只在请求头出现，不进日志/配置/代码。
-4. 令牌过期就重新走第 2 步换发；换发不需要重建账号。
+2. 该账号换会话令牌：**走装机向导的 `pnpm setup:login`**（交互式收账号密码 → 换发 → 写进
+   dsh 托管凭据库的 `TREND_PRODUCER_CONSOLE_TOKEN`）。插件按 credential-ref 引用
+   （配置项 `consoleTokenRef`，默认 ref 名 `TREND_PRODUCER_CONSOLE_TOKEN`）。
+   令牌只在请求头出现，不进日志/配置/代码。
+3. 令牌过期就重新跑 `pnpm setup:login` 换发；换发不需要重建账号。
 
    令牌过期时所有 `cloud_*` 工具会回 `[forbidden] session invalid or expired`，并附带换发指引
    （`POST /v1/auth/session` 换发 → 写入 dsh credentials 的 `TREND_PRODUCER_CONSOLE_TOKEN`）；

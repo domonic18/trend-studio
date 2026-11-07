@@ -136,12 +136,11 @@
 ### 阶段 0 · 一次性装机
 
 ```
-$ dsh plugin --profile trend-producer install dsh-plugin-trend-producer.tgz
-  → 自动生成 profile（skills 活挂载）+ 插件 + 单一模型配置位
-$ dsh plugin --profile trend-producer login
+$ cd apps/producer && pnpm setup
+  → 装 profile（skills 活挂载 + 插件 + 单一模型配置位）
   → 交互式：模型 provider + API key / 云端地址 / 账号密码
   → 换发令牌写进 credentials（全程不碰配置文件）+ 连通性自检
-$ dsh web --profile trend-producer
+$ dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 ```
 
 要点：
@@ -150,6 +149,15 @@ $ dsh web --profile trend-producer
 - **令牌换发有交互入口**（现状是手工 curl + 手改 `~/.dsh/.credentials.yaml`）
 - **装完即体检**：模型可达？云端可达？令牌有效且角色是 producer？插件版本 == 仓库版本？
   skills 挂上了？**任一不过当场报，不等到跑到一半 403**
+
+> **命令形态校正（A9 实装）**：`dsh plugin <子命令>` 是 pnpm 的转发口（`install` / `add` / …），
+> 装不了「交互式 login」。故装机向导是**本仓库内的脚本** `apps/producer/scripts/setup.mjs`
+> （`pnpm setup` / `setup:install` / `setup:login` / `setup:doctor`）：自建 profile、装依赖、
+> 写 patch 与托管凭据库，再把「启 dsh」交回 `dsh --profile trend-producer`。
+>
+> **应用面校正**：装机产出的是 **headless 应用面**（`dsh --profile trend-producer "<任务>"`），
+> 与实际在用的生产 profile 一致。**不装 `dsh-web-app`**——它在宿主层把 `skill-filesystem` /
+> `tool-skill` 整行禁用，本 profile 的工艺包走的正是宿主层 `customSkillDirs`，装上会静默废掉九个技能包。
 
 ### 阶段 1 · 拖一个视频进来（入口场景）
 
@@ -450,6 +458,26 @@ A8 ✅ 流程向导**一份真相源两个渲染**：九步顺序、中文标签
 做漂移守卫——改契约不重渲染就红）；给人的渲染是管理台生产看板页的「流程向导」步骤卡
 （九步逐条打勾 + 每步「已完成 X/Y 节」+ 课程当前步 + 目标 / 工具 / 常见坑）；
 管理台原先自持的九步副本 `lib/productionSteps.ts` 已删除，改为直接引契约。
+A9 ✅ 装机向导：`apps/producer/scripts/setup.mjs`（`pnpm setup` / `setup:install` / `setup:login` /
+`setup:doctor`）+ `scripts/setup/` 六个模块（paths / profile / credentials / prompt / cloud / model / doctor）；
+**单 profile**（`trend-producer` 一个 profile 装 `base + headless + 本插件` 三个 bundle，
+`dsh.profile.bundles` 取并集、装机只补齐缺的；**不装 `dsh-web-app`**——该 bundle 在宿主层把
+`skill-filesystem` / `tool-skill` 整行禁用（改由 agent preset 各自挂载），而本 profile 的工艺包走的
+正是宿主层 `customSkillDirs`，装上会静默废掉九个技能包，且该 profile 用的是 headless 应用面）、
+**单模型位**（`llm-pi-ai` 单一 provider + 单一 model，
+`agent-default-model` 与 `trend-producer.understanding` 共用同一个密钥引用）；
+**机密只落 dsh 托管凭据库** `~/.dsh/.credentials.yaml` 的 `refs`（模型密钥与控制台令牌各一条），
+profile 的 `cordis.patch.yml` 里**只有引用名**——装机全程不碰配置文件；
+`cordis.patch.yml` 合并语义=五个托管条目（`llm-pi-ai` / `agent-default-model` / `trend-producer` /
+`skill-filesystem` / `credentials`）每次重写、**用户手加的条目原样保留**，旧文件备份为 `.bak`；
+`doctor` 七项独立自检（插件版本 == 仓库版本 / 技能包挂载 / **技能链路启用**（读 `dsh --dump-config`
+的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）/ 模型位唯一 / **模型真发一次最小生成请求** /
+云端 `/health` / 令牌有效且**角色是 producer**），任一不过当场报红，角色不对会明说「生产端需要 producer」。
+顺带把视觉模型密钥接到凭据缝上：新增 `src/host/model-key.ts`（凭据服务优先 → 进程环境兜底），
+`understanding.ts` 不再只读 `process.env`——否则「密钥只在托管库里」时理解阶段必然取不到。
+**本机实跑验证**（`DSH_HOME=/tmp/dsh-smoke` 临时档，不动真实 profile）：install → login（真连本地
+云端换发 producer 令牌）→ doctor，除「模型可达」因用了假密钥报 401 外全绿——即探测请求确实打到了
+模型端点；反例也验过：手工往 bundle 里塞 `dsh-web-app` 后「技能链路启用」立刻报红。
 
 ### 12.3 每批次的完成定义
 
