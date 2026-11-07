@@ -3,6 +3,12 @@ import { join } from 'node:path'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { Pool } from 'pg'
 import {
+  DEFAULT_DSH_VERSION,
+  DEFAULT_WEB_APP_PACKAGE,
+  releaseManifestSchema,
+  type ReleaseManifest,
+} from '@trend/contracts'
+import {
   PASSWORD_MAX,
   PASSWORD_MIN,
   USERNAME_PATTERN,
@@ -21,20 +27,6 @@ export interface PortalRouteDeps {
   config: AppConfig
   limiter: RateLimiter
   pool: Pool
-}
-
-export interface ReleaseManifest {
-  dshVersion: string
-  webAppPackage: string
-  plugin: {
-    name: string
-    version: string
-    fileName: string
-    sha256: string | null
-    sizeBytes: number | null
-    publishedAt: string
-    notes: string[]
-  } | null
 }
 
 function usernameField(body: Record<string, unknown>): string {
@@ -56,48 +48,16 @@ async function readReleases(): Promise<ReleaseManifest> {
   try {
     raw = JSON.parse(await readFile(file, 'utf8'))
   } catch {
-    return { dshVersion: '0.2.1-rc.5', webAppPackage: '@deepseek-ai/dsh-web-app', plugin: null }
+    return {
+      dshVersion: DEFAULT_DSH_VERSION,
+      webAppPackage: DEFAULT_WEB_APP_PACKAGE,
+      plugin: null,
+      producerPlugin: null,
+    }
   }
-  if (typeof raw !== 'object' || raw === null) {
-    throw serviceUnavailable('release manifest invalid')
-  }
-  const record = raw as Record<string, unknown>
-  const pluginRaw = record.plugin
-  const plugin = pluginRaw === null || pluginRaw === undefined
-    ? null
-    : (() => {
-      if (typeof pluginRaw !== 'object') throw serviceUnavailable('release manifest invalid')
-      const item = pluginRaw as Record<string, unknown>
-      const notes = Array.isArray(item.notes)
-        ? item.notes.filter((note): note is string => typeof note === 'string').slice(0, 20)
-        : []
-      if (
-        typeof item.name !== 'string'
-        || typeof item.version !== 'string'
-        || typeof item.fileName !== 'string'
-        || typeof item.publishedAt !== 'string'
-        || (item.sha256 !== null && item.sha256 !== undefined && typeof item.sha256 !== 'string')
-        || (item.sizeBytes !== null && item.sizeBytes !== undefined && typeof item.sizeBytes !== 'number')
-      ) {
-        throw serviceUnavailable('release manifest invalid')
-      }
-      return {
-        name: item.name,
-        version: item.version,
-        fileName: item.fileName,
-        sha256: typeof item.sha256 === 'string' ? item.sha256 : null,
-        sizeBytes: typeof item.sizeBytes === 'number' ? item.sizeBytes : null,
-        publishedAt: item.publishedAt,
-        notes,
-      }
-    })()
-  return {
-    dshVersion: typeof record.dshVersion === 'string' ? record.dshVersion : '0.2.1-rc.5',
-    webAppPackage: typeof record.webAppPackage === 'string'
-      ? record.webAppPackage
-      : '@deepseek-ai/dsh-web-app',
-    plugin,
-  }
+  const parsed = releaseManifestSchema.safeParse(raw)
+  if (!parsed.success) throw serviceUnavailable('release manifest invalid')
+  return parsed.data
 }
 
 export function registerPortalRoutes(app: FastifyInstance, deps: PortalRouteDeps): void {

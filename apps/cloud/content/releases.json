@@ -12,5 +12,18 @@
       "首个公开版本：课程体系、知识检索、片段定位与伴学问答。",
       "需要 dsh 0.2.1-rc.5；Web UI 需额外安装 @deepseek-ai/dsh-web-app。"
     ]
+  },
+  "producerPlugin": {
+    "name": "dsh-plugin-trend-producer",
+    "version": "0.1.4",
+    "fileName": "dsh-plugin-trend-producer-0.1.4.tgz",
+    "sha256": "9e6d3736784c7aac707fa584eb1bf57486d86d00ee19a47c39dd0849102fb5c8",
+    "sizeBytes": 249839,
+    "publishedAt": "2026-11-07",
+    "notes": [
+      "tarball 自带九个工艺包与装机脚本，解包后跑 package/scripts/setup.mjs 即可，不碰仓库。",
+      "教员生产端插件：语料级视频转图文课程与交互课件。",
+      "需要 dsh 0.2.1-rc.5。"
+    ]
   }
 }
