@@ -9,6 +9,9 @@ import {
   dslVersionOf, DSL_VERSION, barReplayDecisionSpec, BAR_REPLAY_DECISION_ASSERTIONS,
   imageJuxtapositionSpec, IMAGE_JUXTAPOSITION_ASSERTIONS,
   branchingScenarioSpec, BRANCHING_SCENARIO_ASSERTIONS,
+  mediaAssetCreateInput, uploadTicketInput, uploadTicketOutput, uploadConfirmInput,
+  assetIngestInput, PRODUCTION_STEPS, PRODUCTION_STEP_LABELS, PRODUCTION_TASK_STATUSES,
+  productionTaskUpsertInput, productionTaskListInput, productionBoardOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -487,4 +490,108 @@ test('DSL v2：bar-replay-decision spec 形状与必带断言', () => {
   assert.deepEqual([...BAR_REPLAY_DECISION_ASSERTIONS], [
     'decisionPointsGrounded', 'revealMonotonic', 'annotationTermsGrounded', 'answerUnique',
   ])
+})
+
+test('素材入库：建素材/直传凭据/确认/入队的形状与非法值拒绝', () => {
+  assert.equal(mediaAssetCreateInput.safeParse({ courseId: 'TC-ZONGLUN', title: '第1讲' }).success, true)
+  assert.equal(mediaAssetCreateInput.safeParse({ courseId: 'TC-ZONGLUN', title: '  ' }).success, false)
+  assert.equal(mediaAssetCreateInput.safeParse({ courseId: 'TC-ZONGLUN' }).success, false)
+
+  const ticket = {
+    assetId: ASSET,
+    sizeBytes: 1024,
+    sha256: 'a'.repeat(64),
+  }
+  assert.equal(uploadTicketInput.safeParse(ticket).success, true)
+  // 摘要必须 64 位小写 hex
+  assert.equal(uploadTicketInput.safeParse({ ...ticket, sha256: 'A'.repeat(64) }).success, false)
+  assert.equal(uploadTicketInput.safeParse({ ...ticket, sha256: 'a'.repeat(63) }).success, false)
+  // 字节数必须正整数
+  assert.equal(uploadTicketInput.safeParse({ ...ticket, sizeBytes: 0 }).success, false)
+
+  assert.equal(uploadConfirmInput.safeParse(ticket).success, true)
+  assert.equal(uploadConfirmInput.safeParse({ ...ticket, assetId: 'asset_x' }).success, false)
+
+  assert.equal(assetIngestInput.safeParse({ assetId: ASSET }).success, true)
+  assert.equal(assetIngestInput.safeParse({ assetId: ASSET, language: 'zh' }).success, true)
+  assert.equal(assetIngestInput.safeParse({ assetId: ASSET, language: 'jp' }).success, false)
+
+  // 直传凭据固定为 PUT
+  assert.equal(uploadTicketOutput.safeParse({
+    assetId: ASSET,
+    uploadUrl: 'http://cloud/v1/admin/content/media-assets/x/source?expires=1&sig=2',
+    method: 'PUT',
+    headers: { 'content-type': 'application/octet-stream' },
+    expiresAt: 1,
+  }).success, true)
+  assert.equal(uploadTicketOutput.safeParse({
+    assetId: ASSET,
+    uploadUrl: 'http://cloud/x',
+    method: 'POST',
+    headers: {},
+    expiresAt: 1,
+  }).success, false)
+})
+
+test('生产任务：9 步顺序固定、标签齐备、任务与看板形状', () => {
+  assert.deepEqual([...PRODUCTION_STEPS], [
+    'case_stocks', 'quotes_sync', 'quotes_read', 'figures', 'replay_widget',
+    'article', 'widgets', 'review', 'provenance',
+  ])
+  for (const step of PRODUCTION_STEPS) {
+    assert.equal(typeof PRODUCTION_STEP_LABELS[step], 'string')
+    assert.ok(PRODUCTION_STEP_LABELS[step].length > 0)
+  }
+
+  const upsert = {
+    courseId: 'TC-ZONGLUN',
+    sectionId: SECTION,
+    step: 'case_stocks',
+    status: 'done',
+  }
+  assert.equal(productionTaskUpsertInput.safeParse(upsert).success, true)
+  assert.equal(productionTaskUpsertInput.safeParse({ ...upsert, step: 'unknown' }).success, false)
+  assert.equal(productionTaskUpsertInput.safeParse({ ...upsert, status: 'archived' }).success, false)
+  assert.equal(productionTaskUpsertInput.safeParse({ ...upsert, maxAttempts: 0 }).success, false)
+
+  assert.equal(productionTaskListInput.safeParse({ courseId: 'TC-ZONGLUN' }).success, true)
+  assert.equal(productionTaskListInput.safeParse({ courseId: 'TC-ZONGLUN', sectionId: SECTION }).success, true)
+  assert.equal(productionTaskListInput.safeParse({ courseId: 'TC-ZONGLUN', sectionId: 'bad' }).success, false)
+
+  const board = productionBoardOutput.safeParse({
+    courseId: 'TC-ZONGLUN',
+    courseTitle: '趋势交易体系·总论卷',
+    sections: [{
+      sectionId: SECTION,
+      chapterId: 'ch_1',
+      title: '总论 1',
+      position: 1,
+      steps: [{
+        taskId: 'pt_0123456789abcdef',
+        courseId: 'TC-ZONGLUN',
+        sectionId: SECTION,
+        step: 'article',
+        status: 'done',
+        attempt: 1,
+        maxAttempts: 3,
+        note: null,
+        updatedAt: 0,
+      }],
+      articleVersion: 7,
+      widgetCount: 5,
+      figureCount: 3,
+      caseStockCount: 3,
+      reviewVerdict: 'approve',
+    }],
+  })
+  assert.equal(board.success, true)
+  assert.equal(productionBoardOutput.safeParse({
+    courseId: 'TC-ZONGLUN',
+    courseTitle: 'x',
+    sections: [{
+      sectionId: SECTION, chapterId: 'ch_1', title: 't', position: 1, steps: [],
+      articleVersion: null, widgetCount: 0, figureCount: 0, caseStockCount: 0,
+      reviewVerdict: 'pending',
+    }],
+  }).success, false)
 })
