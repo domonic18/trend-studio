@@ -15,6 +15,8 @@ import {
   productionTaskUpsertInput, productionTaskListInput, productionBoardOutput,
   materialImpactInput, materialImpactOutput, materialChoiceInput, materialChoiceOutput,
   transcriptOutput, sourceUnitsReadOutput,
+  READINESS_GATES, courseReadinessInput, courseReadinessOutput,
+  conceptUpdateInput, conceptUpdateOutput, conceptsListOutput, caseStocksListOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -715,4 +717,68 @@ test('A6 增量产出：转写与 source unit 读取都带 partial 标记', () =
   }
   assert.equal(sourceUnitsReadOutput.safeParse({ units: [unit], partial: true }).success, true)
   assert.equal(sourceUnitsReadOutput.safeParse({ units: [unit] }).success, false, 'partial 是必填')
+})
+
+test('发布就绪度：门禁集合固定五道，输出形状严格', () => {
+  assert.deepEqual(READINESS_GATES, ['figures', 'widgets', 'clips', 'annotations', 'approval'])
+  const gate = {
+    gate: 'widgets',
+    label: '课件断言证明',
+    status: 'pass',
+    summary: '36/36 断言全通过',
+    issues: [],
+  }
+  const payload = {
+    courseId: 'course-1',
+    fingerprint: 'a'.repeat(64),
+    approvedFingerprint: null,
+    gates: [gate],
+    publishable: false,
+    pending: ['签批终审'],
+  }
+  assert.equal(courseReadinessOutput.safeParse(payload).success, true)
+  assert.equal(courseReadinessOutput.safeParse({ ...payload, fingerprint: 'short' }).success, false, '指纹必须是 64 位十六进制')
+  assert.equal(courseReadinessOutput.safeParse({ ...payload, publishable: 'yes' }).success, false)
+  assert.equal(courseReadinessOutput.safeParse({
+    ...payload,
+    gates: [{ ...gate, status: 'maybe' }],
+  }).success, false, '门禁状态只允许 pass/fail/pending')
+  assert.equal(courseReadinessOutput.safeParse({ ...payload, extra: 1 }).success, false, 'strict：不多带字段')
+})
+
+test('内容编辑：术语更新 / 案例股读回 / 术语状态', () => {
+  const conceptId = 'cpt_0123456789abcdef'
+  assert.equal(conceptUpdateInput.safeParse({ courseId: 'c', conceptId, aliases: ['均线'] }).success, true)
+  assert.equal(conceptUpdateInput.safeParse({ courseId: 'c', conceptId, status: 'archived' }).success, true)
+  assert.equal(conceptUpdateInput.safeParse({ courseId: 'c', conceptId, status: 'published' }).success, false, '术语只有 draft/archived 两态可写')
+  assert.equal(conceptUpdateInput.safeParse({ courseId: 'c', conceptId: 'bad' }).success, false)
+  assert.equal(conceptUpdateInput.safeParse({ courseId: 'c', conceptId, name: '新名' }).success, false, '改名走归档+新建，不在本端点')
+
+  const item = {
+    conceptId,
+    name: '均线',
+    aliases: ['MA'],
+    definition: null,
+    status: 'draft',
+  }
+  assert.equal(conceptsListOutput.safeParse({ concepts: [item] }).success, true)
+  assert.equal(conceptsListOutput.safeParse({ concepts: [{ ...item, status: 'gone' }] }).success, false)
+
+  const stock = {
+    stockRefId: 'cst_0123456789abcdef',
+    sectionId: SECTION,
+    name: '丰乐股份',
+    exchange: 'SZSE',
+    code: '000713',
+    period: '1d',
+    windowStart: '2024-01-01',
+    windowEnd: '2024-06-01',
+    events: [],
+    note: null,
+    status: 'draft',
+    position: 1,
+    createdAt: '2026-11-07T00:00:00.000Z',
+  }
+  assert.equal(caseStocksListOutput.safeParse({ stocks: [stock] }).success, true)
+  assert.equal(caseStocksListOutput.safeParse({ stocks: [{ ...stock, code: '713' }] }).success, false)
 })

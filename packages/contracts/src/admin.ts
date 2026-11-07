@@ -135,6 +135,50 @@ export const approvalsListOutput = z.object({
   approvals: z.array(approvalItem),
 }).strict()
 
+/**
+ * 发布就绪度：把「发布事务会拦住的门禁」事先摊开给人和工具看。
+ *
+ * 门禁集合与发布事务**同源**——就绪度卡片的每一格都来自发布时跑的同一批检查，
+ * 不另立一套判定，避免「卡片全绿、点发布就 409」。
+ */
+export const READINESS_GATES = ['figures', 'widgets', 'clips', 'annotations', 'approval'] as const
+export type ReadinessGate = (typeof READINESS_GATES)[number]
+
+export const courseReadinessInput = z.object({
+  courseId: z.string().min(1).max(64),
+}).strict()
+
+export const readinessIssue = z.object({
+  /** 与发布冲突码同名，便于按码给中文指引。 */
+  code: z.string().min(1).max(64),
+  message: z.string().min(1).max(2000),
+  /** 命中的对象（figureId / widgetId / 节号…），供界面定位。 */
+  targets: z.array(z.string().max(200)).max(200).optional(),
+}).strict()
+
+export const readinessFinding = z.object({
+  gate: z.enum(READINESS_GATES),
+  label: z.string().min(1).max(50),
+  /** pass=过；fail=有硬伤，发布会拦；pending=还没到（例：尚未签批）。 */
+  status: z.enum(['pass', 'fail', 'pending']),
+  /** 一句话现状，例：「36/36 断言全通过」。 */
+  summary: z.string().min(1).max(200),
+  issues: z.array(readinessIssue),
+}).strict()
+
+export const courseReadinessOutput = z.object({
+  courseId: z.string().min(1).max(64),
+  /** 当前内容指纹（与签批记录同口径），十六进制。 */
+  fingerprint: z.string().length(64),
+  /** 签批时记录的指纹；无签批记录为 null。 */
+  approvedFingerprint: z.string().length(64).nullable(),
+  gates: z.array(readinessFinding),
+  /** 全部硬门禁过且签批有效 = 可发布。 */
+  publishable: z.boolean(),
+  /** 待办事项的中文短句，按顺序。 */
+  pending: z.array(z.string().min(1).max(100)).max(20),
+}).strict()
+
 /** M3b：腾讯前复权日K 同步（课程案例股清单驱动，幂等 upsert）。 */
 export const quotesSyncInput = z.object({
   courseId: z.string().min(1).max(64),
@@ -174,6 +218,23 @@ export const conceptWriteInput = z.object({
 
 export const conceptWriteOutput = z.object({ conceptId }).strict()
 
+/**
+ * 术语更新（管理台术语抽屉）：按 conceptId 改别名、定义与状态。
+ *
+ * 名称是术语的主键语义（正文的 glossary 按名称/别名匹配），改名走「归档 + 新建」。
+ * 归档可逆：状态置回 `draft` 即恢复；归档后该术语不再计入 `:::annotation` 的 glossary 校验，
+ * 未解引用会在发布就绪度卡片上显形。
+ */
+export const conceptUpdateInput = z.object({
+  courseId: z.string().min(1).max(64),
+  conceptId,
+  aliases: z.array(z.string().min(1).max(200)).max(20).optional(),
+  definition: z.string().max(2000).nullable().optional(),
+  status: z.enum(['draft', 'archived']).optional(),
+}).strict()
+
+export const conceptUpdateOutput = z.object({ conceptId }).strict()
+
 export const conceptsListInput = z.object({
   courseId: z.string().min(1).max(64),
 }).strict()
@@ -183,6 +244,7 @@ export const conceptListItem = z.object({
   name: z.string().min(1).max(200),
   aliases: z.array(z.string().max(200)),
   definition: z.string().max(2000).nullable(),
+  status: z.enum(['draft', 'published', 'archived']),
 }).strict()
 
 export const conceptsListOutput = z.object({
@@ -486,6 +548,25 @@ export const caseStocksWriteOutput = z.object({
   }).strict()),
 }).strict()
 
+/** 案例股清单读回（管理台编辑抽屉用；此前该端点无契约）。 */
+export const caseStocksListOutput = z.object({
+  stocks: z.array(z.object({
+    stockRefId: z.string().regex(CASE_STOCK_REF_ID),
+    sectionId,
+    name: z.string().max(50),
+    exchange: z.string().max(16),
+    code: z.string().regex(STOCK_CODE_PLAIN),
+    period: z.string().max(8),
+    windowStart: z.string().regex(DATE_STR),
+    windowEnd: z.string().regex(DATE_STR),
+    events: z.array(caseStockEvent),
+    note: z.string().max(500).nullable(),
+    status: z.string().max(16),
+    position: z.number().int(),
+    createdAt: z.string(),
+  }).strict()),
+}).strict()
+
 export const pipelineStatusInput = z.object({
   assetId: assetId.optional(),
   courseId: z.string().min(1).max(64).optional(),
@@ -554,7 +635,10 @@ export type FramesOutput = z.infer<typeof framesOutput>
 export type SourceUnitsWriteOutput = z.infer<typeof sourceUnitsWriteOutput>
 export type SourceUnitsSearchOutput = z.infer<typeof sourceUnitsSearchOutput>
 export type ConceptWriteOutput = z.infer<typeof conceptWriteOutput>
+export type ConceptUpdateOutput = z.infer<typeof conceptUpdateOutput>
 export type ConceptsListOutput = z.infer<typeof conceptsListOutput>
+export type CaseStocksListOutput = z.infer<typeof caseStocksListOutput>
+export type CourseReadinessOutput = z.infer<typeof courseReadinessOutput>
 export type ConceptEdgeWriteOutput = z.infer<typeof conceptEdgeWriteOutput>
 export type SectionsListOutput = z.infer<typeof sectionsListOutput>
 export type SectionWriteOutput = z.infer<typeof sectionWriteOutput>

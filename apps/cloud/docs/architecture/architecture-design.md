@@ -1,6 +1,7 @@
 # 趋势课程云端服务 · 架构设计（v0.29）
 
-版本：v0.30（2026-11-07；**生产流程向导落地**（§6.5.14）——九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到单一真相源 `packages/contracts/src/production-flow.ts`（**刻意零 import、不引 zod**，浏览器端可直接引 `@trend/contracts/production-flow` 子路径而不把 zod 打进前端 bundle），同一份数据出两个渲染：给模型的 `skills/section-production/SKILL.md` 九步速查表（由 `scripts/render-flow-guide.mjs` 渲染进标记块，漂移有测试守卫）、给人的管理台生产看板「流程向导」步骤卡（九步逐条打勾 + 每步「已完成 X/Y 节」+ 当前步 + 常见坑）；管理台原先自持的九步副本已删除。**零新增表、零新增端点、零契约字段变更**）
+版本：v0.31（2026-11-07；**发布就绪度与内容编辑落地**（§6.5.15）——五道发布门禁的判定体抽成返回检查结果的函数（`src/production/readiness.ts`），发布事务与只读端点 `GET /v1/admin/content/courses/{courseId}/readiness`（operator/admin/producer）读**同一批结果**——门禁集合与发布事务执行的五道逐字一致（`figures`/`widgets`/`clips`/`annotations`/`approval`），`issues[].code` 复用发布冲突码，杜绝「卡片全绿、点发布 409」；内容编辑三处结构化可编辑（节元数据 / 案例股清单 / 术语更新与归档，写入恒为 draft，**正文 DSL 不在管理台手改**——其 d/atDate 受行情交易日与术语表约束）；**内容指纹覆盖扩展**（节的 `summary`/`conceptRefs`/`sourceAssetIds` 与概念表此前不纳入指纹，改这些内容已签批的课程照样能发出去，是发布链路的真实漏洞，扩展后必转 `approval_stale`）。零新增表）
+v0.30（2026-11-07；**生产流程向导落地**（§6.5.14）——九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到单一真相源 `packages/contracts/src/production-flow.ts`（**刻意零 import、不引 zod**，浏览器端可直接引 `@trend/contracts/production-flow` 子路径而不把 zod 打进前端 bundle），同一份数据出两个渲染：给模型的 `skills/section-production/SKILL.md` 九步速查表（由 `scripts/render-flow-guide.mjs` 渲染进标记块，漂移有测试守卫）、给人的管理台生产看板「流程向导」步骤卡（九步逐条打勾 + 每步「已完成 X/Y 节」+ 当前步 + 常见坑）；管理台原先自持的九步副本已删除。**零新增表、零新增端点、零契约字段变更**）
 v0.29（2026-11-07；**管理台生产看板落地**（§6.5.13）——新增「生产看板」页（`/admin/courses/:courseId/board`）：每节一行九步状态 + 产出计数 + 最近评审结论 + 当前步（口径与生产端引擎一致：九步里第一个未 `done` 的，含尚未落库的步）+ 最近的追加素材决策；看板页带「同步行情」按钮（`POST .../quotes-sync`，只写行情缓存、不改内容状态，故对 producer 开放）；签批与发布按钮对 producer 直接隐藏（分权不变）；素材/任务/行情三类失败按机器可读码或已知服务端文案给出可执行中文指引。**零新增表、零新增端点、零契约字段变更**——只把 §6.5.10/§6.5.11 已有的端点接到管理台）
 v0.28（2026-11-07；**增量转写产出落地**（§6.5.12）——管线 ingest 的 ASR 阶段改为**边转写边发布**：每个 chunk 转写完成即落成 `transcript_segments`，转写未完（`media_transcripts.status=processing`）即可读已转写前缀；关键帧轨道提前到 ASR 之前抽完（抽帧与转写无关），保证部分理解阶段画面证据齐备；读侧语义变更：转写回执增 `transcript.partial` 标记（`total` 是「当前可读段数」而非终值）、`source-units/read` 回执增 `partial`（素材 `processing` 期间照常可读，`failed`/`archived` 仍 `409 unit_not_readable`）；生产端播放会话改走 `allowPartial` 选项（学员端不变，仍只放行 `ready` 素材）。**零新增表、零新增端点**——只改管线发布时序与既有回执的读取语义）
 v0.27（2026-11-07；**追加素材处理决策落地**（§6.5.11）——新增表 `production_material_choices`（迁移 023）与两个端点：`POST /v1/admin/content/material-impact`（**只读**算影响面：A 必须给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）、`POST /v1/admin/content/material-choices`（落决策并把受影响节九步重置为 pending、attempt 清零而回灌预算保留，A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。九步顺序的**引擎强制落在生产端**（`apps/producer/src/host/production-steps.ts` 纯函数 + 5 个工具），云端仍只存状态不调度）
@@ -492,6 +493,8 @@ queued ──claim──> running ──success──> succeeded
 | `GET /v1/admin/content/courses/{courseId}/production-board` | 生产看板聚合：每节一行九步状态 + 产出计数 + 最近评审结论 + 最近追加素材决策（§6.5.10/§6.5.11） |
 | `POST /v1/admin/content/material-impact` | 追加素材影响面（**只读**，A/B/C 各会动哪几节）（§6.5.11） |
 | `POST /v1/admin/content/material-choices` | 追加素材处理决策落库 + 受影响节九步重置（§6.5.11） |
+| `GET /v1/admin/content/courses/{courseId}/readiness` | 发布就绪度（**只读**）：五道发布门禁逐条判定 + 当前/签批指纹 + 待办清单（§6.5.15） |
+| `PUT /v1/admin/content/concepts/{conceptId}` | 术语更新（别名 / 定义 / 状态 `draft`\|`archived`）（§6.5.15） |
 
 M3b 分权：上表与 M10 端点表（§6.5.1/§6.6）的 `/v1/admin/content/*` 生产端点均接受 **operator/admin/producer** 会话；发布（publish）、审批（approvals，M3b B4 落地）、账号管理与模型配置仍限 operator/admin。生产插件凭据使用 `producer` 角色专用令牌，不再复用 operator 令牌。
 
@@ -729,6 +732,30 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 - **不变量**：向导只解释，不推进——九步的推进权仍在生产端引擎（§6.5.10），状态只由引擎写入。
 - **零新增**：云端端点、表、契约字段均无新增；只新增一个无 zod 的契约模块与一个子路径导出。
+
+#### 6.5.15 发布就绪度与内容编辑（B1 落地）
+
+**问题**：发布门禁此前只存在于 `publishCourse` 事务里，撞错才知——点发布吃 `409 widget_unproven` 才知道课件没证完；且**判定只有一份、只在发布路径上**。要让人「事先看到能不能发」，就得把同一份判定再暴露一个只读消费者；两份实现必然漂移（卡片全绿、点发布 409）。
+
+**方案**：把五道发布门禁的判定体抽成**返回检查结果**的函数（`apps/cloud/src/production/readiness.ts`），发布事务与就绪度端点读同一批结果。
+
+| 环节 | 定义 |
+|---|---|
+| 门禁集合 | `figures`（图示解析）/ `widgets`（课件断言证明）/ `clips`（片段窗）/ `annotations`（标注与回放）/ `approval`（终审签批）——**与发布事务执行的五道逐字一致**；门禁①（骨架与概念图谱）属生产侧，不在本处 |
+| 判定形态 | 每道门禁返回 `{status: pass\|fail\|pending, summary, issues[]}`；`issues[].code` **复用发布冲突码**（`figure_unresolved` / `widget_unproven` / `clip_invalid` / `annotation_unresolved` / `replay_unproven` / `approval_required` / `approval_stale`） |
+| 两个消费者 | ① `GET /v1/admin/content/courses/{courseId}/readiness`（只读，operator/admin/producer——生产方要知道还差什么才能交接）；② `POST .../publish`（读同一批结果，按**原顺序**抛第一个失败项，错误码与载荷逐字不变） |
+| 端点归属 | 就绪度端点落在 `production` 命名空间（内容域），发布仍在 `pipeline` 命名空间（媒体/发布域）；门禁检查器归内容域所有，发布事务反向引用 |
+
+**内容编辑**：节元数据 / 案例股清单 / 术语三处结构化可编辑，写入恒为 draft。
+
+- **正文（DSL）不在管理台手改**——`:::annotation` 的 `d` 与 `atDate` 受行情缓存交易日约束、标注受术语表与案例股窗口约束，手改正文等于绕过这三道校验；改正文走生产端回灌。
+- **术语改名走「归档 + 新建」**：术语名是正文 glossary 的匹配键，原地改名会让既有标注失配；归档可逆（状态置回 `draft` 即恢复），归档后该术语不再计入 glossary 校验，未解引用会在 `annotations` 门禁上显形。
+- **概念此前缺归档通道**（只能人工在库内删零引用行），本版补 `PUT /v1/admin/content/concepts/{conceptId}`（别名 / 定义 / 状态）。
+
+**内容指纹覆盖扩展（本批必做的漏洞修复）**：指纹此前只覆盖正文 / 课件 / 图示 / 案例股，**不覆盖节的 `summary` / `conceptRefs` / `sourceAssetIds`，也不覆盖概念表**——改这些内容，已签批的课程照样能发布出去。扩展后改了这些内容即 `approval_stale`，必须重新签批。
+
+- **不变量**：就绪度是**读物**，不是闸——它不改变发布行为，只把发布会拦的事先说出来；发布权与签批权仍在 operator/admin。
+- **零新增表**；新增一个云端端点与两个内容编辑端点，契约新增 `courseReadiness*` / `conceptUpdate*` / `caseStocksListOutput`，术语列表项补 `status`。
 
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 
