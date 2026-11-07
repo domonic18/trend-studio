@@ -443,6 +443,13 @@ A7 ✅ 管理台「生产看板」页（`/admin/courses/:courseId/board`）：�
 浏览器端不引 zod）与 `lib/productionErrors.ts`（素材 / 任务 / 行情三类失败的可执行中文指引）；
 顺带补上素材与任务表此前**完全没有 onError** 的静默失败（上传 / 处理 / 生成 / 归档 / 取消 / 重试）。
 **引擎在本地、云端只存状态**——顺序/预算/影响面规则不落云端，「云 DB 即 checkpoint」不变。
+A8 ✅ 流程向导**一份真相源两个渲染**：九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到
+`packages/contracts/src/production-flow.ts`（**刻意不引 zod**，浏览器端可直接引该子路径）；
+给模型的渲染是 `skills/section-production/SKILL.md` 的「流程向导（九步速查）」段
+（由 `scripts/render-flow-guide.mjs` 渲染进 `flow-guide:start/end` 标记块，`test/flow-guide.test.mjs`
+做漂移守卫——改契约不重渲染就红）；给人的渲染是管理台生产看板页的「流程向导」步骤卡
+（九步逐条打勾 + 每步「已完成 X/Y 节」+ 课程当前步 + 目标 / 工具 / 常见坑）；
+管理台原先自持的九步副本 `lib/productionSteps.ts` 已删除，改为直接引契约。
 
 ### 12.3 每批次的完成定义
 

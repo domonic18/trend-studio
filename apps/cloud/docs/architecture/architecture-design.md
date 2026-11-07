@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.28）
+# 趋势课程云端服务 · 架构设计（v0.29）
 
-版本：v0.29（2026-11-07；**管理台生产看板落地**（§6.5.13）——新增「生产看板」页（`/admin/courses/:courseId/board`）：每节一行九步状态 + 产出计数 + 最近评审结论 + 当前步（口径与生产端引擎一致：九步里第一个未 `done` 的，含尚未落库的步）+ 最近的追加素材决策；看板页带「同步行情」按钮（`POST .../quotes-sync`，只写行情缓存、不改内容状态，故对 producer 开放）；签批与发布按钮对 producer 直接隐藏（分权不变）；素材/任务/行情三类失败按机器可读码或已知服务端文案给出可执行中文指引。**零新增表、零新增端点、零契约字段变更**——只把 §6.5.10/§6.5.11 已有的端点接到管理台）
+版本：v0.30（2026-11-07；**生产流程向导落地**（§6.5.14）——九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到单一真相源 `packages/contracts/src/production-flow.ts`（**刻意零 import、不引 zod**，浏览器端可直接引 `@trend/contracts/production-flow` 子路径而不把 zod 打进前端 bundle），同一份数据出两个渲染：给模型的 `skills/section-production/SKILL.md` 九步速查表（由 `scripts/render-flow-guide.mjs` 渲染进标记块，漂移有测试守卫）、给人的管理台生产看板「流程向导」步骤卡（九步逐条打勾 + 每步「已完成 X/Y 节」+ 当前步 + 常见坑）；管理台原先自持的九步副本已删除。**零新增表、零新增端点、零契约字段变更**）
+v0.29（2026-11-07；**管理台生产看板落地**（§6.5.13）——新增「生产看板」页（`/admin/courses/:courseId/board`）：每节一行九步状态 + 产出计数 + 最近评审结论 + 当前步（口径与生产端引擎一致：九步里第一个未 `done` 的，含尚未落库的步）+ 最近的追加素材决策；看板页带「同步行情」按钮（`POST .../quotes-sync`，只写行情缓存、不改内容状态，故对 producer 开放）；签批与发布按钮对 producer 直接隐藏（分权不变）；素材/任务/行情三类失败按机器可读码或已知服务端文案给出可执行中文指引。**零新增表、零新增端点、零契约字段变更**——只把 §6.5.10/§6.5.11 已有的端点接到管理台）
 v0.28（2026-11-07；**增量转写产出落地**（§6.5.12）——管线 ingest 的 ASR 阶段改为**边转写边发布**：每个 chunk 转写完成即落成 `transcript_segments`，转写未完（`media_transcripts.status=processing`）即可读已转写前缀；关键帧轨道提前到 ASR 之前抽完（抽帧与转写无关），保证部分理解阶段画面证据齐备；读侧语义变更：转写回执增 `transcript.partial` 标记（`total` 是「当前可读段数」而非终值）、`source-units/read` 回执增 `partial`（素材 `processing` 期间照常可读，`failed`/`archived` 仍 `409 unit_not_readable`）；生产端播放会话改走 `allowPartial` 选项（学员端不变，仍只放行 `ready` 素材）。**零新增表、零新增端点**——只改管线发布时序与既有回执的读取语义）
 v0.27（2026-11-07；**追加素材处理决策落地**（§6.5.11）——新增表 `production_material_choices`（迁移 023）与两个端点：`POST /v1/admin/content/material-impact`（**只读**算影响面：A 必须给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）、`POST /v1/admin/content/material-choices`（落决策并把受影响节九步重置为 pending、attempt 清零而回灌预算保留，A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。九步顺序的**引擎强制落在生产端**（`apps/producer/src/host/production-steps.ts` 纯函数 + 5 个工具），云端仍只存状态不调度）
 v0.26（2026-11-07；**生产任务状态机落地**（§6.5.10）——新增表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022）与三个端点：`POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出）、`GET /v1/admin/content/courses/{courseId}/production-board`（看板聚合：每节一行，含已落库步骤、正文版本、课件/图示/案例股计数与最近评审结论）。九步顺序 `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance` 由生产端引擎强制（§6.5.10），云端只存状态不做调度；权限 operator/admin/producer）
@@ -711,6 +712,23 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 - **不变量**：看板只读。它不推进任何一步——推进权在生产端引擎（§6.5.10），人看板上看到的状态永远是引擎写进去的既有状态。
 - **零新增**：云端一个端点都没加；管理台侧新增 `lib/productionSteps.ts`、`lib/productionErrors.ts`、`pages/Content/ProductionBoardPage.tsx` 与一处路由/侧栏入口。
+
+#### 6.5.14 生产流程向导（一份真相源，两个渲染，A8 落地）
+
+**问题**：九步的**做法说明**此前只存在于生产端技能包的散文里——人（教员/运营）看得到看板上的状态，却看不到「这一步要产出什么、用哪个工具、会卡在哪个错误码」。两边各写一份必然漂移：模型按散文执行，人按卡片理解，一旦改顺序或改纪律就对不上。
+
+**方案**：把九步的做法说明升为**契约级数据**（`packages/contracts/src/production-flow.ts`），由它渲染出两份视图。
+
+| 环节 | 定义 |
+|---|---|
+| 真相源 | `PRODUCTION_STEPS`（顺序）+ `PRODUCTION_STEP_LABELS`（中文名）+ `PRODUCTION_STEP_GUIDE`（每步的 `goal` / `tools` / `pitfalls`）；契约测试守卫「向导卡与步骤顺序一一对应、字段非空、工具名以 `cloud_` 开头」 |
+| **不引 zod** | 该模块**刻意零 import**——生产任务 DTO 仍留在 `production-task.ts` 带 zod；管理台浏览器端引 `@trend/contracts/production-flow` 子路径即可，不把 zod 打进前端 bundle |
+| 给模型 | `apps/producer/skills/section-production/SKILL.md` 的「流程向导（九步速查）」段，由 `scripts/render-flow-guide.mjs` 渲染进 `flow-guide:start/end` 标记块之间；`test/flow-guide.test.mjs` 做漂移守卫（契约改了不重渲染 → 测试红） |
+| 给人 | 管理台生产看板页的「流程向导」步骤卡：九步逐条打勾，每步显示「已完成 X/Y 节」、失败数、课程当前步，以及目标 / 工具 / 常见坑 |
+| 副本消除 | 管理台原先自持一份九步副本（`web/admin/src/lib/productionSteps.ts`）与契约副本并行——现改为直接引契约，副本删除；步骤状态的中文名/配色属 UI 外观，仍留在管理台 |
+
+- **不变量**：向导只解释，不推进——九步的推进权仍在生产端引擎（§6.5.10），状态只由引擎写入。
+- **零新增**：云端端点、表、契约字段均无新增；只新增一个无 zod 的契约模块与一个子路径导出。
 
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 
