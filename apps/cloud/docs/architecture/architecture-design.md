@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.32）
+# 趋势课程云端服务 · 架构设计（v0.33）
 
-版本：v0.32（2026-11-07；**发布交接线落地（管理台 + 回归）**（§6.5.15）——就绪度与内容编辑两端都上线：云端端点见 v0.31，**管理台落地**课程编辑页「发布就绪度」卡片（五道门禁逐条 + 当前/签批指纹 + 待办清单；签批与发布按钮按就绪度给禁用理由，producer 仍看不到这两个按钮——分权不变）与节 / 案例股 / 术语三个编辑抽屉（编辑落 draft 并提示需重签批；失败文案按机器可读错误码给中文指引）；配套两处云端收口——**节编辑落 `status='draft'`**（此前改了仍留已发布态，与正文/课件/图示的落草稿口径不一致）、**术语定义支持传 `null` 清空**（契约允许可空，此前路由层把 `null` 当非法字符串挡掉，等于没有清空通道）；B4 回归：根 `pnpm check` 8/8、根 `pnpm test` 12/12 通过（云端 226 例：225 通过 / 1 跳过 / 0 失败，新增两例覆盖节编辑落草稿改指纹与术语定义清空）。零新增表、零新增端点、零契约字段变更）
+版本：v0.33（2026-11-07；**教员装机分发对外化**（§6.5.16）——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包（`skills/`）、装机脚本与 bundle 依赖（`@trend/contracts`、`yaml`）——**工艺包必须随包分发**，否则 `cordis.patch.yml` 的 `customSkillDirs` 指向的目录不存在，装完会静默丢掉全部工艺包；`GET /v1/portal/releases` 顶层**新增 `producerPlugin`**（与 `plugin` 同形、可空），清单校验由手写改为契约包里的 zod schema（`packages/contracts/src/releases.ts`），**学员侧 `plugin` / `dshVersion` / `webAppPackage` 一字不变**、新字段不进 OpenAPI `required`；新增发布脚本 `apps/cloud/scripts/publish-producer-plugin.mjs`（打包 → sha256/size → 复制进 `/downloads/` → 只改写 `producerPlugin`）；门户新增公开页 `/teacher`（教员完整装机与使用流程）+ `/downloads` 加教员插件卡，管理台新增 `/admin/producer/setup`（回填本站地址、账号、模型要求与三条命令）。零新增端点、零新增表、契约仅加字段）
+v0.32（2026-11-07；**发布交接线落地（管理台 + 回归）**（§6.5.15）——就绪度与内容编辑两端都上线：云端端点见 v0.31，**管理台落地**课程编辑页「发布就绪度」卡片（五道门禁逐条 + 当前/签批指纹 + 待办清单；签批与发布按钮按就绪度给禁用理由，producer 仍看不到这两个按钮——分权不变）与节 / 案例股 / 术语三个编辑抽屉（编辑落 draft 并提示需重签批；失败文案按机器可读错误码给中文指引）；配套两处云端收口——**节编辑落 `status='draft'`**（此前改了仍留已发布态，与正文/课件/图示的落草稿口径不一致）、**术语定义支持传 `null` 清空**（契约允许可空，此前路由层把 `null` 当非法字符串挡掉，等于没有清空通道）；B4 回归：根 `pnpm check` 8/8、根 `pnpm test` 12/12 通过（云端 226 例：225 通过 / 1 跳过 / 0 失败，新增两例覆盖节编辑落草稿改指纹与术语定义清空）。零新增表、零新增端点、零契约字段变更）
 v0.31（2026-11-07；**发布就绪度与内容编辑落地**（§6.5.15）——五道发布门禁的判定体抽成返回检查结果的函数（`src/production/readiness.ts`），发布事务与只读端点 `GET /v1/admin/content/courses/{courseId}/readiness`（operator/admin/producer）读**同一批结果**——门禁集合与发布事务执行的五道逐字一致（`figures`/`widgets`/`clips`/`annotations`/`approval`），`issues[].code` 复用发布冲突码，杜绝「卡片全绿、点发布 409」；内容编辑三处结构化可编辑（节元数据 / 案例股清单 / 术语更新与归档，写入恒为 draft，**正文 DSL 不在管理台手改**——其 d/atDate 受行情交易日与术语表约束）；**内容指纹覆盖扩展**（节的 `summary`/`conceptRefs`/`sourceAssetIds` 与概念表此前不纳入指纹，改这些内容已签批的课程照样能发出去，是发布链路的真实漏洞，扩展后必转 `approval_stale`）。零新增表）
 v0.30（2026-11-07；**生产流程向导落地**（§6.5.14）——九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到单一真相源 `packages/contracts/src/production-flow.ts`（**刻意零 import、不引 zod**，浏览器端可直接引 `@trend/contracts/production-flow` 子路径而不把 zod 打进前端 bundle），同一份数据出两个渲染：给模型的 `skills/section-production/SKILL.md` 九步速查表（由 `scripts/render-flow-guide.mjs` 渲染进标记块，漂移有测试守卫）、给人的管理台生产看板「流程向导」步骤卡（九步逐条打勾 + 每步「已完成 X/Y 节」+ 当前步 + 常见坑）；管理台原先自持的九步副本已删除。**零新增表、零新增端点、零契约字段变更**）
 v0.29（2026-11-07；**管理台生产看板落地**（§6.5.13）——新增「生产看板」页（`/admin/courses/:courseId/board`）：每节一行九步状态 + 产出计数 + 最近评审结论 + 当前步（口径与生产端引擎一致：九步里第一个未 `done` 的，含尚未落库的步）+ 最近的追加素材决策；看板页带「同步行情」按钮（`POST .../quotes-sync`，只写行情缓存、不改内容状态，故对 producer 开放）；签批与发布按钮对 producer 直接隐藏（分权不变）；素材/任务/行情三类失败按机器可读码或已知服务端文案给出可执行中文指引。**零新增表、零新增端点、零契约字段变更**——只把 §6.5.10/§6.5.11 已有的端点接到管理台）
@@ -762,6 +763,43 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 - **不变量**：就绪度是**读物**，不是闸——它不改变发布行为，只把发布会拦的事先说出来；发布权与签批权仍在 operator/admin。
 - **零新增表**；新增一个云端端点与两个内容编辑端点，契约新增 `courseReadiness*` / `conceptUpdate*` / `caseStocksListOutput`，术语列表项补 `status`。
 
+#### 6.5.16 教员装机分发（插件制品对外化）
+
+**问题**：生产体验线把生产端本身做顺了（A9 装机向导），但教员拿到生产端只有一条路——克隆整个 monorepo、在 `apps/producer` 里跑 `pnpm setup`。九个工艺包挂在仓库目录 `apps/producer/skills/`，而 `cordis.patch.yml` 的 `skill-filesystem.config.customSkillDirs` 指的就是这个仓库路径：**脱离仓库安装会静默丢掉全部工艺包**。同时云端网站上没有教员入口——门户只有学员的 `/downloads`（只发 coach 插件），教员打开 cloud 页面看不到「我该装什么、按什么顺序装、装完怎么用」。
+
+**制品：一个下载物**
+
+| 构成 | 内容 | 为什么必须在包里 |
+|---|---|---|
+| `lib/` | 插件运行代码 | — |
+| `skills/` | 九个工艺包（各含 `SKILL.md`） | **`customSkillDirs` 指的是目录**——不带 `skills/`，脱离仓库装完即静默丢全部工艺包 |
+| `scripts/setup.mjs` + `scripts/setup/` | 独立装机脚本（install / login / doctor / all） | 教员机不装 dsh 也要能跑（脚本内部 npx 兜底） |
+| `node_modules/@trend/contracts`、`node_modules/yaml` | bundle 依赖 | `workspace:*` 依赖在包内不可解析；`yaml` 是装机脚本的实际运行依赖 |
+
+**清单：加字段，不动旧字段**
+
+`GET /v1/portal/releases` 顶层新增 `producerPlugin`（与 `plugin` 同形：`name` / `version` / `fileName` / `sha256` / `sizeBytes` / `publishedAt` / `notes`，可空）。**学员侧 `plugin` / `dshVersion` / `webAppPackage` 逐字不变**，新字段**不进 OpenAPI `required`**——老客户端不受影响。
+
+- **校验移到契约包**：`packages/contracts/src/releases.ts` 的 `releaseManifestSchema` 是 zod 单一真相源，`apps/cloud/src/portal/routes.ts` 的 `readReleases()` 改用 `safeParse`。宽容度复刻原手写校验：`dshVersion` / `webAppPackage` 坏值回落默认值，**`plugin` / `producerPlugin` 坏值仍 `503 release manifest invalid`**，顶层数组按空清单处理。
+- **清单每次请求现读**：改 `content/releases.json` 无需重启服务。
+
+**发布脚本**：`apps/cloud/scripts/publish-producer-plugin.mjs`（仅 node 内置）——调生产端打包 → 算 sha256 + sizeBytes → 复制进 `apps/cloud/dist/downloads/` → **只改写 `manifest.producerPlugin`**（`plugin` 一字不动）→ 打印版本 / 大小 / sha256 / 下载 URL。支持 `--dry-run` / `--notes`。
+
+**静态制品契约**：`/downloads/*` 由同一静态注册挂载并强制 `Content-Disposition: attachment`；**不进 OpenAPI**（二进制制品不是 API，契约测试已排除该前缀）。
+
+- **sha256 口径**：对**最终下载的那份 tgz 字节**计算（打包产物，不是仓库里的源文件）；页面与清单给出的值必须一致——教员用 `shasum -a 256` 现场比对。
+- **不用 npm 重打包教员侧产物**：重打包会破坏 sha256 可追溯性。
+
+**页面落点**
+
+| 页面 | 面向 | 内容 |
+|---|---|---|
+| 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完七项自检 + 九步生产顺序 + 更新与卸载 + 角色边界（产出恒为草稿，签批发布由运营做） |
+| 门户 `/downloads` | 学员 + 教员 | 学员插件卡**一字不变**；下方新增「教员生产端插件」卡（下载 + sha256 + 前往 `/teacher`） |
+| 管理台 `/admin/producer/setup` | producer / operator / admin | 回填本站云端地址（`window.location.origin`）、当前账号与角色、模型要求（`MiniMax-M3.1-Flash` / `openai-completions`，亦支持 `anthropic-messages`）、dsh 版本；下载入口 + 三条命令 + 外链 `/teacher`。学员不可见（`RequireProduction` 拒 student） |
+
+**不变量**：① 门户 `/teacher` 必须在 `web/portal/src/meta.ts` 的 `ROUTES` 登记——预渲染脚本只遍历 ROUTES，漏登记则深链落到 SPA 壳；② 学员契约一字不变，`producerPlugin` 只加不改；③ 零新增云端端点、零新增表。
+
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 
 教材从「Markdown 平文 + 8 类课件」升级为**编辑部式富文本长文**，由四层构成（2026-11-05 三轮原型 V1 版式 / V2 媒体 / V3 实盘经用户验收定版）：
@@ -1083,7 +1121,8 @@ web/portal (Vite + React 18 + AntD 5)
 - 渲染期禁止 `Date.now()`/`Math.random()`，登录态相关 UI 只在客户端 effect 后出现，避免水合不一致。
 - 服务端第二静态注册只挂精确文件（`wildcard:false`），HTML/`routes.json` 与 SPA 壳 `no-store`，带哈希资源长缓存，`sitemap.xml`/`robots.txt` 缓存 1 小时。
 - 未知 HTML GET 回落：`/admin` 前缀 → 后台 `index.html`；命中 `routes.json` → 预渲染页；其他前端路径 → 门户壳并带 `x-robots-tag: noindex`；`/v1/*` 与非 HTML 请求保持 JSON `404`。
-- 下载：`content/releases.json` 为发布清单，`dist/downloads/` 由同一静态注册挂载并强制 `Content-Disposition: attachment`。
+- 下载：`content/releases.json` 为发布清单，`dist/downloads/` 由**独立的**静态注册挂载并强制 `Content-Disposition: attachment`。清单字段 = `dshVersion` / `webAppPackage` / `plugin`（学员 coach 插件） / **`producerPlugin`（教员生产插件，v0.33 起新增、可空、与 `plugin` 同形）**，校验由 `packages/contracts/src/releases.ts` 的 `releaseManifestSchema` 承担（`dshVersion`/`webAppPackage` 坏值回落默认，`plugin`/`producerPlugin` 坏值 `503 release manifest invalid`）。`/downloads/*` 是**静态制品**，不进 OpenAPI（契约测试已排除该前缀）；sha256 对最终 tgz 字节计算，发布脚本 `apps/cloud/scripts/publish-producer-plugin.mjs` 负责打包 → 算摘要 → 复制 → 只改写 `producerPlugin`（`plugin` 一字不动）。教员的完整装机与使用流程见 §6.5.16。
+  - **下载制品的静态注册有两处硬约束**（v0.33 实测踩坑后定版）：① `wildcard` 必须为 `true`——`wildcard:false` 时 `@fastify/static` 在**注册那一刻** glob 目录并按文件建路由，之后发布的制品会一直 `404` 直到重启服务，而发布脚本正是在服务运行中落盘；② 该注册**独立于门户静态**（不进 `if (portalStatic)` 分支）——插件包不该依赖门户构建，且目录不存在时要先 `mkdir` 再注册，否则冷启动后新发布的包无处可下。
 
 **账号与会话**
 
@@ -1276,7 +1315,7 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 - **M4.2 已落地**：`/v1/asr/transcribe` + MiniMax provider + 按设备限流；2026-11-01 单元/契约测试通过（WAV 与时长校验、base URL 归一化、本地 stub 覆盖成功/`base_resp` 业务错误/429/500/非 JSON/超时，以及鉴权、设备不匹配、非法音频、413、空结果 422、上游错误映射、fake provider 成功与限流 429）；真实上游已于 2026-11-01 完成链路验收（33 分钟中文样片，5 块/49 段、时间戳单调）。
 - **M1 已落地**：媒体素材创建与流式上传、ffprobe 校验、单码率 HLS、16kHz WAV 抽取、静音切块、MiniMax 长音频转写（块级缓存）、章节/知识点/片段/文章草稿生成、生成预览/apply/discard、课程发布与按需 `reindex`、DB 任务队列（认领/心跳/重试/取消/恢复）与管理端「视频建课」页。测试使用假 MediaProcessor/ASR/LLM；真实 MiniMax、内容 LLM 与智谱 embedding 已完成链路验收（2026-11-01，详见运维手册 §11）。
 - **M6 已落地加固项**：限流补齐设备轮询、刷新、体系/片段读取与后台内容接口，`429` 带 `Retry-After`，内存键数设上限；新增零依赖压测脚本 `scripts/load-test.mjs`（P95/错误率阈值）、非破坏性恢复演练 `scripts/restore-drill.sh` 与合规清单 `docs/operations/compliance.md`。账号注销/数据删除、指标与播放会话定期清理、源视频保留期仍未实现，见合规清单 §9。
-- **M7 已落地**：`web/portal` 门户（首页、体系、功能、向导、下载、FAQ、登录/注册/个人中心）与构建期预渲染（`routes.json`/`sitemap.xml`/`robots.txt`）；`/v1/portal/*` 注册/登录/资料/改密/设备解绑/发布清单/统计；迁移 007 的会话 `scope`、`ai_usage_events`/`ai_runs`/`ai_run_steps`/`llm_task_bindings`/`llm_config_health` 与价格字段；LLM/embedding/ASR 接入用量记账、任务级主备绑定、单跳降级与 60s 冷却；后台「AI 用量」「AI 运行」页与模型页「任务绑定」「健康状态」Tab。客服/联系入口、邮件验证与找回密码未实现。
+- **M7 已落地**：`web/portal` 门户（首页、体系、功能、向导、下载、FAQ、**教员安装**、登录/注册/个人中心）与构建期预渲染（`routes.json`/`sitemap.xml`/`robots.txt`）；`/v1/portal/*` 注册/登录/资料/改密/设备解绑/发布清单/统计；迁移 007 的会话 `scope`、`ai_usage_events`/`ai_runs`/`ai_run_steps`/`llm_task_bindings`/`llm_config_health` 与价格字段；LLM/embedding/ASR 接入用量记账、任务级主备绑定、单跳降级与 60s 冷却；后台「AI 用量」「AI 运行」页与模型页「任务绑定」「健康状态」Tab。客服/联系入口、邮件验证与找回密码未实现。
 - **M8 已落地**：章节教材（按章 map-reduce、事实锚定、1500–3000 字/≤20000 字符）、图示（关键帧 + Seedream 文生图，每图 2 候选、每章 ≤3 张、全课 ≤24 张）、`illustrate` 任务与 `figure_plan/figure_render` 阶段、短时签名图片 URL、`contractVersion=2` 体系契约、发布前 `figure_unresolved` 闸门、图片预算（¥10/课、¥300/月，超限 `409 image_budget_exceeded`）、后台教材编辑/图示管理/图片单价。`pipeline-e2e` 覆盖发布闸门、签名篡改与过期、重拉换签、预算硬停与发布后学员读取；插件侧通过 S12。未覆盖：真实 Ark 出图与管理端浏览器操作（待图片模型 Key）。
 - **其他**：TTL 与并发上限仍为临时默认值；生产媒体走 CDN 尚未接入，本地 staging 由 `src/media/routes.ts`、生产管线由 `PIPELINE_HLS_DIR` 提供签名文件服务。
 
