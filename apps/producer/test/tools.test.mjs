@@ -16,9 +16,9 @@ test('全部 cloud_* 工具的 schema 可被 dsh schema DSL 编译（插件能�
       },
     },
   }
-  registerCloudTools(ctx, {}, {})
+  registerCloudTools(ctx, {}, {}, {})
   const names = registered.map(tool => tool.name)
-  assert.ok(names.length >= 16, `工具数偏少: ${names.length}`)
+  assert.ok(names.length >= 20, `工具数偏少: ${names.length}`)
   for (const expected of [
     'cloud_section_preview',
     'cloud_section_article_write',
@@ -28,6 +28,10 @@ test('全部 cloud_* 工具的 schema 可被 dsh schema DSL 编译（插件能�
     'cloud_figure_delete',
     'cloud_source_units_read',
     'cloud_provenance',
+    'cloud_asset_create',
+    'cloud_asset_upload',
+    'cloud_asset_ingest',
+    'cloud_asset_list',
   ]) {
     assert.ok(names.includes(expected), `缺少工具 ${expected}`)
   }
@@ -65,7 +69,7 @@ test('cloud_source_units_read：入参透传到 client，证据原文进 render 
       }
     },
   }
-  registerCloudTools(ctx, client, {})
+  registerCloudTools(ctx, client, {}, {})
   const tool = registered.find(item => item.name === 'cloud_source_units_read')
   const result = await tool.execute({ unitIds: ['su_0123456789abcdef'] }, { signal: undefined })
   assert.deepEqual(seen[0], { unitIds: ['su_0123456789abcdef'] })
@@ -91,7 +95,7 @@ test('cloud_figure_delete：入参透传到 client 并回执 deleted', async () 
       seen.push(input)
     },
   }
-  registerCloudTools(ctx, client, {})
+  registerCloudTools(ctx, client, {}, {})
   const tool = registered.find(item => item.name === 'cloud_figure_delete')
   const result = await tool.execute(
     { sectionId: 'sec_0123456789abcdef', figureId: 'fig_0123456789abcdef' },
@@ -117,7 +121,7 @@ test('cloud_source_units_read：入参不合法时在 execute 前被拒（不发
       return { units: [] }
     },
   }
-  registerCloudTools(ctx, client, {})
+  registerCloudTools(ctx, client, {}, {})
   const tool = registered.find(item => item.name === 'cloud_source_units_read')
   await assert.rejects(() => tool.execute({ unitIds: 'su_0123456789abcdef' }, { signal: undefined }))
   assert.equal(called, 0)

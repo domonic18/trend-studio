@@ -51,6 +51,8 @@ export const mediaAssetListInput = z.object({
 export const mediaAssetListOutput = z.object({
   assets: z.array(mediaAssetDto),
   total: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().optional(),
 }).strict()
 
 /**

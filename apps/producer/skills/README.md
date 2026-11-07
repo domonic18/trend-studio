@@ -20,6 +20,7 @@ skills/<skill-name>/
 
 | 包 | 职责 | 主要消费者 |
 |---|---|---|
+| `material-ingest` | 素材入库：本地视频/音频直传云端、入队转写、跟踪就绪；追加素材的选择点 | 素材 Agent |
 | `transcript-understanding` | 理解工艺：分块规划、prompt 红线（时间锚点/输出预算/keyframes 归一）、写入与溯源流程 | 理解 Agent |
 | `curriculum-synthesis` | 课程综合：目录先验校验、概念归一落库、节骨架与门禁①呈报 | 架构师 Agent |
 | `trend-pedagogy` | 趋势理论教学法：概念依赖序、讲解顺序、常见误解库 | 理解/架构师/Author |
@@ -41,5 +42,9 @@ skills/<skill-name>/
 （四类白名单，见云端架构 §6.6.4），因为 Mermaid 通道已退出教材图示（ADR C32）；`chapter-authoring` 升 0.3.0——
 新增富文本 DSL 容器块写法（7 容器块 + 1 个股内联锚）与配图走 `cloud_figure_write` 的规则；
 `section-production` 升 0.3.0——图示步骤改为按模板选型并落库，`cloud_figure_write` / `cloud_case_stocks_write` 已接线。
+
+已填充（2026-11-07，生产体验线）：`material-ingest` 新增——本地视频/音频经
+`cloud_asset_create` / `cloud_asset_upload`（签名直传，字节不经插件进程）/ `cloud_asset_ingest`
+入队转写，含追加素材的 A/B/C 选择点纪律。
 
 待试点迭代后填充：`trend-pedagogy`（依赖序需概念图谱数据）。填充前不建空壳文件。

@@ -2,6 +2,8 @@
 import { readJsonResponse, UpstreamError, errorPayload } from '../errors.js'
 import type { AuthRequester } from './auth.js'
 import {
+  assetIngestInput,
+  assetIngestOutput,
   caseStocksWriteInput,
   caseStocksWriteOutput,
   conceptEdgeWriteInput,
@@ -15,6 +17,10 @@ import {
   figureWriteOutput,
   framesInput,
   framesOutput,
+  mediaAssetCreateInput,
+  mediaAssetCreateOutput,
+  mediaAssetListInput,
+  mediaAssetListOutput,
   parseInput,
   parseOutput,
   pipelineStatusInput,
@@ -40,15 +46,22 @@ import {
   sourceUnitsReadOutput,
   sourceUnitsWriteInput,
   sourceUnitsWriteOutput,
+  uploadConfirmInput,
+  uploadConfirmOutput,
+  uploadTicketInput,
+  uploadTicketOutput,
   widgetDeleteInput,
   widgetWriteInput,
   widgetWriteOutput,
+  type AssetIngestOutput,
   type CaseStocksWriteOutput,
   type ConceptEdgeWriteOutput,
   type ConceptWriteOutput,
   type ConceptsListOutput,
   type FigureWriteOutput,
   type FramesOutput,
+  type MediaAssetCreateOutput,
+  type MediaAssetListOutput,
   type PipelineStatusOutput,
   type ProvenanceOutput,
   type QuotesSyncOutput,
@@ -60,6 +73,8 @@ import {
   type SourceUnitsSearchOutput,
   type SourceUnitsReadOutput,
   type SourceUnitsWriteOutput,
+  type UploadConfirmOutput,
+  type UploadTicketOutput,
   type TranscriptOutput,
   type WidgetWriteOutput,
 } from './contracts.js'
@@ -78,20 +93,44 @@ export class TrendCloudClient {
       signal,
     )
     const payload = await readJsonResponse(response, '云端服务')
-    if (!response.ok) {
-      const { code, message, detail } = errorPayload(payload)
-      throw new UpstreamError(
-        response.status,
-        code,
-        detail,
-        message === '' ? `云端请求失败（HTTP ${response.status}）` : message,
-      )
-    }
+    if (!response.ok) throw this.upstreamError(response.status, payload)
     // 2xx 带业务错误字段属于契约外状态：按业务冲突处理，不带病继续。
     if (payload !== null && typeof payload === 'object' && 'error' in payload) {
       const { code, message, detail } = errorPayload(payload)
       throw new UpstreamError(409, code, detail, message === '' ? '云端返回业务错误' : message)
     }
+    return payload
+  }
+
+  private upstreamError(status: number, payload: unknown): UpstreamError {
+    const { code, message, detail } = errorPayload(payload)
+    return new UpstreamError(
+      status,
+      code,
+      detail,
+      message === '' ? `云端请求失败（HTTP ${status}）` : message,
+    )
+  }
+
+  /**
+   * 二进制直传：字节以流式 body 直送云端，插件进程不做整份缓冲。
+   * 摘要走 x-file-sha256 头，云端按「素材 + 字节数 + 摘要」校验。
+   */
+  async putStream(
+    path: string,
+    headers: Record<string, string>,
+    body: AsyncIterable<Uint8Array>,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const response = await this.auth.request(
+      path,
+      { method: 'PUT', headers, body, duplex: 'half' },
+      signal,
+      timeoutMs,
+    )
+    const payload = await readJsonResponse(response, '云端服务')
+    if (!response.ok) throw this.upstreamError(response.status, payload)
     return payload
   }
 
@@ -127,6 +166,61 @@ export class TrendCloudClient {
       )
     }
     await response.body?.cancel()
+  }
+
+  /** 建素材：素材入库第一步，返回 assetId 供直传与转写使用。 */
+  async createAsset(input: unknown, signal?: AbortSignal): Promise<MediaAssetCreateOutput> {
+    const body = parseInput(mediaAssetCreateInput, input, 'assetCreate')
+    return parseOutput(
+      mediaAssetCreateOutput,
+      await this.post(`${CONTENT_BASE}/media-assets`, body, signal),
+      'assetCreate',
+    )
+  }
+
+  /** 素材列表：按课程查素材及其入库状态（awaiting_upload → uploaded → processing → ready）。 */
+  async listAssets(input: unknown, signal?: AbortSignal): Promise<MediaAssetListOutput> {
+    const query = parseInput(mediaAssetListInput, input, 'assetList')
+    const params = new URLSearchParams()
+    params.set('courseId', query.courseId)
+    if (query.status !== undefined) params.set('status', query.status)
+    params.set('limit', String(query.limit ?? 50))
+    return parseOutput(
+      mediaAssetListOutput,
+      await this.get(`${CONTENT_BASE}/media-assets?${params.toString()}`, signal),
+      'assetList',
+    )
+  }
+
+  /** 签发直传凭据：把「素材 + 字节数 + 摘要 + 有效期」绑进签名，短时效、不可挪用。 */
+  async issueUploadTicket(input: unknown, signal?: AbortSignal): Promise<UploadTicketOutput> {
+    const body = parseInput(uploadTicketInput, input, 'uploadTicket')
+    return parseOutput(
+      uploadTicketOutput,
+      await this.post(`${CONTENT_BASE}/media-assets/${body.assetId}/upload-ticket`, body, signal),
+      'uploadTicket',
+    )
+  }
+
+  /** 落库确认：核对云端已落字节数与摘要与声明一致，不一致云端拒收。 */
+  async confirmUpload(input: unknown, signal?: AbortSignal): Promise<UploadConfirmOutput> {
+    const body = parseInput(uploadConfirmInput, input, 'confirmUpload')
+    return parseOutput(
+      uploadConfirmOutput,
+      await this.post(`${CONTENT_BASE}/media-assets/${body.assetId}/upload-confirm`, body, signal),
+      'confirmUpload',
+    )
+  }
+
+  /** 入队转写：素材字节就位后触发 ingest 管线（转码 → 转写 → 关键帧）。 */
+  async ingestAsset(input: unknown, signal?: AbortSignal): Promise<AssetIngestOutput> {
+    const body = parseInput(assetIngestInput, input, 'assetIngest')
+    const payload = await this.post(
+      `${CONTENT_BASE}/media-assets/${body.assetId}/ingest`,
+      body.language === undefined ? {} : { language: body.language },
+      signal,
+    )
+    return parseOutput(assetIngestOutput, payload, 'assetIngest')
   }
 
   async pipelineStatus(input: unknown, signal?: AbortSignal): Promise<PipelineStatusOutput> {

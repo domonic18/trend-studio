@@ -148,6 +148,9 @@ export function userMessage(error: unknown, operation: string): string {
     if (error.businessCode === 'assertion_unproven' && Array.isArray(failed)) {
       return `${base}（未通过断言: ${failed.map(String).join('、')}）`
     }
+    if (error.businessCode === 'upload_ticket_invalid') {
+      return `${base}｜直传凭据短时效且绑定素材，请重新签发后重试（不必更换会话令牌）`
+    }
     if (sessionExpired(error)) {
       return `${base}｜云端后台会话已失效：用 producer 账号 POST /v1/auth/session 换发令牌，`
         + '并写入 dsh credentials 的 TREND_PRODUCER_CONSOLE_TOKEN（换发不需要重建账号）'
