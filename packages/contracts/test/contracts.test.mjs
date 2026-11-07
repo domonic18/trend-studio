@@ -17,6 +17,7 @@ import {
   transcriptOutput, sourceUnitsReadOutput,
   READINESS_GATES, courseReadinessInput, courseReadinessOutput,
   conceptUpdateInput, conceptUpdateOutput, conceptsListOutput, caseStocksListOutput,
+  releaseManifestSchema, releaseArtifactSchema,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -781,4 +782,58 @@ test('内容编辑：术语更新 / 案例股读回 / 术语状态', () => {
   }
   assert.equal(caseStocksListOutput.safeParse({ stocks: [stock] }).success, true)
   assert.equal(caseStocksListOutput.safeParse({ stocks: [{ ...stock, code: '713' }] }).success, false)
+})
+
+// ---- 发布清单契约 ----
+
+const ARTIFACT = {
+  name: 'dsh-plugin-trend-producer',
+  version: '0.1.4',
+  fileName: 'dsh-plugin-trend-producer-0.1.4.tgz',
+  sha256: 'abc123',
+  sizeBytes: 1024,
+  publishedAt: '2026-11-07',
+  notes: ['自带九个工艺包'],
+}
+
+test('发布清单：学员插件与生产端插件同时解析出来', () => {
+  const result = releaseManifestSchema.safeParse({
+    dshVersion: '0.2.1-rc.5',
+    webAppPackage: '@deepseek-ai/dsh-web-app',
+    plugin: { ...ARTIFACT, name: 'dsh-plugin-trend-coach' },
+    producerPlugin: ARTIFACT,
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.data.plugin.name, 'dsh-plugin-trend-coach')
+  assert.equal(result.data.producerPlugin.version, '0.1.4')
+  assert.equal(result.data.producerPlugin.sha256, 'abc123')
+})
+
+test('发布清单：dshVersion / webAppPackage 坏掉回落默认值', () => {
+  const result = releaseManifestSchema.safeParse({ dshVersion: 123, webAppPackage: null })
+  assert.equal(result.success, true)
+  assert.equal(result.data.dshVersion, '0.2.1-rc.5')
+  assert.equal(result.data.webAppPackage, '@deepseek-ai/dsh-web-app')
+})
+
+test('发布清单：插件条目坏掉则整份清单作废（不猜）', () => {
+  const result = releaseManifestSchema.safeParse({ plugin: { ...ARTIFACT, sha256: 123 } })
+  assert.equal(result.success, false, 'sha256 写成数字是坏数据')
+})
+
+test('发布清单：插件缺失时为 null', () => {
+  const result = releaseManifestSchema.safeParse({})
+  assert.equal(result.success, true)
+  assert.equal(result.data.plugin, null)
+  assert.equal(result.data.producerPlugin, null)
+})
+
+test('发布清单：sha256 / sizeBytes 可空，notes 丢非字符串项', () => {
+  const result = releaseManifestSchema.safeParse({
+    producerPlugin: { ...ARTIFACT, sha256: null, sizeBytes: null, notes: ['好', 42, '也好'] },
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.data.producerPlugin.sha256, null)
+  assert.equal(result.data.producerPlugin.sizeBytes, null)
+  assert.deepEqual(result.data.producerPlugin.notes, ['好', '也好'])
 })

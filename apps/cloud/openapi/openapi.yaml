@@ -7195,6 +7195,9 @@ paths:
                   plugin:
                     type: [object, 'null']
                     additionalProperties: true
+                  producerPlugin:
+                    type: [object, 'null']
+                    additionalProperties: true
         '503':
           description: 清单格式错误
           content:

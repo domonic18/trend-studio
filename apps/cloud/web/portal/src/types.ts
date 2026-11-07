@@ -25,18 +25,23 @@ export interface PortalDevice {
   lastSeenAt: number
 }
 
+export interface ReleaseArtifact {
+  name: string
+  version: string
+  fileName: string
+  sha256: string | null
+  sizeBytes: number | null
+  publishedAt: string
+  notes: string[]
+}
+
 export interface ReleaseManifest {
   dshVersion: string
   webAppPackage: string
-  plugin: {
-    name: string
-    version: string
-    fileName: string
-    sha256: string | null
-    sizeBytes: number | null
-    publishedAt: string
-    notes: string[]
-  } | null
+  /** 学员插件（coach）。 */
+  plugin: ReleaseArtifact | null
+  /** 教员生产端插件（producer）。 */
+  producerPlugin: ReleaseArtifact | null
 }
 
 export interface PortalStats {
