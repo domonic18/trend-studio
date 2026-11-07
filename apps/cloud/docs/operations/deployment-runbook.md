@@ -238,6 +238,13 @@ curl -fsS http://127.0.0.1:3939/health
 `host.docker.internal:5434`（容器内 127.0.0.1 是容器自身），发布 3939 端口，
 并把 `workspace/pipeline`、`workspace/media`、`dist/downloads`、`content` 挂进容器。
 
+**`MEDIA_LOCAL_DIR` 必须设**（compose 已设 `/data/hls`，须与 `PIPELINE_HLS_DIR` 相同）：不设时
+业务进程不注册 `/media/*` 路由（生产走 CDN 才可不设），于是生产端拿到的关键帧签名 URL 全部 404，
+VLM 无帧可用——表现为「读证据没有画面」，而不是报错。
+
+> 排查提示：本机 `127.0.0.1:3939` 若被**宿主上的开发进程**（`tsx src/index.ts`）占着，容器虽在跑，
+> 实际应答的是那个旧进程；`lsof -nP -iTCP:3939 -sTCP:LISTEN` 一看便知。
+
 ## 11. 视频管线运维
 
 **启用检查**
