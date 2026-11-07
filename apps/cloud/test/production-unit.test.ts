@@ -296,10 +296,14 @@ test('内容指纹：规范 JSON 键序无关，改内容必改指纹', () => {
   const manifest: CourseDigestManifest = {
     v: 1,
     chapters: [],
+    concepts: [],
     sections: [{
       sectionId: 'sec_0000000000000001',
       title: '节',
       sortOrder: 1,
+      summary: null,
+      conceptRefs: [],
+      sourceAssetIds: [],
       article: { dslVersion: 1, markdown: '正文', citations: ['su_0000000000000001'] },
       widgets: [],
       figures: [],
@@ -308,10 +312,14 @@ test('内容指纹：规范 JSON 键序无关，改内容必改指纹', () => {
   }
   const reordered: CourseDigestManifest = {
     v: 1,
+    concepts: [],
     sections: [{
       sortOrder: 1,
       title: '节',
       sectionId: 'sec_0000000000000001',
+      summary: null,
+      conceptRefs: [],
+      sourceAssetIds: [],
       article: { citations: ['su_0000000000000001'], markdown: '正文', dslVersion: 1 },
       widgets: [],
       figures: [],

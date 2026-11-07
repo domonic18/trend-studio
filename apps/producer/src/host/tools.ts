@@ -473,8 +473,8 @@ export function registerCloudTools(
   ctx.tools.register(defineTool({
     name: 'cloud_concepts_list',
     description:
-      '列出课程全部术语（conceptId/name/aliases/definition）。节生产回填 conceptRefs、写作前术语归一、'
-      + '课件 termsInConcepts 校验都以本清单为准；未知课程返回空列表。' + ID_NOTE,
+      '列出课程全部术语（conceptId/name/aliases/definition/status）。节生产回填 conceptRefs、写作前术语归一、'
+      + '课件 termsInConcepts 校验都以本清单为准；status=archived 的术语已归档、不参与校验；未知课程返回空列表。' + ID_NOTE,
     parameters: {
       courseId: { type: 'string', required: true, description: '课程 ID' },
     },
@@ -492,6 +492,7 @@ export function registerCloudTools(
                 name: { type: 'string', required: true },
                 aliases: { type: 'array', required: true, items: { type: 'string' } },
                 definition: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                status: { type: 'string', required: true, enum: ['draft', 'published', 'archived'] },
               },
               additionalProperties: false,
             },
@@ -503,7 +504,8 @@ export function registerCloudTools(
         const lines = [`共 ${value.concepts.length} 条术语:`]
         for (const concept of value.concepts) {
           const aliases = concept.aliases.length === 0 ? '' : `（别名: ${sanitizeInlineUntrusted(concept.aliases.join('、'))}）`
-          lines.push(`- ${concept.conceptId} ${sanitizeInlineUntrusted(concept.name)}${aliases}`)
+          const archived = concept.status === 'archived' ? '（已归档）' : ''
+          lines.push(`- ${concept.conceptId} ${sanitizeInlineUntrusted(concept.name)}${aliases}${archived}`)
         }
         return [{ type: 'text', text: lines.join('\n') }]
       },

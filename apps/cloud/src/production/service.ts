@@ -20,6 +20,10 @@ import {
   type CoursePreview,
 } from './course-preview.js'
 import {
+  readCourseReadiness,
+  type ReadinessReport,
+} from './readiness.js'
+import {
   readQuotes,
   type CatalogQuotes,
   type QuoteQuery,
@@ -544,6 +548,11 @@ export class ProductionService {
     return readCoursePreview(this.pool, courseId)
   }
 
+  /** 发布就绪度（B2）：与发布事务同一份门禁判定。 */
+  async getCourseReadiness(courseId: string): Promise<ReadinessReport> {
+    return readCourseReadiness(this.pool, courseId)
+  }
+
   async getCourseQuotes(courseId: string, query: QuoteQuery): Promise<CatalogQuotes> {
     return readQuotes(this.pool, courseId, query, { publishedOnly: false })
   }
@@ -843,11 +852,23 @@ export class ProductionService {
   }
 
   async listConcepts(courseId: string): Promise<{
-    concepts: { conceptId: string; name: string; aliases: string[]; definition: string | null }[]
+    concepts: {
+      conceptId: string
+      name: string
+      aliases: string[]
+      definition: string | null
+      status: 'draft' | 'published' | 'archived'
+    }[]
   }> {
     parseContentId(courseId, 'courseId')
-    const { rows } = await this.pool.query<{ concept_id: string; name: string; aliases: string[]; definition: string | null }>(
-      'SELECT concept_id, name, aliases, definition FROM concepts WHERE course_id = $1 ORDER BY created_at, concept_id',
+    const { rows } = await this.pool.query<{
+      concept_id: string
+      name: string
+      aliases: string[]
+      definition: string | null
+      status: 'draft' | 'published' | 'archived'
+    }>(
+      'SELECT concept_id, name, aliases, definition, status FROM concepts WHERE course_id = $1 ORDER BY created_at, concept_id',
       [courseId],
     )
     return {
@@ -856,8 +877,57 @@ export class ProductionService {
         name: row.name,
         aliases: row.aliases ?? [],
         definition: row.definition,
+        status: row.status,
       })),
     }
+  }
+
+  /**
+   * 术语更新（管理台术语抽屉）：按 conceptId 改别名、定义与状态。
+   *
+   * 名称是术语的主键语义（正文 glossary 按名称/别名匹配），改名走「归档 + 新建」。
+   * 归档可逆：状态置回 draft 即恢复；归档后该术语不再计入 :::annotation 的 glossary 校验，
+   * 未解引用会在发布就绪度卡片上显形。
+   */
+  async updateConcept(input: {
+    courseId: string
+    conceptId: string
+    aliases?: unknown
+    definition?: string | null
+    status?: 'draft' | 'archived'
+  }): Promise<{ conceptId: string }> {
+    parseContentId(input.courseId, 'courseId')
+    if (!CONCEPT_ID.test(input.conceptId)) throw badRequest('conceptId invalid')
+    await this.assertCourseRow(input.courseId)
+    const { rows: existing } = await this.pool.query<{ concept_id: string }>(
+      'SELECT concept_id FROM concepts WHERE course_id = $1 AND concept_id = $2',
+      [input.courseId, input.conceptId],
+    )
+    if (existing.length === 0) throw notFound('concept not found')
+
+    const aliases = input.aliases === undefined
+      ? null
+      : JSON.stringify(stringArray(input.aliases, 'aliases', 20))
+    const { rows } = await this.pool.query<{ concept_id: string }>(
+      `UPDATE concepts SET
+         aliases = COALESCE($3::jsonb, aliases),
+         definition = CASE WHEN $4::boolean THEN $5 ELSE definition END,
+         status = COALESCE($6, status),
+         updated_at = now()
+       WHERE course_id = $1 AND concept_id = $2
+       RETURNING concept_id`,
+      [
+        input.courseId,
+        input.conceptId,
+        aliases,
+        input.definition !== undefined,
+        input.definition ?? null,
+        input.status ?? null,
+      ],
+    )
+    const row = rows[0]
+    if (row === undefined) throw notFound('concept not found')
+    return { conceptId: row.concept_id }
   }
 
   async createConceptEdge(input: {

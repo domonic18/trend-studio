@@ -190,6 +190,27 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     return reply.send(result)
   })
 
+  app.put('/v1/admin/content/concepts/:conceptId', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const body = asObject(request.body)
+    const definition = optionalStringField(body, 'definition', { min: 1, max: 2000 })
+    const status = body.status === undefined
+      ? undefined
+      : stringField(body, 'status', { min: 1, max: 16 }) as 'draft' | 'archived'
+    if (status !== undefined && status !== 'draft' && status !== 'archived') {
+      throw badRequest('status must be draft or archived')
+    }
+    const result = await service.updateConcept({
+      courseId: parseContentId(stringField(body, 'courseId', { max: 64 }), 'courseId'),
+      conceptId: stringField(params, 'conceptId', { max: 20, pattern: /^cpt_[0-9a-f]{16}$/ }),
+      ...(body.aliases === undefined ? {} : { aliases: body.aliases }),
+      ...(definition === undefined ? {} : { definition }),
+      ...(status === undefined ? {} : { status }),
+    })
+    return reply.send(result)
+  })
+
   app.post('/v1/admin/content/concept-edges', async (request, reply) => {
     await guard(request)
     const body = asObject(request.body)
@@ -208,6 +229,13 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     const params = asObject(request.params as unknown)
     const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
     return reply.send(await service.getCoursePreview(courseId))
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/readiness', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
+    return reply.send(await service.getCourseReadiness(courseId))
   })
 
   app.get('/v1/admin/content/courses/:courseId/quotes', async (request, reply) => {

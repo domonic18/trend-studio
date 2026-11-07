@@ -2551,6 +2551,72 @@ components:
           type: string
           pattern: '^cpt_[0-9a-f]{16}$'
 
+    CourseReadiness:
+      type: object
+      required: [courseId, fingerprint, approvedFingerprint, gates, publishable, pending]
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          maxLength: 64
+        fingerprint:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        approvedFingerprint:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        gates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessGate'
+        publishable:
+          type: boolean
+        pending:
+          type: array
+          items:
+            type: string
+            maxLength: 100
+
+    ReadinessGate:
+      type: object
+      required: [gate, label, status, summary, issues]
+      additionalProperties: false
+      properties:
+        gate:
+          type: string
+          enum: [figures, widgets, clips, annotations, approval]
+        label:
+          type: string
+          maxLength: 50
+        status:
+          type: string
+          enum: [pass, fail, pending]
+        summary:
+          type: string
+          maxLength: 200
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessIssue'
+
+    ReadinessIssue:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        message:
+          type: string
+          maxLength: 2000
+        targets:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+
     ConceptList:
       type: object
       required: [concepts]
@@ -2560,7 +2626,7 @@ components:
           type: array
           items:
             type: object
-            required: [conceptId, name, aliases, definition]
+            required: [conceptId, name, aliases, definition, status]
             additionalProperties: false
             properties:
               conceptId:
@@ -2578,6 +2644,9 @@ components:
                 type: string
                 nullable: true
                 maxLength: 2000
+              status:
+                type: string
+                enum: [draft, published, archived]
 
     ConceptEdgeCreated:
       type: object
@@ -4585,6 +4654,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CoursePreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/courses/{courseId}/readiness:
+    get:
+      summary: 课程发布就绪度（operator/admin/producer，M10+ B2）
+      description: 五道发布门禁的现状与内容指纹；判定与发布事务同源，卡片全绿即可发布。签批未完成时签批门为 pending。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      responses:
+        '200':
+          description: 就绪度报告
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseReadiness'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7490,6 +7590,61 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/concepts/{conceptId}:
+    put:
+      summary: 术语更新/归档（operator/admin/producer，M10+ B2）
+      description: 按 conceptId 改别名、定义与状态；名称是术语主键语义，改名走「归档 + 新建」。归档可逆（状态置回 draft 即恢复）。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: conceptId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^cpt_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                aliases:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    maxLength: 200
+                definition:
+                  type: string
+                  maxLength: 2000
+                status:
+                  type: string
+                  enum: [draft, archived]
+      responses:
+        '200':
+          description: 更新后的 conceptId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConceptCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 

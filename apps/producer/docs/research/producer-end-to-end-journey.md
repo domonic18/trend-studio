@@ -534,10 +534,16 @@ B1 契约与云端文档（readiness / 概念归档 / 案例股列表 + 指纹�
 
 | 批次 | 内容 | 落点 | 量 |
 |---|---|---|---|
-| **B1** | ① 新增 `courseReadinessOutput`（门禁级就绪度报告：每道门禁的 `status` / `summary` / `issues` + 当前指纹 + `publishable` + 待办清单）；② `caseStocksListOutput`（GET 案例股此前无契约）；③ `conceptUpdateInput`（按 `conceptId` 更新别名与定义）+ `conceptArchiveInput`（归档术语）；④ `conceptListItem` 补 `status`（`listConcepts` 不过滤状态，归档项当前与正常项混在一起）；⑤ 云端需求 / 清单 / 架构回填「发布就绪度端点 + 内容编辑端点 + 指纹覆盖扩展」 | `packages/contracts/src/admin.ts`、云端 docs | S |
-| **B2** | ① **门禁检查器抽离**：五个门禁（图示 / 课件断言 / 片段窗 / 标注与回放 / 终审签批）的判定体从 `publishCourse` 私有方法与 `publish-gates.ts` 抽成**返回检查结果**的函数，发布事务改为消费结果后抛错——**错误码与载荷逐字不变**；② `GET /v1/admin/content/courses/:courseId/readiness`（producer 可读：生产方要知道自己还差什么才能交接；发布权仍在 operator/admin）；③ 概念：按 `conceptId` 更新、归档（归档后该术语不再计入 `:::annotation` 的 glossary 校验，未解引用会在就绪度卡片上显形）；④ **指纹覆盖扩展**：节补 `summary` / `conceptRefs` / `sourceAssetIds`，manifest 补概念表（名称 / 别名 / 定义 / 状态）——此前改这些内容签批不失效，是发布链路的真实漏洞；⑤ OpenAPI 同步（路由与 OpenAPI 双向一致由契约测试强制） | `apps/cloud/src/production/readiness.ts`（新）、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/pipeline/publish-gates.ts`、`apps/cloud/src/production/{service,routes,digest}.ts`、`apps/cloud/openapi/openapi.yaml` | **L** |
+| **B1** ✅ | ① 新增 `courseReadinessOutput`（门禁级就绪度报告：每道门禁的 `status` / `summary` / `issues` + 当前指纹 + `publishable` + 待办清单）；② `caseStocksListOutput`（GET 案例股此前无契约）；③ `conceptUpdateInput`（按 `conceptId` 更新别名与定义）+ `conceptArchiveInput`（归档术语）；④ `conceptListItem` 补 `status`（`listConcepts` 不过滤状态，归档项当前与正常项混在一起）；⑤ 云端需求 / 清单 / 架构回填「发布就绪度端点 + 内容编辑端点 + 指纹覆盖扩展」 | `packages/contracts/src/admin.ts`、云端 docs | S |
+| **B2** ✅ | ① **门禁检查器抽离**：五个门禁（图示 / 课件断言 / 片段窗 / 标注与回放 / 终审签批）的判定体从 `publishCourse` 私有方法与 `publish-gates.ts` 抽成**返回检查结果**的函数，发布事务改为消费结果后抛错——**错误码与载荷逐字不变**；② `GET /v1/admin/content/courses/:courseId/readiness`（producer 可读：生产方要知道自己还差什么才能交接；发布权仍在 operator/admin）；③ 概念：按 `conceptId` 更新、归档（归档后该术语不再计入 `:::annotation` 的 glossary 校验，未解引用会在就绪度卡片上显形）；④ **指纹覆盖扩展**：节补 `summary` / `conceptRefs` / `sourceAssetIds`，manifest 补概念表（名称 / 别名 / 定义 / 状态）——此前改这些内容签批不失效，是发布链路的真实漏洞；⑤ OpenAPI 同步（路由与 OpenAPI 双向一致由契约测试强制） | `apps/cloud/src/production/readiness.ts`（新）、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/pipeline/publish-gates.ts`、`apps/cloud/src/production/{service,routes,digest}.ts`、`apps/cloud/openapi/openapi.yaml` | **L** |
 | **B3** | ① 课程编辑页「发布就绪度」卡片：五道门禁逐条 + 当前指纹 + 待办 + 签批 / 发布按钮按就绪度给禁用理由（按钮仍按角色显隐：producer 看不到签批与发布）；② 三个编辑抽屉：**节**（标题 / 摘要 / 序位 / 关联术语 / 来源素材）、**案例股**（名称 / 交易所代号 / 案例窗口 / 事件锚点）、**术语**（名称 / 别名 / 定义 / 归档）；③ 编辑一律落 draft 并提示「已签批内容需重新签批」；④ 失败文案按机器可读错误码给中文指引 | `apps/cloud/web/admin/src/pages/Content/TreeEditor.tsx`、`web/admin/src/pages/Content/*Drawer.tsx`、`web/admin/src/api.ts`、`web/admin/src/types.ts` | **L** |
 | **B4** | 三端行为基线（contracts / cloud / producer / coach）+ 根 `pnpm check` / `pnpm test`；云端三份文档与生产端文档回填落地状态 | `packages/contracts/test`、`apps/cloud/test`、各 docs | S |
+
+**落地状态（2026-11-07）**：B1、B2 已落地——门禁判定抽到 `apps/cloud/src/production/readiness.ts`，
+发布事务与就绪度端点读同一批检查结果（错误码与载荷逐字不变，`publish-gates.ts` 已并入 readiness 模块）；
+`GET /v1/admin/content/courses/:courseId/readiness` 与 `PUT /v1/admin/content/concepts/:conceptId` 已上线；
+内容指纹扩到节的 `summary` / `conceptRefs` / `sourceAssetIds` 与整张概念表（`DIGEST_VERSION` 1→2，
+既有签批需重签一次——这正是「指纹覆盖会被发布的一切」的本意）。B3 管理台卡片与三个编辑抽屉待做。
 
 ### 13.4 边界
 

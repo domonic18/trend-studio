@@ -1,7 +1,8 @@
 /**
  * 课程内容指纹（M3b 审批版本绑定）：规范 JSON → sha256。
  * 审批签批时算一次存进审批记录，发布时重算比对——内容变了必须重新签批。
- * 覆盖全部会被发布的内容：章节教材/图示/片段 + 节教材/课件/图示/案例股。
+ * 覆盖全部会被发布的内容：章节教材/图示/片段 + 节教材/课件/图示/案例股 +
+ * 节的摘要/概念引用/来源素材 + 课程术语表。
  */
 
 import { createHash } from 'node:crypto'
@@ -9,7 +10,7 @@ import type { Pool } from 'pg'
 import { markdownDslVersion, type DslErrorSink } from '@trend/contracts'
 import { HttpError } from '../errors.js'
 
-export const DIGEST_VERSION = 1
+export const DIGEST_VERSION = 2
 
 /** 指纹阶段的正文解析失败 = 已存内容损坏（500），不是请求错误。 */
 const digestSink: DslErrorSink = {
@@ -81,16 +82,32 @@ export interface SectionDigest {
   sectionId: string
   title: string
   sortOrder: number
+  /** 节的摘要——会被学员端看到，改了必须重签。 */
+  summary: string | null
+  /** 节引用的概念（术语）——正文 glossary 校验依赖它。 */
+  conceptRefs: string[]
+  /** 节引用的来源素材——原片与帧图都挂在这儿。 */
+  sourceAssetIds: string[]
   article: ArticleDigest | null
   widgets: WidgetDigest[]
   figures: FigureDigest[]
   caseStocks: CaseStockDigest[]
 }
 
+/** 课程术语表——正文 `:::annotation` 的 glossary 按名称/别名匹配，改了必须重签。 */
+export interface ConceptDigest {
+  conceptId: string
+  name: string
+  aliases: string[]
+  definition: string | null
+  status: string
+}
+
 export interface CourseDigestManifest {
   v: number
   chapters: ChapterDigest[]
   sections: SectionDigest[]
+  concepts: ConceptDigest[]
 }
 
 export interface CourseDigest {
@@ -152,7 +169,8 @@ function toFigureDigest(row: FigureRow): FigureDigest {
 export async function computeCourseDigest(pool: Pool, courseId: string): Promise<CourseDigest> {
   const chapters = await loadChapters(pool, courseId)
   const sections = await loadSections(pool, courseId)
-  const manifest: CourseDigestManifest = { v: DIGEST_VERSION, chapters, sections }
+  const concepts = await loadConcepts(pool, courseId)
+  const manifest: CourseDigestManifest = { v: DIGEST_VERSION, chapters, sections, concepts }
   const sectionDigests: Record<string, string> = {}
   for (const section of sections) sectionDigests[section.sectionId] = sha256Hex(canonicalJson(section))
   return { digest: digestOfManifest(manifest), manifest, sectionDigests }
@@ -221,8 +239,16 @@ async function loadChapters(pool: Pool, courseId: string): Promise<ChapterDigest
 }
 
 async function loadSections(pool: Pool, courseId: string): Promise<SectionDigest[]> {
-  const { rows: sectionRows } = await pool.query<{ section_id: string; title: string; position: number }>(
-    `SELECT s.section_id, s.title, s.position
+  const { rows: sectionRows } = await pool.query<{
+    section_id: string
+    title: string
+    position: number
+    summary: string | null
+    concept_refs: unknown
+    source_asset_ids: unknown
+  }>(
+    `SELECT s.section_id, s.title, s.position, s.summary,
+            s.concept_refs, s.source_asset_ids
        FROM sections s
        JOIN chapters ch ON ch.course_id = s.course_id AND ch.chapter_id = s.chapter_id
       WHERE s.course_id = $1 AND s.status <> 'archived'
@@ -233,6 +259,9 @@ async function loadSections(pool: Pool, courseId: string): Promise<SectionDigest
     sectionId: row.section_id,
     title: row.title,
     sortOrder: row.position,
+    summary: row.summary,
+    conceptRefs: sortedDistinct(row.concept_refs),
+    sourceAssetIds: sortedDistinct(row.source_asset_ids),
     article: null,
     widgets: [],
     figures: [],
@@ -322,4 +351,26 @@ async function loadSections(pool: Pool, courseId: string): Promise<SectionDigest
     })
   }
   return sections
+}
+
+async function loadConcepts(pool: Pool, courseId: string): Promise<ConceptDigest[]> {
+  const { rows } = await pool.query<{
+    concept_id: string
+    name: string
+    aliases: unknown
+    definition: string | null
+    status: string
+  }>(
+    `SELECT concept_id, name, aliases, definition, status FROM concepts
+      WHERE course_id = $1
+      ORDER BY concept_id`,
+    [courseId],
+  )
+  return rows.map(row => ({
+    conceptId: row.concept_id,
+    name: row.name,
+    aliases: sortedDistinct(row.aliases),
+    definition: row.definition,
+    status: row.status,
+  }))
 }

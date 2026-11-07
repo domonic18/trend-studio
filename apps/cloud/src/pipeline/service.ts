@@ -14,8 +14,7 @@ import {
 import { codePointLength, stringField } from '../http/validation.js'
 import { listCourseApprovals, upsertCourseApproval } from '../production/approvals.js'
 import { computeCourseDigest } from '../production/digest.js'
-import { parseArticleDsl } from '../production/dsl/parse.js'
-import { requireResolvedAnnotationsAndReplays } from './publish-gates.js'
+import { runPublishGates } from '../production/readiness.js'
 import { chapterIdFor, draftSegmentIdFor, figureIdFor, knowledgePointIdFor } from './ids.js'
 import { ActiveJobError, type JobQueue, type PipelineJob } from './jobs.js'
 import { SourceChecksumError, SourceTooLargeError, type MediaStore } from './media-store.js'
@@ -1203,11 +1202,7 @@ export class PipelineService implements PipelineApi {
       throw conflict('course has no segments or sections')
     }
 
-    await this.requireResolvedFigures(courseId)
-    await this.requireProvenWidgets(courseId)
-    await this.requireResolvedSectionMedia(courseId)
-    await requireResolvedAnnotationsAndReplays(this.pool, courseId)
-    await this.requireFinalApproval(courseId)
+    await this.requirePublishGates(courseId)
 
     const reindex = this.options.reindex
     const embeddingReady = reindex !== undefined
@@ -1319,180 +1314,17 @@ export class PipelineService implements PipelineApi {
     }
   }
 
-  /** 发布前闸门：正文里的每个 figureId 必须是本章已选且候选就绪的图示。 */
-  private async requireResolvedFigures(courseId: string): Promise<void> {
-    const { rows: articleRows } = await this.pool.query<{ chapter_id: string; markdown: string }>(
-      `SELECT chapter_id, markdown FROM chapter_articles
-       WHERE course_id = $1 AND status IN ('draft', 'published')`,
-      [courseId],
-    )
-    const refs = new Map<string, string>()
-    for (const article of articleRows) {
-      for (const match of article.markdown.matchAll(FIGURE_REF)) {
-        const figureId = match[1]
-        if (figureId !== undefined) refs.set(figureId, article.chapter_id)
+  /**
+   * 发布硬门禁：与就绪度卡片同一份判定（production/readiness.ts）——
+   * 卡片全绿却发布失败，是两套判定漂移的典型症状。
+   */
+  private async requirePublishGates(courseId: string): Promise<void> {
+    const { segments } = await runPublishGates(this.pool, courseId)
+    for (const segment of segments) {
+      const issue = segment.issues[0]
+      if (issue !== undefined) {
+        throw codedConflict(issue.code, issue.message, issue.details)
       }
-    }
-    if (refs.size === 0) return
-
-    const { rows } = await this.pool.query<{
-      figure_id: string
-      chapter_id: string
-      selected_candidate_id: string | null
-      candidate_status: string | null
-    }>(
-      `SELECT f.figure_id, f.chapter_id, f.selected_candidate_id, c.status AS candidate_status
-       FROM figures f
-       LEFT JOIN figure_candidates c ON c.candidate_id = f.selected_candidate_id
-       WHERE f.course_id = $1 AND f.figure_id = ANY($2::text[])`,
-      [courseId, [...refs.keys()]],
-    )
-    const ready = new Set<string>()
-    for (const row of rows) {
-      if (
-        row.selected_candidate_id !== null
-        && row.candidate_status === 'ready'
-        && row.chapter_id === refs.get(row.figure_id)
-      ) {
-        ready.add(row.figure_id)
-      }
-    }
-    const unresolved = [...refs.keys()].filter(figureId => !ready.has(figureId))
-    if (unresolved.length > 0) {
-      throw codedConflict('figure_unresolved', 'chapter article references unresolved figures', {
-        figureIds: unresolved,
-      })
-    }
-  }
-
-  /** M10 发布硬门禁：节正文 DSL figure/clip 引用须可解析——figure 存在且选定且候选就绪、片段窗 grounded。 */
-  private async requireResolvedSectionMedia(courseId: string): Promise<void> {
-    const { rows: articleRows } = await this.pool.query<{ section_id: string; markdown: string }>(
-      `SELECT section_id, markdown FROM section_articles
-       WHERE status IN ('draft', 'published')
-         AND section_id IN (SELECT section_id FROM sections WHERE course_id = $1)`,
-      [courseId],
-    )
-
-    const figureRefs = new Set<string>()
-    const clips: Array<{ sectionId: string; assetId: string; from: number; to: number }> = []
-    for (const article of articleRows) {
-      const parsed = parseArticleDsl(article.markdown)
-      for (const block of parsed.blocks) {
-        if (block.directive === 'figure' && block.attrs.figureId !== undefined) {
-          figureRefs.add(block.attrs.figureId)
-        }
-        if (block.directive === 'clip') {
-          clips.push({
-            sectionId: article.section_id,
-            assetId: block.attrs.assetId ?? '',
-            from: Number(block.attrs.from),
-            to: Number(block.attrs.to),
-          })
-        }
-      }
-      for (const match of article.markdown.matchAll(FIGURE_REF)) {
-        const figureId = match[1]
-        if (figureId !== undefined) figureRefs.add(figureId)
-      }
-    }
-
-    if (figureRefs.size > 0) {
-      const { rows } = await this.pool.query<{ figure_id: string }>(
-        `SELECT f.figure_id
-         FROM figures f
-         LEFT JOIN figure_candidates c ON c.candidate_id = f.selected_candidate_id
-         WHERE f.course_id = $1 AND f.figure_id = ANY($2::text[])
-           AND f.selected_candidate_id IS NOT NULL AND c.status = 'ready'`,
-        [courseId, [...figureRefs]],
-      )
-      const resolved = new Set(rows.map(row => row.figure_id))
-      const unresolved = [...figureRefs].filter(figureId => !resolved.has(figureId))
-      if (unresolved.length > 0) {
-        throw codedConflict('figure_unresolved', 'section articles reference unresolved figures', {
-          figureIds: unresolved,
-        })
-      }
-    }
-
-    const unitCache = new Map<string, Array<{ startMs: number; endMs: number }>>()
-    const invalid: Array<{ sectionId: string; assetId: string; from: number; to: number }> = []
-    for (const clip of clips) {
-      const windowOk = Number.isInteger(clip.from) && Number.isInteger(clip.to)
-        && clip.from >= 0 && clip.from < clip.to && clip.to - clip.from <= 60
-      if (!windowOk) {
-        invalid.push(clip)
-        continue
-      }
-      let units = unitCache.get(clip.assetId)
-      if (units === undefined) {
-        const { rows } = await this.pool.query<{ start_ms: string | bigint; end_ms: string | bigint }>(
-          'SELECT start_ms, end_ms FROM source_units WHERE asset_id = $1',
-          [clip.assetId],
-        )
-        units = rows.map(row => ({ startMs: Number(row.start_ms), endMs: Number(row.end_ms) }))
-        unitCache.set(clip.assetId, units)
-      }
-      const fromMs = clip.from * 1000
-      const toMs = clip.to * 1000
-      const grounded = units.some(unit => fromMs >= unit.startMs && toMs <= unit.endMs)
-      if (!grounded) invalid.push(clip)
-    }
-    if (invalid.length > 0) {
-      throw codedConflict('clip_invalid', 'section articles contain clip windows not grounded in source units', {
-        clips: invalid,
-      })
-    }
-  }
-
-  /** M9 发布硬门禁：每个课件 validation 必须覆盖其全部断言且为 pass（架构 §6.5.8）。 */
-  private async requireProvenWidgets(courseId: string): Promise<void> {
-    const { rows } = await this.pool.query<{
-      widget_id: string
-      assertions: unknown
-      validation: unknown
-    }>(
-      `SELECT widget_id, assertions, validation FROM widget_specs
-       WHERE course_id = $1 AND status <> 'archived'`,
-      [courseId],
-    )
-    const unproven: string[] = []
-    for (const row of rows) {
-      const assertions = row.assertions as Record<string, unknown> | null
-      const validation = row.validation as Record<string, unknown> | null
-      if (assertions === null || assertions === undefined || validation === null || validation === undefined) {
-        unproven.push(row.widget_id)
-        continue
-      }
-      const complete = Object.keys(assertions)
-        .filter(key => assertions[key] !== undefined)
-        .every(key => validation[key] === 'pass')
-      if (!complete) unproven.push(row.widget_id)
-    }
-    if (unproven.length > 0) {
-      throw codedConflict('widget_unproven', 'course widgets have incomplete assertion proofs', {
-        widgetIds: unproven,
-      })
-    }
-  }
-
-  /** M3b 发布硬门禁：final 审批必须存在，且当前内容指纹与签批时一致（内容变了必须重签）。 */
-  private async requireFinalApproval(courseId: string): Promise<void> {
-    const { rows } = await this.pool.query<{ digest: string }>(
-      `SELECT digest FROM content_approvals WHERE course_id = $1 AND gate = 'final'`,
-      [courseId],
-    )
-    const approved = rows[0]
-    if (approved === undefined) {
-      throw codedConflict('approval_required', 'course has no final approval', { courseId })
-    }
-    const current = await computeCourseDigest(this.pool, courseId)
-    if (current.digest !== approved.digest) {
-      throw codedConflict('approval_stale', 'course content changed after the final approval', {
-        courseId,
-        expected: approved.digest.slice(0, 16),
-        actual: current.digest.slice(0, 16),
-      })
     }
   }
 

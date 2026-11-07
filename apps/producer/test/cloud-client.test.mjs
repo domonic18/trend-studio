@@ -352,7 +352,15 @@ test('listConcepts：GET 带 courseId 查询串，出参经出参校验', async 
       match: (path, init) => path === '/v1/admin/content/concepts?courseId=TC-1' && init.method === 'GET',
       reply: {
         status: 200,
-        payload: { concepts: [{ conceptId: 'cpt_0123456789abcdef', name: '阻尼运动', aliases: ['收敛'], definition: null }] },
+        payload: {
+          concepts: [{
+            conceptId: 'cpt_0123456789abcdef',
+            name: '阻尼运动',
+            aliases: ['收敛'],
+            definition: null,
+            status: 'draft',
+          }],
+        },
       },
     },
   ])
