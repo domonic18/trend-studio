@@ -41,6 +41,12 @@ export const ROUTES: RouteMeta[] = [
     prerender: true,
   },
   {
+    path: '/teacher',
+    title: '教员安装｜生产端插件与课程生产流程',
+    description: '教员侧完整流程：下载生产端插件、安装 harness 与插件、装完自检，以及用一段视频做出第一节课。',
+    prerender: true,
+  },
+  {
     path: '/faq',
     title: '常见问题｜安装、授权与使用',
     description: '安装、登录授权、知识检索与视频播放的常见问题与排查步骤。',

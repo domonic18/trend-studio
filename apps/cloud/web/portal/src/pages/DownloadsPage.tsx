@@ -1,4 +1,4 @@
-import { DownloadOutlined } from '@ant-design/icons'
+import { ArrowRightOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Descriptions, Spin, Tag } from 'antd'
 import { Link } from 'react-router-dom'
@@ -111,6 +111,58 @@ export function DownloadsPage() {
                   code={`shasum -a 256 ${releases.data.plugin.fileName}`}
                 />
               </article>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="content-section">
+        <h2 className="content-section-title">教员生产端插件</h2>
+        <p>
+          教员做课用的是另一个插件：它把一段课程视频变成图文课程与交互课件。
+          它的安装包自带九个工艺包与装机脚本，解压即用，不碰仓库。
+        </p>
+
+        {releases.data?.producerPlugin === null && (
+          <Alert
+            type="warning"
+            showIcon
+            message="生产端插件暂未发布"
+            description="当前还没有发布生产端安装包。发布后本页会更新下载入口。"
+          />
+        )}
+
+        {releases.data?.producerPlugin !== null && releases.data?.producerPlugin !== undefined && (
+          <>
+            <article className="download-card">
+              <div className="download-card-head">
+                <div>
+                  <h2>{releases.data.producerPlugin.name}</h2>
+                  <div className="download-meta">
+                    <Tag color="purple">v{releases.data.producerPlugin.version}</Tag>
+                    <span>发布于 {formatDate(releases.data.producerPlugin.publishedAt)}</span>
+                    <span>文件大小 {formatBytes(releases.data.producerPlugin.sizeBytes)}</span>
+                  </div>
+                </div>
+                <a href={`/downloads/${encodeURIComponent(releases.data.producerPlugin.fileName)}`} download>
+                  <Button type="primary" size="large" icon={<DownloadOutlined />}>
+                    下载生产端安装包
+                  </Button>
+                </a>
+              </div>
+
+              <Descriptions column={1} size="small" className="download-detail">
+                <Descriptions.Item label="文件名">{releases.data.producerPlugin.fileName}</Descriptions.Item>
+                <Descriptions.Item label="校验值（SHA-256）">
+                  {releases.data.producerPlugin.sha256 === null
+                    ? '未提供'
+                    : <code className="download-sha">{releases.data.producerPlugin.sha256}</code>}
+                </Descriptions.Item>
+              </Descriptions>
+            </article>
+
+            <div className="section-more">
+              <Link to="/teacher">前往教员安装指南 <ArrowRightOutlined /></Link>
             </div>
           </>
         )}

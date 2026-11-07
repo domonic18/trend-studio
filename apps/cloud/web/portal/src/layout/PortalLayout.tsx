@@ -9,6 +9,7 @@ const NAV = [
   { to: '/features', label: '站点功能' },
   { to: '/guide', label: '使用向导' },
   { to: '/downloads', label: '版本下载' },
+  { to: '/teacher', label: '教员安装' },
   { to: '/faq', label: '常见问题' },
 ]
 
@@ -105,6 +106,7 @@ function PortalFooter() {
             <span>开始</span>
             <NavLink to="/guide">安装向导</NavLink>
             <NavLink to="/downloads">版本下载</NavLink>
+            <NavLink to="/teacher">教员安装</NavLink>
             <NavLink to="/register">创建账号</NavLink>
           </div>
           <div>

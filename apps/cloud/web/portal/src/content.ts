@@ -1,4 +1,4 @@
-export type ContentName = 'system' | 'features' | 'guide' | 'faq' | 'privacy' | 'terms'
+export type ContentName = 'system' | 'features' | 'guide' | 'faq' | 'privacy' | 'terms' | 'teacher'
 
 const files = import.meta.glob('../content/*.md', {
   query: '?raw',

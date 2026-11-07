@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { SystemPage } from './pages/SystemPage'
+import { TeacherPage } from './pages/TeacherPage'
 
 export function PageLoading({ text = '加载中…' }: { text?: string }) {
   return (
@@ -44,6 +45,7 @@ export function PortalRoutes() {
         <Route path="features" element={<FeaturesPage />} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="downloads" element={<DownloadsPage />} />
+        <Route path="teacher" element={<TeacherPage />} />
         <Route path="faq" element={<FaqPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
