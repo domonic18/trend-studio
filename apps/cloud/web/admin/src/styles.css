@@ -1126,3 +1126,17 @@ body {
 .board-choice-row:last-child {
   border-bottom: none;
 }
+
+.flow-step-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+}
+
+.flow-step-pitfalls {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--admin-muted);
+  font-size: 12px;
+}

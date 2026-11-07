@@ -4,21 +4,32 @@ import {
   CloudSyncOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { App, Button, Card, Empty, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Card,
+  Empty,
+  Space,
+  Spin,
+  Steps,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import {
+  PRODUCTION_STEPS,
+  PRODUCTION_STEP_GUIDE,
+  PRODUCTION_STEP_LABELS,
+} from '@trend/contracts/production-flow'
 import { getProductionBoard, syncCourseQuotes } from '../../api'
 import { useAuth } from '../../auth/AuthProvider'
 import { PageHeader } from '../../components/PageHeader'
 import { qk } from '../../lib/queryKeys'
 import { quotesSyncErrorText, taskErrorText } from '../../lib/productionErrors'
-import {
-  PRODUCTION_STEPS,
-  PRODUCTION_STEP_LABELS,
-  PRODUCTION_TASK_STATUS_COLORS,
-  PRODUCTION_TASK_STATUS_LABELS,
-} from '../../lib/productionSteps'
 import type { ProductionBoardSection, ProductionStep, ProductionTaskItem } from '../../types'
 
 const REVIEW_LABELS: Record<string, string> = { approve: '通过', reject: '未通过' }
@@ -28,6 +39,22 @@ const CHOICE_LABELS: Record<string, string> = {
   A: '只补这节',
   B: '重做课程骨架',
   C: '只入库',
+}
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: '待开始',
+  running: '进行中',
+  done: '已完成',
+  blocked: '阻塞',
+  failed: '失败',
+}
+
+const TASK_STATUS_COLORS: Record<string, string> = {
+  pending: 'default',
+  running: 'processing',
+  done: 'green',
+  blocked: 'orange',
+  failed: 'red',
 }
 
 /** 当前步 = 九步里第一个没做完的（与生产端引擎同一口径：状态非 done 即未完成）。 */
@@ -89,6 +116,68 @@ export function ProductionBoardPage() {
     }
   }, [board.data])
 
+  /** 流程向导步骤卡：九步各聚合到「完成 X/Y 节」，并标出课程当前该做的那一步。 */
+  const flowSteps = useMemo(() => {
+    const sections = board.data?.sections ?? []
+    const total = sections.length
+    const progress = PRODUCTION_STEPS.map(step => {
+      let done = 0
+      let running = 0
+      let blocked = 0
+      let failed = 0
+      for (const section of sections) {
+        const task = section.steps.find(item => item.step === step)
+        if (task === undefined) continue
+        if (task.status === 'done') done += 1
+        else if (task.status === 'running') running += 1
+        else if (task.status === 'blocked') blocked += 1
+        else if (task.status === 'failed') failed += 1
+      }
+      return { step, done, running, blocked, failed }
+    })
+    const current = progress.find(item => item.done < total)?.step ?? null
+    return { total, current, progress }
+  }, [board.data])
+
+  const guideItems = useMemo(
+    () => PRODUCTION_STEP_GUIDE.map((guide, index) => {
+      const stat = flowSteps.progress[index]
+      const done = stat?.done ?? 0
+      const failed = stat?.failed ?? 0
+      const running = stat?.running ?? 0
+      const status: 'error' | 'wait' | 'process' | 'finish' = failed > 0
+        ? 'error'
+        : running > 0
+          ? 'process'
+          : flowSteps.total > 0 && done === flowSteps.total
+            ? 'finish'
+            : 'wait'
+      return {
+        title: (
+          <Space wrap size={6}>
+            <Typography.Text strong>{PRODUCTION_STEP_LABELS[guide.step]}</Typography.Text>
+            <Tag bordered={false}>{`已完成 ${done}/${flowSteps.total} 节`}</Tag>
+            {failed > 0 ? <Tag color="red" bordered={false}>{`失败 ${failed}`}</Tag> : null}
+            {flowSteps.current === guide.step ? <Tag color="blue" bordered={false}>当前</Tag> : null}
+          </Space>
+        ),
+        description: (
+          <div className="flow-step-detail">
+            <Typography.Text type="secondary">{guide.goal}</Typography.Text>
+            <Space size={4} wrap>
+              {guide.tools.map(tool => <Tag key={tool}>{tool}</Tag>)}
+            </Space>
+            <ul className="flow-step-pitfalls">
+              {guide.pitfalls.map(pitfall => <li key={pitfall}>{pitfall}</li>)}
+            </ul>
+          </div>
+        ),
+        status,
+      }
+    }),
+    [flowSteps],
+  )
+
   const columns = useMemo<ColumnsType<ProductionBoardSection>>(() => {
     const stepColumns = PRODUCTION_STEPS.map(step => ({
       title: PRODUCTION_STEP_LABELS[step],
@@ -106,8 +195,8 @@ export function ProductionBoardPage() {
         ].filter(line => line !== null && line !== '').join('\n')
         return (
           <Tooltip title={tip}>
-            <Tag color={PRODUCTION_TASK_STATUS_COLORS[task.status]} bordered={false}>
-              {PRODUCTION_TASK_STATUS_LABELS[task.status]}
+            <Tag color={TASK_STATUS_COLORS[task.status]} bordered={false}>
+              {TASK_STATUS_LABELS[task.status]}
             </Tag>
           </Tooltip>
         )
@@ -227,7 +316,19 @@ export function ProductionBoardPage() {
             ) : null}
           </div>
 
-          <Card title="九步进度" size="small">
+          <Card title="流程向导" size="small" style={{ marginTop: 16 }}>
+            <Typography.Text type="secondary">
+              九步顺序与说明取自生产端技能包的同一份契约——模型看到的步骤表与人看到的这张卡不会漂移。
+            </Typography.Text>
+            <Steps
+              direction="vertical"
+              size="small"
+              current={Math.max(0, PRODUCTION_STEPS.indexOf((flowSteps.current ?? PRODUCTION_STEPS[0]) as ProductionStep))}
+              items={guideItems}
+            />
+          </Card>
+
+          <Card title="九步进度" size="small" style={{ marginTop: 16 }}>
             <Table<ProductionBoardSection>
               rowKey="sectionId"
               size="small"

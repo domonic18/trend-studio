@@ -4,6 +4,9 @@ export type UserStatus = 'active' | 'disabled'
 
 import type { WidgetAssertions, WidgetSpec, WidgetType } from '@trend/widgets/spec-types'
 import type { KlinePeriod } from '@trend/widgets/kline'
+import type { ProductionStep, ProductionTaskStatus } from '@trend/contracts/production-flow'
+
+export type { ProductionStep, ProductionTaskStatus }
 
 export interface SessionUser {
   userId: string
@@ -644,20 +647,6 @@ export interface ApprovalItem {
   approvedBy: string
   approvedAt: string
 }
-
-/** 生产任务状态机的九步（顺序真相源：@trend/contracts 的 PRODUCTION_STEPS）。 */
-export type ProductionStep =
-  | 'case_stocks'
-  | 'quotes_sync'
-  | 'quotes_read'
-  | 'figures'
-  | 'replay_widget'
-  | 'article'
-  | 'widgets'
-  | 'review'
-  | 'provenance'
-
-export type ProductionTaskStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed'
 
 export interface ProductionTaskItem {
   taskId: string
