@@ -8,6 +8,7 @@ import { UpstreamError, errorPayload } from '../errors.js'
 import type { TrendCloudClient } from './cloud-client.js'
 import type { UnderstandingConfig } from './config.js'
 import { diffUnderstandingTodos, normalizeKeyframes, planUnderstandingChunks, type ChunkTodo, type TranscriptSegment } from './orchestrator.js'
+import type { ModelKeyResolver } from './model-key.js'
 
 const CHART_TYPES = new Set(['kline', 'indicator', 'annotation', 'talking-head', 'text-slide', 'other'])
 
@@ -65,13 +66,10 @@ function timeoutSignal(ms: number, extra?: AbortSignal): AbortSignal {
 
 async function callVlm(
   config: UnderstandingConfig,
+  apiKey: string,
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<VlmResponse> {
-  const apiKey = process.env[config.apiKeyEnv]
-  if (apiKey === undefined || apiKey === '') {
-    throw new Error(`视觉模型密钥缺失：请在 dsh 环境配置 ${config.apiKeyEnv}`)
-  }
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
@@ -176,6 +174,10 @@ export class UnderstandingRunner {
   constructor(
     private readonly client: TrendCloudClient,
     private readonly config: UnderstandingConfig,
+    private readonly resolveApiKey: ModelKeyResolver = async (ref: string) => {
+      const fromEnv = process.env[ref]
+      return fromEnv !== undefined && fromEnv !== '' ? fromEnv : undefined
+    },
   ) {}
 
   /** 全量或指定窗口的理解执行；返回窗口级摘要供 agent 监督汇报。 */
@@ -252,9 +254,13 @@ export class UnderstandingRunner {
     }
 
     let lastError = ''
+    const apiKey = await this.resolveApiKey(this.config.apiKeyEnv)
+    if (apiKey === undefined || apiKey === '') {
+      throw new Error(`视觉模型密钥缺失：凭据库里没有 ${this.config.apiKeyEnv}——跑 setup install 写入模型密钥`)
+    }
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const started = Date.now()
-      const response = await callVlm(this.config, body, signal)
+      const response = await callVlm(this.config, apiKey, body, signal)
       try {
         const units = normalizeUnits(extractUnits(response.content), assetId, this.config.model, todo)
         const saved = await this.client.writeSourceUnits({ units }, signal)
