@@ -6,10 +6,16 @@ import {
   assetIngestOutput,
   caseStocksWriteInput,
   caseStocksWriteOutput,
+  courseReadInput,
+  courseReadOutput,
   conceptEdgeWriteInput,
   conceptEdgeWriteOutput,
   conceptWriteInput,
   conceptWriteOutput,
+  courseCreateInput,
+  courseCreateOutput,
+  chapterWriteInput,
+  chapterWriteOutput,
   conceptsListInput,
   conceptsListOutput,
   figureDeleteInput,
@@ -66,6 +72,9 @@ import {
   type CaseStocksWriteOutput,
   type ConceptEdgeWriteOutput,
   type ConceptWriteOutput,
+  type CourseCreateOutput,
+  type ChapterWriteOutput,
+  type CourseReadOutput,
   type ConceptsListOutput,
   type FigureWriteOutput,
   type FramesOutput,
@@ -328,6 +337,40 @@ export class TrendCloudClient {
     params.set('courseId', query.courseId)
     if (query.chapterId !== undefined) params.set('chapterId', query.chapterId)
     return parseOutput(sectionsListOutput, await this.get(`${CONTENT_BASE}/sections?${params.toString()}`, signal), 'sectionsList')
+  }
+
+  async createCourse(input: unknown, signal?: AbortSignal): Promise<CourseCreateOutput> {
+    const body = parseInput(courseCreateInput, input, 'courseCreate')
+    return parseOutput(courseCreateOutput, await this.post(`${CONTENT_BASE}/courses`, body, signal), 'courseCreate')
+  }
+
+  async writeChapter(input: unknown, signal?: AbortSignal): Promise<ChapterWriteOutput> {
+    const body = parseInput(chapterWriteInput, input, 'chapterWrite')
+    return parseOutput(
+      chapterWriteOutput,
+      await this.post(`${CONTENT_BASE}/courses/${body.courseId}/chapters`, body, signal),
+      'chapterWrite',
+    )
+  }
+
+  /**
+   * 读课程骨架：courseId 缺省列全部课程，给了则列该课程的章。
+   * 没有这个读接口，Agent 只能靠猜 chapterId 建节——猜错就是一堆 404。
+   */
+  async readCourses(input: unknown, signal?: AbortSignal): Promise<CourseReadOutput> {
+    const query = parseInput(courseReadInput, input, 'courseRead')
+    if (query.courseId === undefined) {
+      const payload = await this.get(`${CONTENT_BASE}/courses`, signal)
+      const list = payload as { courses?: unknown }
+      return parseOutput(courseReadOutput, { courses: list.courses ?? [], chapters: [] }, 'courseRead')
+    }
+    const payload = await this.get(`${CONTENT_BASE}/courses/${query.courseId}`, signal)
+    const tree = payload as { course?: unknown; chapters?: unknown }
+    return parseOutput(
+      courseReadOutput,
+      { courses: tree.course === undefined ? [] : [tree.course], chapters: tree.chapters ?? [] },
+      'courseRead',
+    )
   }
 
   async writeSection(input: unknown, signal?: AbortSignal): Promise<SectionWriteOutput> {

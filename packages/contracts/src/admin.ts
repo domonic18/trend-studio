@@ -281,6 +281,65 @@ export const sectionDto = z.object({
 
 export const sectionsListOutput = z.object({ sections: z.array(sectionDto) }).strict()
 
+/** 课程与章是「节」的前置骨架——没有它们，写节会被云端挡回 chapter not found。 */
+export const courseCreateInput = z.object({
+  courseId: z.string().min(1).max(64),
+  title: z.string().min(1).max(200),
+}).strict()
+
+export const courseDto = z.object({
+  courseId: z.string(),
+  title: z.string(),
+  status: z.enum(['draft', 'published', 'archived']),
+}).strict()
+
+export const courseCreateOutput = z.object({ course: courseDto }).strict()
+
+export const chapterWriteInput = z.object({
+  courseId: z.string().min(1).max(64),
+  chapterId: z.string().min(1).max(64),
+  title: z.string().min(1).max(200),
+  position: z.number().int().min(0).max(10_000).optional(),
+}).strict()
+
+export const chapterDto = z.object({
+  chapterId: z.string(),
+  title: z.string(),
+  position: z.number().int(),
+}).strict()
+
+export const chapterWriteOutput = z.object({ chapter: chapterDto }).strict()
+
+/**
+ * 课程/章读取：教员与 Agent 都需要先看清「这门课已经有什么骨架」——
+ * 没有读接口就只能猜 chapterId，猜错就是一堆 404 与半成品骨架。
+ *
+ * 云端的课程列表还带节数/图示数等计数，课程树里的章还带知识点与正文元数据，
+ * 这里只取骨架字段（多余字段由 zod 剥掉，不算契约违约）。
+ */
+export const courseReadInput = z.object({
+  courseId: z.string().min(1).max(64).optional(),
+}).strict()
+
+export const courseSummaryDto = z.object({
+  courseId: z.string(),
+  title: z.string(),
+  status: z.enum(['draft', 'published', 'archived']),
+  chapterCount: z.number().int().optional(),
+})
+
+export const chapterSummaryDto = z.object({
+  chapterId: z.string(),
+  title: z.string(),
+  position: z.number().int(),
+})
+
+/** 一次调用同时给课程清单与章清单：courseId 缺省 = 只列课程，给了 = 列该课程的章。 */
+export const courseReadOutput = z.object({
+  courses: z.array(courseSummaryDto),
+  chapters: z.array(chapterSummaryDto),
+}).strict()
+
 export const sectionWriteInput = z.object({
   courseId: z.string().min(1).max(64),
   chapterId: z.string().min(1).max(64),
@@ -642,6 +701,9 @@ export type CourseReadinessOutput = z.infer<typeof courseReadinessOutput>
 export type ConceptEdgeWriteOutput = z.infer<typeof conceptEdgeWriteOutput>
 export type SectionsListOutput = z.infer<typeof sectionsListOutput>
 export type SectionWriteOutput = z.infer<typeof sectionWriteOutput>
+export type CourseCreateOutput = z.infer<typeof courseCreateOutput>
+export type ChapterWriteOutput = z.infer<typeof chapterWriteOutput>
+export type CourseReadOutput = z.infer<typeof courseReadOutput>
 export type SectionArticleWriteOutput = z.infer<typeof sectionArticleWriteOutput>
 export type WidgetWriteOutput = z.infer<typeof widgetWriteOutput>
 export type SectionPreviewOutput = z.infer<typeof sectionPreviewOutput>

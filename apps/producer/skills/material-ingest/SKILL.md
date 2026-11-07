@@ -9,8 +9,12 @@ version: 0.3.0
 消费者：素材 Agent（dsh agent）。输入：用户提供的视频/音频文件（本机绝对路径）+ 目标 courseId；
 输出：素材落库（status=uploaded）+ ingest 任务入队并跟踪到 succeeded。
 
-## 五步链路（顺序固定，不得跳步）
+## 六步链路（顺序固定，不得跳步）
 
+0. **课程先在**：`cloud_asset_create` 要求课程已存在。教员开新一卷课时手上若还没有 courseId，
+   先 `cloud_course_create({courseId, title})` 建课程（草稿态）；已存在会报冲突，
+   遇到冲突先 `cloud_course_read({courseId})` 确认课程确实在，再直接用既有的。
+   courseId 用短横线大写（`TC-BASIC-01`），只允许字母数字与 `.` `_` `-`。
 1. **查重**：`cloud_asset_list({courseId})` 看课程里已有素材。同一份原片**只建一次**，
    已存在且 status 非 failed 的直接复用其 assetId。
 2. **建素材**：`cloud_asset_create({courseId, title})` → assetId（status=awaiting_upload）。

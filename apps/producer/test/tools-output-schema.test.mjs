@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   caseStocksWriteOutput,
+  chapterWriteOutput,
   conceptsListOutput,
+  courseCreateOutput,
+  courseReadOutput,
   figureWriteOutput,
   framesOutput,
   materialImpactOutput,
@@ -100,6 +103,9 @@ const PASSTHROUGH = {
   cloud_source_units_search: sourceUnitsSearchOutput,
   cloud_source_units_read: sourceUnitsReadOutput,
   cloud_concepts_list: conceptsListOutput,
+  cloud_course_create: courseCreateOutput,
+  cloud_chapter_write: chapterWriteOutput,
+  cloud_course_read: courseReadOutput,
   cloud_section_article_write: sectionArticleWriteOutput,
   cloud_widget_write: widgetWriteOutput,
   cloud_case_stocks_write: caseStocksWriteOutput,

@@ -11,9 +11,34 @@ version: 0.1.0
 
 ## 执行顺序
 
+### 0. 目录来源判定（先分叉，再走下面的 §1）
+
+先看本课程**有没有人工目录**：
+
+- **有** `catalog/<卷>.yaml` → 走 §1 起的常规链路（目录校验 → 通读 → 概念 → 骨架 → 门禁①）。
+- **没有**（教员只给了一个视频和一句话，如「给课程 X 做第一节」）→ 走下面的「无人工目录分支」。
+
+#### 无人工目录分支（教员自述即目录）
+
+教员自己说的话就是这一卷的目录——**不许自创章节**。落库骨架只建教员点名的那些：
+
+1. `cloud_course_read({courseId})` 看这门课已经有哪些章——**章 ID 不能猜**，
+   猜出来的 ID 云端一律回 chapter not found。已有的章直接用。
+2. `cloud_course_create({courseId, title})` 建课程（草稿；已存在会冲突，直接用既有的）。
+3. `cloud_chapter_write({courseId, chapterId, title, position})` 建章——
+   章 id 取 `ch-<序号>`，标题用教员给的原话，没有就照素材内容起一个**单章**。
+4. 一课时一节：`cloud_sections_write({courseId, chapterId, title, position, sourceAssetIds:[assetId]})`。
+   节标题用教员给的原话；没有原话就用素材 summary 的首句，**只建这一节**，不要顺手铺出后续章节。
+5. 走完 §3（概念抽取）→ §5（门禁①呈报），**仍然停下来等教员批准**。
+
+这个分支只是省掉「读 yaml + 目录校验」两步，**其余纪律一条不减**：
+概念归一、门禁①呈报、目录不可发明全都照旧。
+
 ### 1. 目录先验校验（原则 11，不得发明目录）
 
 - 读 `catalog/<卷>.yaml`：courseId/chapter/sections 的 title、position、assetId 是唯一骨架输入。
+  目录文件按 courseId 命名（`catalog/TC-ZONGLUN.yaml`），在仓库的 `apps/producer/catalog/` 下；
+  免仓库安装时教员把自己的目录文件放在自己指定的位置，按教员给的路径读。
 - 逐条校验：每个 assetId 在云端存在且 ingest succeeded（`cloud_pipeline_status`）；课时数、顺序、
   命名与文件一致。发现目录与素材对不上 → 停止并报告差异，**禁止自行改名或增删**。
 

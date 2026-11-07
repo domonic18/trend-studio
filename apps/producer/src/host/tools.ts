@@ -622,6 +622,126 @@ export function registerCloudTools(
   }))
 
   ctx.tools.register(defineTool({
+    name: 'cloud_course_create',
+    description:
+      '建课程（草稿）。课程是素材与章节的容器——教员新开一卷课的第一步。'
+      + '课程 ID 只允许字母数字与 . _ -，最长 64；已存在会冲突。' + ID_NOTE,
+    parameters: {
+      courseId: { type: 'string', required: true, description: '课程 ID（如 TC-BASIC-01）' },
+      title: { type: 'string', required: true, description: '课程标题' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          course: { type: 'object', additionalProperties: true },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => {
+        const course = (value as { course?: Record<string, unknown> }).course
+        if (course === undefined) return [{ type: 'text', text: '云端返回为空' }]
+        return [{ type: 'text', text: `课程已落库: ${String(course.courseId)}（${sanitizeInlineUntrusted(String(course.title))}，${String(course.status)}）` }]
+      },
+    },
+    async execute(args, exec) {
+      const { courseId, title } = args as { courseId: string; title: string }
+      try {
+        return await client.createCourse({ courseId, title }, exec.signal)
+      } catch (error) {
+        throw toToolError(error, '建课程')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cloud_chapter_write',
+    description:
+      '建章（课程下的教学大单元）。章是节的前置骨架——建节前必须先有章，否则云端返回 chapter not found。'
+      + '同一课程内章 ID 不可重复。' + ID_NOTE,
+    parameters: {
+      courseId: { type: 'string', required: true, description: '课程 ID' },
+      chapterId: { type: 'string', required: true, description: '章 ID（如 CH-01）' },
+      title: { type: 'string', required: true, description: '章标题' },
+      position: { type: 'number', description: '可选:课程内序号（缺省 0）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          chapter: { type: 'object', additionalProperties: true },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => {
+        const chapter = (value as { chapter?: Record<string, unknown> }).chapter
+        if (chapter === undefined) return [{ type: 'text', text: '云端返回为空' }]
+        return [{ type: 'text', text: `章已落库: ${String(chapter.chapterId)}（${sanitizeInlineUntrusted(String(chapter.title))}）` }]
+      },
+    },
+    async execute(args, exec) {
+      const { courseId, chapterId, title, position } = args as { courseId: string; chapterId: string; title: string; position?: number }
+      try {
+        return await client.writeChapter({
+          courseId,
+          chapterId,
+          title,
+          ...(position === undefined ? {} : { position }),
+        }, exec.signal)
+      } catch (error) {
+        throw toToolError(error, '建章')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cloud_course_read',
+    description:
+      '读课程骨架。不给 courseId 列云端全部课程；给了 courseId 列该课程已有的章。'
+      + '建章或建节前先读一次——章 ID 不能猜，猜错云端会一直报 chapter not found。' + ID_NOTE,
+    parameters: {
+      courseId: { type: 'string', description: '可选:课程 ID；缺省列全部课程' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          courses: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          chapters: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        },
+        additionalProperties: false,
+      },
+      render: (_args, value) => {
+        const read = value as {
+          courses?: { courseId?: unknown; title?: unknown }[]
+          chapters?: { chapterId?: unknown; title?: unknown }[]
+        }
+        const courses = read.courses ?? []
+        const chapters = read.chapters ?? []
+        if (courses.length === 0 && chapters.length === 0) {
+          return [{ type: 'text', text: '云端没有课程记录——先 cloud_course_create 建课程。' }]
+        }
+        const lines: string[] = []
+        for (const course of courses) {
+          lines.push(`课程 ${String(course.courseId)}：${sanitizeInlineUntrusted(String(course.title))}`)
+        }
+        for (const chapter of chapters) {
+          lines.push(`章 ${String(chapter.chapterId)}：${sanitizeInlineUntrusted(String(chapter.title))}`)
+        }
+        return [{ type: 'text', text: lines.join('\n') }]
+      },
+    },
+    async execute(args, exec) {
+      const { courseId } = args as { courseId?: string }
+      try {
+        return await client.readCourses(courseId === undefined ? {} : { courseId }, exec.signal)
+      } catch (error) {
+        throw toToolError(error, '读课程骨架')
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'cloud_section_article_write',
     description:
       '写入节教材草稿（grounded Markdown，1200–3000 字）。事实性段落必须携带 citations（支撑该节的 source unit 引用）；'

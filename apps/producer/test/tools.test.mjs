@@ -126,3 +126,82 @@ test('cloud_source_units_read：入参不合法时在 execute 前被拒（不发
   await assert.rejects(() => tool.execute({ unitIds: 'su_0123456789abcdef' }, { signal: undefined }))
   assert.equal(called, 0)
 })
+
+test('cloud_course_read：入参透传到 client，课程与章都进 render 输出', async () => {
+  const registered = []
+  const seen = []
+  const ctx = {
+    tools: {
+      register(tool) {
+        registered.push(tool)
+      },
+    },
+  }
+  const client = {
+    async readCourses(input) {
+      seen.push(input)
+      return {
+        courses: [{ courseId: 'TC-E2E-1', title: '教员端验收课', status: 'draft' }],
+        chapters: [{ chapterId: 'ch-1', title: '第一章', position: 0 }],
+      }
+    },
+  }
+  registerCloudTools(ctx, client, {}, {})
+  const tool = registered.find(item => item.name === 'cloud_course_read')
+  const result = await tool.execute({ courseId: 'TC-E2E-1' }, { signal: undefined })
+  assert.deepEqual(seen[0], { courseId: 'TC-E2E-1' })
+  const rendered = tool.output.render({ courseId: 'TC-E2E-1' }, result)
+  assert.match(rendered[0].text, /TC-E2E-1/)
+  assert.match(rendered[0].text, /ch-1/)
+})
+
+test('cloud_course_read：不带 courseId 时不传空串给 client', async () => {
+  const registered = []
+  const seen = []
+  const ctx = {
+    tools: {
+      register(tool) {
+        registered.push(tool)
+      },
+    },
+  }
+  const client = {
+    async readCourses(input) {
+      seen.push(input)
+      return { courses: [], chapters: [] }
+    },
+  }
+  registerCloudTools(ctx, client, {}, {})
+  const tool = registered.find(item => item.name === 'cloud_course_read')
+  await tool.execute({}, { signal: undefined })
+  assert.deepEqual(seen[0], {})
+})
+
+test('cloud_course_create / cloud_chapter_write：入参透传到 client 且不丢可选字段', async () => {
+  const registered = []
+  const seen = []
+  const ctx = {
+    tools: {
+      register(tool) {
+        registered.push(tool)
+      },
+    },
+  }
+  const client = {
+    async createCourse(input) {
+      seen.push(['course', input])
+      return { course: { courseId: input.courseId, title: input.title, status: 'draft' } }
+    },
+    async writeChapter(input) {
+      seen.push(['chapter', input])
+      return { chapter: { chapterId: input.chapterId, title: input.title, position: input.position ?? 0 } }
+    },
+  }
+  registerCloudTools(ctx, client, {}, {})
+  const createTool = registered.find(item => item.name === 'cloud_course_create')
+  await createTool.execute({ courseId: 'TC-E2E-1', title: '教员端验收课' }, { signal: undefined })
+  const chapterTool = registered.find(item => item.name === 'cloud_chapter_write')
+  await chapterTool.execute({ courseId: 'TC-E2E-1', chapterId: 'ch-1', title: '第一章', position: 1 }, { signal: undefined })
+  assert.deepEqual(seen[0], ['course', { courseId: 'TC-E2E-1', title: '教员端验收课' }])
+  assert.deepEqual(seen[1], ['chapter', { courseId: 'TC-E2E-1', chapterId: 'ch-1', title: '第一章', position: 1 }])
+})
