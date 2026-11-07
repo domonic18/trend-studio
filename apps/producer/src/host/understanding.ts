@@ -49,6 +49,8 @@ export interface UnderstandingRunResult {
   skipped: number
   chunks: (ChunkResult & { unitIds: string[] })[]
   unitIds: string[]
+  /** A6：转写未完成——本次只覆盖已转写前缀，素材其余部分需后续再跑一次。 */
+  partial: boolean
 }
 
 interface VlmResponse {
@@ -179,15 +181,8 @@ export class UnderstandingRunner {
   /** 全量或指定窗口的理解执行；返回窗口级摘要供 agent 监督汇报。 */
   async run(options: UnderstandingRunOptions): Promise<UnderstandingRunResult> {
     const { assetId, signal } = options
-    const segments: TranscriptSegment[] = []
-    let offset = 0
-    for (;;) {
-      const page = await this.client.getTranscript({ assetId, offset, limit: 500 }, signal)
-      segments.push(...page.segments)
-      if (segments.length >= page.total) break
-      offset = segments.length
-    }
-    if (segments.length === 0) throw new Error('素材无就绪转写，禁止进入理解阶段')
+    const { segments, partial } = await this.readSegments(assetId, signal)
+    if (segments.length === 0) throw new Error('素材暂无就绪转写，无法进入理解阶段')
 
     const durationMs = Math.max(...segments.map(seg => seg.endMs))
     const plans = planUnderstandingChunks(durationMs, segments)
@@ -208,7 +203,7 @@ export class UnderstandingRunner {
       todos = todos.filter(todo => todo.startMs >= options.window!.startMs && todo.endMs <= options.window!.endMs)
     }
 
-    const result: UnderstandingRunResult = { planned: plans.length, ran: 0, skipped: plans.length - todos.length, chunks: [], unitIds: [] }
+    const result: UnderstandingRunResult = { planned: plans.length, ran: 0, skipped: plans.length - todos.length, chunks: [], unitIds: [], partial }
     for (const todo of todos) {
       const chunk = await this.runChunk(assetId, todo, signal)
       result.chunks.push(chunk)
@@ -216,6 +211,27 @@ export class UnderstandingRunner {
       result.ran += 1
     }
     return result
+  }
+
+  /**
+   * A6 增量产出：转写可能仍在进行，total 会随转写推进增长——
+   * 翻页以「本页读满 limit」为准，不能拿会移动的 total 当终止条件。
+   */
+  private async readSegments(
+    assetId: string,
+    signal?: AbortSignal,
+  ): Promise<{ segments: TranscriptSegment[]; partial: boolean }> {
+    const limit = 500
+    const segments: TranscriptSegment[] = []
+    let partial = false
+    for (;;) {
+      const page = await this.client.getTranscript({ assetId, offset: segments.length, limit }, signal)
+      partial = partial || page.transcript.partial
+      if (page.segments.length === 0) break
+      segments.push(...page.segments)
+      if (page.segments.length < limit) break
+    }
+    return { segments, partial }
   }
 
   private async runChunk(assetId: string, todo: ChunkTodo, signal?: AbortSignal): Promise<ChunkResult & { unitIds: string[] }> {
@@ -279,17 +295,12 @@ export class UnderstandingRunner {
   }
 
   private async transcriptText(assetId: string, todo: ChunkTodo, signal?: AbortSignal): Promise<string> {
+    const { segments } = await this.readSegments(assetId, signal)
     const lines: string[] = []
-    let offset = 0
-    for (;;) {
-      const page = await this.client.getTranscript({ assetId, offset, limit: 500 }, signal)
-      for (const seg of page.segments) {
-        if (seg.endMs > todo.startMs && seg.startMs < todo.endMs) {
-          lines.push(`[${seg.startMs}–${seg.endMs}ms] ${seg.text}`)
-        }
+    for (const seg of segments) {
+      if (seg.endMs > todo.startMs && seg.startMs < todo.endMs) {
+        lines.push(`[${seg.startMs}–${seg.endMs}ms] ${seg.text}`)
       }
-      if (page.offset + page.segments.length >= page.total) break
-      offset = page.offset + page.segments.length
     }
     return lines.join('\n').slice(0, 24_000)
   }

@@ -237,6 +237,7 @@ test('readSourceUnits：POST 路径与载荷正确，回执含完整证据体', 
               expiresAt: 1_761_000_000_000,
             },
           }],
+          partial: false,
         },
       },
     },
@@ -246,6 +247,7 @@ test('readSourceUnits：POST 路径与载荷正确，回执含完整证据体', 
   assert.equal(result.units[0].transcriptText, '均线方向向上')
   assert.equal(result.units[0].keyframes[0].url, 'https://media.example.com/kf.jpg?sig=1')
   assert.equal(result.units[0].playback.fromSec, 0)
+  assert.equal(result.partial, false)
   assert.deepEqual(auth.calls[0].body, { unitIds: ['su_0123456789abcdef'] })
 })
 

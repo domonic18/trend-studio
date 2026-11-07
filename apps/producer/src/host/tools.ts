@@ -60,8 +60,9 @@ export function registerCloudTools(
   ctx.tools.register(defineTool({
     name: 'cloud_pipeline_status',
     description:
-      '查询云端管线任务状态（ingest/转码/转写/关键帧轨道）。开始生产一个素材前必须先确认其 ingest 任务已 succeeded 且帧轨道就绪；转写未就绪时禁止进入理解阶段。'
-      + ID_NOTE,
+      '查询云端管线任务状态（ingest/转码/转写/关键帧轨道）。开始生产一个素材前先看它的 ingest 任务状态；'
+      + 'ingest succeeded 后素材已可读。转写进行中也可先做部分理解——已转写部分提前可消费，'
+      + '待转写结束再跑一次补齐（差集续跑）。' + ID_NOTE,
     parameters: {
       assetId: { type: 'string', description: '可选:素材 ID（asset_ 开头）' },
       courseId: { type: 'string', description: '可选:课程 ID' },
@@ -126,7 +127,8 @@ export function registerCloudTools(
     name: 'cloud_transcript',
     description:
       '拉取素材的带时间戳转写（分页，每段含全局毫秒时间戳）。理解阶段先拉全量转写规划分块窗口，'
-      + '再把窗口内转写与关键帧一起交给视觉模型。total 超过单页时用 offset 翻页取齐。' + ID_NOTE,
+      + '再把窗口内转写与关键帧一起交给视觉模型。total 超过单页时用 offset 翻页取齐。'
+      + '转写未完成时 transcript.partial=true——total 是当前已可读的段数，后续还会增长。' + ID_NOTE,
     parameters: {
       assetId: { type: 'string', required: true, description: '素材 ID' },
       offset: { type: 'number', description: '可选:起始段序,默认 0' },
@@ -999,7 +1001,9 @@ export function registerCloudTools(
     name: 'cloud_understanding_run',
     description:
       '执行理解阶段（确定性执行器）：自动完成分块规划、帧拉取、视觉模型调用、归一化、写库与溯源。'
-      + '调用前确认 ingest 已 succeeded；缺省跑全量差集（断点自动续跑），可传时间窗只跑一段。'
+      + '素材转写未完成时也可以调用——本次只覆盖已转写前缀，返回 partial=true；'
+      + '等转写完成后再跑一次即可补齐剩余部分（差集续跑，不重复消耗）。'
+      + '缺省跑全量差集（断点自动续跑），可传时间窗只跑一段。'
       + '单个 19 分钟课时约 3–8 分钟，请勿并发调用多个素材。'
       + '返回每个窗口的 unit 数/token/延迟；两次校验不收敛的窗口会在错误里标明，转人工。' + ID_NOTE,
     parameters: {
@@ -1014,6 +1018,7 @@ export function registerCloudTools(
           planned: { type: 'number', required: true },
           ran: { type: 'number', required: true },
           skipped: { type: 'number', required: true },
+          partial: { type: 'boolean', required: true },
           totalUnits: { type: 'number', required: true },
           totalInTokens: { type: 'number', required: true },
           totalOutTokens: { type: 'number', required: true },
@@ -1043,6 +1048,7 @@ export function registerCloudTools(
           `理解完成: 计划 ${value.planned} 窗 / 执行 ${value.ran} / 跳过(已完成) ${value.skipped}`,
           `产出 ${value.totalUnits} units, 消耗 in=${value.totalInTokens} out=${value.totalOutTokens} tokens`,
         ]
+        if (value.partial) lines.push('注意: 转写尚未完成，本次只覆盖已转写前缀；待转写结束后再跑一次补齐。')
         for (const chunk of value.chunks) {
           lines.push(`- 窗${chunk.index} ${chunk.startMs}–${chunk.endMs}ms: ${chunk.units} units (deduped ${chunk.deduped}), ${chunk.inTokens}/${chunk.outTokens} tok, ${Math.round(chunk.latencyMs / 1000)}s`)
         }
@@ -1061,6 +1067,7 @@ export function registerCloudTools(
           planned: result.planned,
           ran: result.ran,
           skipped: result.skipped,
+          partial: result.partial,
           totalUnits: result.unitIds.length,
           totalInTokens: result.chunks.reduce((sum, c) => sum + c.inTokens, 0),
           totalOutTokens: result.chunks.reduce((sum, c) => sum + c.outTokens, 0),

@@ -1,7 +1,7 @@
 ---
 name: material-ingest
 description: 素材入库工艺：本地视频/音频直传云端并入队转写（生产体验线入口场景）+ 追加素材的 A/B/C 处理决策
-version: 0.2.0
+version: 0.3.0
 ---
 
 # 素材入库工艺
@@ -21,9 +21,20 @@ version: 0.2.0
 4. **入队转写**：`cloud_asset_ingest({assetId, language})`（language 省略即 auto）→ jobId。
 5. **跟踪**：`cloud_pipeline_status({assetId})` 轮询到 ingest `succeeded` 且关键帧就绪。
 
+## 增量产出（A6）：转写没完也能开工
+
+云端每转完一块就把已转写部分落成可读段落，**不等整个素材转完**：
+
+- `cloud_transcript` 返回 `transcript.partial=true` 时，`total` 是当前已可读的段数，后续还会增长。
+- 此时可以**先跑一轮理解**（`cloud_understanding_run`），只覆盖已转写前缀；
+  返回 `partial=true` 即本次是部分覆盖。
+- **等 ingest succeeded 后再跑一次**补齐剩余部分——差集续跑，已完成的窗口不会重复消耗。
+- 关键帧轨道在转写之前就已抽好，所以部分理解阶段画面证据同样是齐的。
+
 ## 红线
 
-- **ingest 未 succeeded 前禁止进入理解阶段**（`transcript-understanding` 的前置检查同款）。
+- **转写完全没产出时禁止进入理解阶段**（至少要有 1 段可读转写，否则工具直接报错）。
+  这与「ingest 未 succeeded 前禁止理解」不同——现在是允许部分理解的。
 - 上传失败**重传同一个 assetId**，不要重新建素材——重建会留下 `failed` 的孤儿素材。
 - 素材状态卡在 `processing` 时只报告进度，不重跑 ingest（重跑会重复消耗转写额度）。
 - `errorCode` 非空即失败：报告原文，不要自行猜测原因。
