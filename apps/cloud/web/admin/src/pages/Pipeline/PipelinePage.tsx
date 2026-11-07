@@ -24,6 +24,7 @@ import {
 import { PageHeader } from '../../components/PageHeader'
 import { qk } from '../../lib/queryKeys'
 import { publishErrorText } from '../../lib/publishErrors'
+import { materialErrorText } from '../../lib/productionErrors'
 import type { MediaAsset } from '../../types'
 import { AssetTable } from './AssetTable'
 import { GenerationDrawer } from './GenerationDrawer'
@@ -74,6 +75,7 @@ export function PipelinePage() {
       form.resetFields()
       void message.success(`素材已创建：${asset.assetId}`)
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const publish = useMutation({

@@ -4,7 +4,8 @@ import { App, Button, Popconfirm, Progress, Space, Table, Tooltip, Typography } 
 import type { ColumnsType } from 'antd/es/table'
 import { cancelPipelineJob, getPipelineJob, retryPipelineJob } from '../../api'
 import { STAGE_LABELS, StatusTag } from '../../components/StatusTag'
-import { errorText, formatDateTime } from '../../lib/format'
+import { formatDateTime } from '../../lib/format'
+import { materialErrorText } from '../../lib/productionErrors'
 import type { PipelineJob } from '../../types'
 
 export function JobTable({
@@ -25,6 +26,7 @@ export function JobTable({
       await queryClient.invalidateQueries({ queryKey: ['pipeline'] })
       void message.success('已请求取消')
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const retry = useMutation({
@@ -33,6 +35,7 @@ export function JobTable({
       await queryClient.invalidateQueries({ queryKey: ['pipeline'] })
       void message.success('已重新入队')
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const openPreview = async (job: PipelineJob): Promise<void> => {
@@ -45,7 +48,7 @@ export function JobTable({
       }
       onPreview(generationId)
     } catch (cause) {
-      void message.error(errorText(cause))
+      void message.error(materialErrorText(cause))
     }
   }
 

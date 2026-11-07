@@ -26,7 +26,8 @@ import {
   uploadMediaSource,
 } from '../../api'
 import { StatusTag } from '../../components/StatusTag'
-import { errorText, formatBytes, formatClock } from '../../lib/format'
+import { formatBytes, formatClock } from '../../lib/format'
+import { materialErrorText } from '../../lib/productionErrors'
 import type { MediaAsset } from '../../types'
 
 export function AssetTable({
@@ -53,6 +54,7 @@ export function AssetTable({
       await refresh()
       void message.success('已入队转码与转写')
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const generate = useMutation({
@@ -61,6 +63,7 @@ export function AssetTable({
       await refresh()
       void message.success('已入队内容生成')
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const archive = useMutation({
@@ -69,6 +72,7 @@ export function AssetTable({
       await refresh()
       void message.success('素材已归档')
     },
+    onError: error => void message.error(materialErrorText(error)),
   })
 
   const upload = async (asset: MediaAsset, file: File): Promise<void> => {
@@ -81,7 +85,7 @@ export function AssetTable({
       void message.success(`已上传 ${formatBytes(updated.sourceSizeBytes)}`)
       await refresh()
     } catch (cause) {
-      void message.error(errorText(cause))
+      void message.error(materialErrorText(cause))
     } finally {
       setUploadingId(null)
       setProgress(current => {

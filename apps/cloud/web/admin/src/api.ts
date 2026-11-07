@@ -35,6 +35,7 @@ import type {
   PipelineJobKind,
   PipelineJobList,
   PipelineJobStatus,
+  ProductionBoard,
   Quiz,
   QuizQuestion,
   Segment,
@@ -287,6 +288,22 @@ export async function getAdminCourseQuotes(
   return request<{ pending: boolean; quotes: CourseQuote[] }>(
     'GET',
     `/v1/admin/content/courses/${encodeURIComponent(courseId)}/quotes?${params.toString()}`,
+  )
+}
+
+/** 生产看板：每节一行九步状态 + 产出计数 + 最近评审结论 + 最近的追加素材决策。 */
+export async function getProductionBoard(courseId: string): Promise<ProductionBoard> {
+  return request<ProductionBoard>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/production-board`,
+  )
+}
+
+/** 行情同步：同步执行腾讯前复权日 K，落 course_stock_quotes 缓存（只写行情，不改内容状态）。 */
+export async function syncCourseQuotes(courseId: string): Promise<{ job: PipelineJob; upserted: number }> {
+  return request<{ job: PipelineJob; upserted: number }>(
+    'POST',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/quotes-sync`,
   )
 }
 

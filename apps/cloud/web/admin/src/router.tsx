@@ -8,6 +8,7 @@ const OverviewPage = lazy(() => import('./pages/Overview/OverviewPage').then(m =
 const ContentPage = lazy(() => import('./pages/Content/ContentPage').then(m => ({ default: m.ContentPage })))
 const SectionPreviewPage = lazy(() => import('./pages/Content/SectionPreviewPage').then(m => ({ default: m.SectionPreviewPage })))
 const CoursePreviewPage = lazy(() => import('./pages/Content/CoursePreviewPage').then(m => ({ default: m.CoursePreviewPage })))
+const ProductionBoardPage = lazy(() => import('./pages/Content/ProductionBoardPage').then(m => ({ default: m.ProductionBoardPage })))
 const SegmentsPage = lazy(() => import('./pages/Segments/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
 const PipelinePage = lazy(() => import('./pages/Pipeline/PipelinePage').then(m => ({ default: m.PipelinePage })))
 const ModelsPage = lazy(() => import('./pages/Models/ModelsPage').then(m => ({ default: m.ModelsPage })))
@@ -70,6 +71,25 @@ function RequireAdmin({ children }: { children: ReactElement }) {
   return children
 }
 
+/** 生产端能力（看板、看板行情同步）：operator/admin/producer；学员不可见。 */
+function RequireProduction({ children }: { children: ReactElement }) {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return <FullScreenLoading />
+  if (user === null) {
+    return <Navigate to="/login" replace state={{ returnTo: location.pathname + location.search }} />
+  }
+  if (user.role === 'student') {
+    return (
+      <div className="page-forbidden">
+        <h2>无权访问</h2>
+        <p>该页面仅生产端、运营与管理员可见。</p>
+      </div>
+    )
+  }
+  return children
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -83,6 +103,10 @@ export const router = createBrowserRouter([
       { path: 'courses', element: <ContentPage /> },
       { path: 'courses/:courseId', element: <ContentPage /> },
       { path: 'courses/:courseId/preview', element: <CoursePreviewPage /> },
+      {
+        path: 'courses/:courseId/board',
+        element: <RequireProduction><ProductionBoardPage /></RequireProduction>,
+      },
       { path: 'courses/:courseId/sections/:sectionId', element: <SectionPreviewPage /> },
       { path: 'segments', element: <SegmentsPage /> },
       { path: 'pipeline', element: <PipelinePage /> },

@@ -4,6 +4,7 @@ import {
   FileTextOutlined,
   PictureOutlined,
   PlusOutlined,
+  ProjectOutlined,
   QuestionCircleOutlined,
   RocketOutlined,
   SafetyCertificateOutlined,
@@ -42,6 +43,7 @@ import {
   publishCourse,
   reindex,
 } from '../../api'
+import { useAuth } from '../../auth/AuthProvider'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
 import { approvalErrorText, publishErrorText } from '../../lib/publishErrors'
@@ -71,6 +73,8 @@ type EditablePoint = { mode: 'point'; point: KnowledgePoint }
 export function CourseEditor({ courseId }: { courseId: string }) {
   const queryClient = useQueryClient()
   const { message, modal } = App.useApp()
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const [form] = Form.useForm<CourseInfoForm>()
   const [articleChapter, setArticleChapter] = useState<Chapter | null>(null)
   const [quizChapter, setQuizChapter] = useState<Chapter | null>(null)
@@ -79,6 +83,11 @@ export function CourseEditor({ courseId }: { courseId: string }) {
   const [pointModal, setPointModal] = useState<{ chapterId: string } | null>(null)
   const [rename, setRename] = useState<EditableChapter | EditablePoint | null>(null)
   const [nameForm] = Form.useForm<NameForm>()
+
+  /** 签批与发布限 operator/admin——producer 只产内容，按钮直接不给他看。 */
+  const canOperate = user?.role === 'admin' || user?.role === 'operator'
+  /** 看板与生产端能力对非学员开放。 */
+  const canSeeBoard = user !== null && user.role !== 'student'
 
   const tree = useQuery({ queryKey: qk.course(courseId), queryFn: () => getCourseTree(courseId) })
   const approvals = useQuery({
@@ -230,6 +239,13 @@ export function CourseEditor({ courseId }: { courseId: string }) {
                 重建向量
               </Button>
             </Tooltip>
+            {canSeeBoard ? (
+              <Tooltip title="九步生产进度、产出与评审结论">
+                <Button icon={<ProjectOutlined />} onClick={() => navigate(`/courses/${courseId}/board`)}>
+                  生产看板
+                </Button>
+              </Tooltip>
+            ) : null}
             {finalApproval === undefined ? (
               <Tag bordered={false}>未签批</Tag>
             ) : (
@@ -237,23 +253,27 @@ export function CourseEditor({ courseId }: { courseId: string }) {
                 <Tag bordered={false} color="green">终审已签批</Tag>
               </Tooltip>
             )}
-            <Tooltip title="签批 = 对当前课程内容指纹签名（发布前置门禁，限 operator/admin）">
-              <Button
-                icon={<SafetyCertificateOutlined />}
-                loading={sign.isPending}
-                onClick={confirmSign}
-              >
-                签批终审
-              </Button>
-            </Tooltip>
-            <Button
-              type="primary"
-              icon={<RocketOutlined />}
-              loading={publish.isPending}
-              onClick={confirmPublish}
-            >
-              发布课程
-            </Button>
+            {canOperate ? (
+              <>
+                <Tooltip title="签批 = 对当前课程内容指纹签名（发布前置门禁，限 operator/admin）">
+                  <Button
+                    icon={<SafetyCertificateOutlined />}
+                    loading={sign.isPending}
+                    onClick={confirmSign}
+                  >
+                    签批终审
+                  </Button>
+                </Tooltip>
+                <Button
+                  type="primary"
+                  icon={<RocketOutlined />}
+                  loading={publish.isPending}
+                  onClick={confirmPublish}
+                >
+                  发布课程
+                </Button>
+              </>
+            ) : null}
           </Space>
         }
       >

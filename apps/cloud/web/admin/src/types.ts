@@ -644,3 +644,64 @@ export interface ApprovalItem {
   approvedBy: string
   approvedAt: string
 }
+
+/** 生产任务状态机的九步（顺序真相源：@trend/contracts 的 PRODUCTION_STEPS）。 */
+export type ProductionStep =
+  | 'case_stocks'
+  | 'quotes_sync'
+  | 'quotes_read'
+  | 'figures'
+  | 'replay_widget'
+  | 'article'
+  | 'widgets'
+  | 'review'
+  | 'provenance'
+
+export type ProductionTaskStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed'
+
+export interface ProductionTaskItem {
+  taskId: string
+  courseId: string
+  sectionId: string
+  step: ProductionStep
+  status: ProductionTaskStatus
+  attempt: number
+  maxAttempts: number
+  note: string | null
+  updatedAt: number
+}
+
+/** 追加素材的三种处理方式（A 只补这节 / B 重做骨架 / C 只入库）。 */
+export type MaterialChoice = 'A' | 'B' | 'C'
+
+export interface MaterialChoiceItem {
+  choiceId: string
+  courseId: string
+  assetId: string
+  sectionId: string | null
+  choice: MaterialChoice
+  affectedSectionIds: string[]
+  note: string | null
+  createdAt: number
+}
+
+/** 生产看板：每节一行九步状态 + 产出计数 + 最近评审结论。 */
+export interface ProductionBoardSection {
+  sectionId: string
+  chapterId: string
+  title: string
+  position: number
+  steps: ProductionTaskItem[]
+  articleVersion: number | null
+  widgetCount: number
+  figureCount: number
+  caseStockCount: number
+  reviewVerdict: 'approve' | 'reject' | null
+}
+
+export interface ProductionBoard {
+  courseId: string
+  courseTitle: string
+  sections: ProductionBoardSection[]
+  materialChoices: MaterialChoiceItem[]
+}

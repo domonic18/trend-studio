@@ -8,6 +8,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ProjectOutlined,
   ReadOutlined,
   RobotOutlined,
   TeamOutlined,
@@ -30,8 +31,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 function selectedKey(pathname: string): string {
   if (pathname === '/' || pathname === '') return '/'
+  // 课程子页面按后缀判定：/courses/:id/{preview,board}
+  if (pathname.endsWith('/preview')) return '/course-preview'
+  if (pathname.endsWith('/board')) return '/production-board'
   if (pathname.startsWith('/courses')) return '/courses'
-  if (pathname.startsWith('/course-preview')) return '/course-preview'
   if (pathname.startsWith('/segments')) return '/segments'
   if (pathname.startsWith('/pipeline')) return '/pipeline'
   if (pathname.startsWith('/ai/usage')) return '/ai/usage'
@@ -44,6 +47,12 @@ function selectedKey(pathname: string): string {
 function coursePreviewPath(pathname: string): string {
   const match = pathname.match(/^\/courses\/([^/]+)/)
   return match !== null ? `/courses/${match[1]}/preview` : '/courses'
+}
+
+/** 看板挂在具体课程下：当前在课程里就跳该课程的看板，否则回课程列表让人先选。 */
+function productionBoardPath(pathname: string): string {
+  const match = pathname.match(/^\/courses\/([^/]+)/)
+  return match !== null ? `/courses/${match[1]}/board` : '/courses'
 }
 
 export function Sidebar({
@@ -78,6 +87,11 @@ export function Sidebar({
             label: '课程预览',
           } satisfies MenuItem]
           : []),
+        {
+          key: '/production-board',
+          icon: <ProjectOutlined />,
+          label: '生产看板',
+        },
         { key: '/segments', icon: <FileTextOutlined />, label: '片段管理' },
         { key: '/pipeline', icon: <VideoCameraOutlined />, label: '视频建课' },
       ],
@@ -132,6 +146,8 @@ export function Sidebar({
         onClick={({ key }) => {
           if (key === '/course-preview') {
             navigate(coursePreviewPath(location.pathname))
+          } else if (key === '/production-board') {
+            navigate(productionBoardPath(location.pathname))
           } else {
             navigate(key)
           }

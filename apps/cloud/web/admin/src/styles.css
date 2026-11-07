@@ -1095,3 +1095,34 @@ body {
   padding-top: 4px;
   font-size: 12px;
 }
+
+.board-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.board-section-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.board-section-cell .ant-typography {
+  max-width: 180px;
+}
+
+.board-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--admin-border);
+}
+
+.board-choice-row:last-child {
+  border-bottom: none;
+}
