@@ -11,6 +11,7 @@ import {
   branchingScenarioSpec, BRANCHING_SCENARIO_ASSERTIONS,
   mediaAssetCreateInput, uploadTicketInput, uploadTicketOutput, uploadConfirmInput,
   assetIngestInput, PRODUCTION_STEPS, PRODUCTION_STEP_LABELS, PRODUCTION_TASK_STATUSES,
+  PRODUCTION_STEP_GUIDE, productionStepGuide,
   productionTaskUpsertInput, productionTaskListInput, productionBoardOutput,
   materialImpactInput, materialImpactOutput, materialChoiceInput, materialChoiceOutput,
   transcriptOutput, sourceUnitsReadOutput,
@@ -533,6 +534,19 @@ test('素材入库：建素材/直传凭据/确认/入队的形状与非法值�
     headers: {},
     expiresAt: 1,
   }).success, false)
+})
+
+test('流程向导：九步卡与步骤顺序一一对应、字段非空', () => {
+  assert.deepEqual(PRODUCTION_STEP_GUIDE.map(item => item.step), [...PRODUCTION_STEPS])
+  for (const item of PRODUCTION_STEP_GUIDE) {
+    assert.equal(typeof PRODUCTION_STEP_LABELS[item.step], 'string')
+    assert.ok(item.goal.length > 0, `${item.step} 缺目标说明`)
+    assert.ok(item.tools.length > 0, `${item.step} 缺工具清单`)
+    assert.ok(item.pitfalls.length > 0, `${item.step} 缺常见坑`)
+    for (const tool of item.tools) assert.ok(tool.startsWith('cloud_'))
+  }
+  assert.deepEqual(productionStepGuide('article').tools, ['cloud_section_article_write'])
+  assert.throws(() => productionStepGuide('unknown'), /未知生产步骤/)
 })
 
 test('生产任务：9 步顺序固定、标签齐备、任务与看板形状', () => {

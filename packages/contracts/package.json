@@ -22,6 +22,10 @@
       "types": "./lib/dsl.d.ts",
       "default": "./lib/dsl.js"
     },
+    "./production-flow": {
+      "types": "./lib/production-flow.d.ts",
+      "default": "./lib/production-flow.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
