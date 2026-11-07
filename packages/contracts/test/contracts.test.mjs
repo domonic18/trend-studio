@@ -13,6 +13,7 @@ import {
   assetIngestInput, PRODUCTION_STEPS, PRODUCTION_STEP_LABELS, PRODUCTION_TASK_STATUSES,
   productionTaskUpsertInput, productionTaskListInput, productionBoardOutput,
   materialImpactInput, materialImpactOutput, materialChoiceInput, materialChoiceOutput,
+  transcriptOutput, sourceUnitsReadOutput,
 } from '../lib/index.js'
 
 const UNIT = 'su_0123456789abcdef'
@@ -658,4 +659,46 @@ test('追加素材：A/B/C 影响面与决策形状', () => {
       extra: 1,
     },
   }).success, false, 'strict：多余字段拒绝')
+})
+
+test('A6 增量产出：转写与 source unit 读取都带 partial 标记', () => {
+  const transcript = {
+    transcriptId: 'tr_0123456789abcdef',
+    assetId: ASSET,
+    status: 'processing',
+    language: 'zh',
+    durationMs: 1000,
+    chunkCount: 2,
+    segmentCount: 1,
+    errorCode: null,
+    partial: true,
+  }
+  assert.equal(transcriptOutput.safeParse({
+    transcript,
+    segments: [{ idx: 0, startMs: 0, endMs: 1000, text: 'x' }],
+    total: 1,
+    offset: 0,
+    limit: 100,
+  }).success, true)
+  const { partial: _partial, ...withoutPartial } = transcript
+  assert.equal(transcriptOutput.safeParse({
+    transcript: withoutPartial,
+    segments: [],
+    total: 0,
+    offset: 0,
+    limit: 100,
+  }).success, false, 'partial 是必填：缺它就拒绝，避免把部分转写当终值消费')
+
+  const unit = {
+    unitId: UNIT,
+    assetId: ASSET,
+    startMs: 0,
+    endMs: 1000,
+    transcriptText: 'x',
+    visual: {},
+    keyframes: [],
+    playback: { playlistUrl: 'https://example.com/p.m3u8', fromSec: 0, toSec: 1, expiresAt: 0 },
+  }
+  assert.equal(sourceUnitsReadOutput.safeParse({ units: [unit], partial: true }).success, true)
+  assert.equal(sourceUnitsReadOutput.safeParse({ units: [unit] }).success, false, 'partial 是必填')
 })

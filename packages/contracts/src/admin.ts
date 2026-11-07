@@ -108,6 +108,8 @@ export const sourceUnitReadItem = z.object({
 
 export const sourceUnitsReadOutput = z.object({
   units: z.array(sourceUnitReadItem).min(1),
+  /** A6：素材仍在转写时为 true——已读到的 unit 有效，但素材的 unit 集合尚未齐。 */
+  partial: z.boolean(),
 }).strict()
 
 /** M3b：审批版本绑定——门禁签批时由服务端算内容指纹，发布时重算比对。 */
@@ -534,6 +536,8 @@ export const transcriptOutput = z.object({
     chunkCount: z.number().int().nonnegative(),
     segmentCount: z.number().int().nonnegative(),
     errorCode: z.string().nullable(),
+    /** A6：转写未完成时为 true——segments 是已转写部分的前缀，后续还会增长。 */
+    partial: z.boolean(),
   }).strict(),
   segments: z.array(z.object({
     idx: z.number().int().nonnegative(),
