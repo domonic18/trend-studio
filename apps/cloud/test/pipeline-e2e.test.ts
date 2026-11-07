@@ -665,6 +665,223 @@ test('管线：鉴权、素材登记与上传边界', async () => {
   assert.equal(emptyPatch.statusCode, 400)
 })
 
+const PRODUCER_PASSWORD = 'pipeline-producer-pass-1234'
+
+async function producerHeaders(): Promise<Record<string, string>> {
+  const username = 'pipeline-producer-01'
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/users',
+    headers: adminHeaders(),
+    payload: {
+      username,
+      displayName: '管线生产者',
+      role: 'producer',
+      password: PRODUCER_PASSWORD,
+    },
+  })
+  assert.ok(created.statusCode === 201 || created.statusCode === 409, created.body)
+  const login = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/session',
+    payload: { username, password: PRODUCER_PASSWORD },
+  })
+  assert.equal(login.statusCode, 200, login.body)
+  return { authorization: `Bearer ${(login.json() as { token: string }).token}` }
+}
+
+interface TicketBody {
+  assetId: string
+  uploadUrl: string
+  method: string
+  headers: Record<string, string>
+  expiresAt: number
+}
+
+test('管线：签名直传通道（ticket → PUT → confirm）', async () => {
+  const producer = await producerHeaders()
+
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/media-assets',
+    headers: producer,
+    payload: { courseId: COURSE_ID, title: '生产者视频' },
+  })
+  assert.equal(created.statusCode, 201, created.body)
+  const asset = (created.json() as { asset: AssetBody }).asset
+  assert.equal(asset.status, 'awaiting_upload')
+
+  const digest = sha256(SOURCE)
+  const ticket = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/media-assets/${asset.assetId}/upload-ticket`,
+    headers: producer,
+    payload: { sizeBytes: SOURCE.length, sha256: digest },
+  })
+  assert.equal(ticket.statusCode, 201, ticket.body)
+  const issued = ticket.json() as TicketBody
+  assert.equal(issued.assetId, asset.assetId)
+  assert.equal(issued.method, 'PUT')
+  assert.ok(issued.expiresAt > Math.floor(Date.now() / 1000))
+  // 摘要不回显：它只存在于客户端与签名里。
+  assert.equal(JSON.stringify(issued).includes(digest), false)
+
+  const target = new URL(issued.uploadUrl)
+  const signedPath = `${target.pathname}${target.search}`
+
+  // 无会话，仅凭签名直传。
+  const put = await app.inject({
+    method: 'PUT',
+    url: signedPath,
+    headers: { 'content-type': 'application/octet-stream', 'x-file-sha256': digest },
+    payload: SOURCE,
+  })
+  assert.equal(put.statusCode, 200, put.body)
+  const uploaded = (put.json() as { asset: AssetBody }).asset
+  assert.equal(uploaded.status, 'uploaded')
+  assert.equal(uploaded.sourceSizeBytes, SOURCE.length)
+
+  const confirmed = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/media-assets/${asset.assetId}/upload-confirm`,
+    headers: producer,
+    payload: { sizeBytes: SOURCE.length, sha256: digest },
+  })
+  assert.equal(confirmed.statusCode, 200, confirmed.body)
+  assert.equal((confirmed.json() as { asset: AssetBody }).asset.status, 'uploaded')
+
+  const wrongConfirm = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/media-assets/${asset.assetId}/upload-confirm`,
+    headers: producer,
+    payload: { sizeBytes: SOURCE.length, sha256: '0'.repeat(64) },
+  })
+  assert.equal(wrongConfirm.statusCode, 409, wrongConfirm.body)
+
+  // 凭据被篡改（改了字节数）必须拒绝。
+  const tampered = new URL(issued.uploadUrl)
+  tampered.searchParams.set('size', String(SOURCE.length + 1))
+  const tamperedPut = await app.inject({
+    method: 'PUT',
+    url: `${tampered.pathname}${tampered.search}`,
+    headers: { 'content-type': 'application/octet-stream', 'x-file-sha256': digest },
+    payload: SOURCE,
+  })
+  assert.equal(tamperedPut.statusCode, 401, tamperedPut.body)
+
+  // 凭据被篡改（改了签名）必须拒绝。
+  const forged = new URL(issued.uploadUrl)
+  forged.searchParams.set('sig', 'x'.repeat(43))
+  const forgedPut = await app.inject({
+    method: 'PUT',
+    url: `${forged.pathname}${forged.search}`,
+    headers: { 'content-type': 'application/octet-stream', 'x-file-sha256': digest },
+    payload: SOURCE,
+  })
+  assert.equal(forgedPut.statusCode, 401, forgedPut.body)
+
+  // 字节数是契约的一部分：少一个字节也要拒。
+  const shortAsset = await createAsset(COURSE_ID, '字节不符')
+  const shortTicket = await app.inject({
+    method: 'POST',
+    url: `/v1/admin/content/media-assets/${shortAsset.assetId}/upload-ticket`,
+    headers: producer,
+    payload: { sizeBytes: SOURCE.length, sha256: digest },
+  })
+  assert.equal(shortTicket.statusCode, 201, shortTicket.body)
+  const shortUrl = new URL((shortTicket.json() as TicketBody).uploadUrl)
+  const shortPut = await app.inject({
+    method: 'PUT',
+    url: `${shortUrl.pathname}${shortUrl.search}`,
+    headers: { 'content-type': 'application/octet-stream', 'x-file-sha256': digest },
+    payload: SOURCE.subarray(0, SOURCE.length - 1),
+  })
+  assert.equal(shortPut.statusCode, 400, shortPut.body)
+})
+
+test('管线：producer 分权——能建结构写内容，不能签批发布', async () => {
+  const producer = await producerHeaders()
+
+  const course = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses',
+    headers: producer,
+    payload: { courseId: 'T-PROD-01', title: '生产者课程', status: 'published' },
+  })
+  assert.equal(course.statusCode, 201, course.body)
+  const courseBody = course.json() as { course: { courseId: string; status: string } }
+  // 生产者的写入恒为 draft：状态是发布语义。
+  assert.equal(courseBody.course.status, 'draft')
+
+  const chapter = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses/T-PROD-01/chapters',
+    headers: producer,
+    payload: { chapterId: 'T-PROD-01-C1', title: '第一章' },
+  })
+  assert.equal(chapter.statusCode, 201, chapter.body)
+
+  const quiz = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/courses/T-PROD-01/chapters/T-PROD-01-C1/quiz',
+    headers: producer,
+    payload: {
+      questions: [
+        {
+          questionId: 'q_trend_01',
+          prompt: '趋势的第一性原理？',
+          options: ['顺势而为', '逆势抄底'],
+          answerIndex: 0,
+          explanation: '趋势交易的本质是跟随。',
+        },
+      ],
+      status: 'published',
+    },
+  })
+  assert.equal(quiz.statusCode, 200, quiz.body)
+
+  // 课程状态与归档仍是运营动作。
+  const patchCourse = await app.inject({
+    method: 'PATCH',
+    url: '/v1/admin/content/courses/T-PROD-01',
+    headers: producer,
+    payload: { status: 'published' },
+  })
+  assert.equal(patchCourse.statusCode, 403, patchCourse.body)
+
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/media-assets',
+    headers: producer,
+    payload: { courseId: 'T-PROD-01', title: '待归档' },
+  })
+  assert.equal(created.statusCode, 201, created.body)
+  const asset = (created.json() as { asset: AssetBody }).asset
+  const archive = await app.inject({
+    method: 'PATCH',
+    url: `/v1/admin/content/media-assets/${asset.assetId}`,
+    headers: producer,
+    payload: { status: 'archived' },
+  })
+  assert.equal(archive.statusCode, 403, archive.body)
+
+  const publish = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses/T-PROD-01/publish',
+    headers: producer,
+    payload: {},
+  })
+  assert.equal(publish.statusCode, 403, publish.body)
+
+  const approvals = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/content/courses/T-PROD-01/approvals',
+    headers: producer,
+    payload: { gate: 'final' },
+  })
+  assert.equal(approvals.statusCode, 403, approvals.body)
+})
+
 test('管线：转码转写闭环、重复入队、任务列表与指标', async () => {
   const asset = await createAsset(COURSE_ID, '闭环视频')
   await uploadSource(asset.assetId, SOURCE, sha256(SOURCE))

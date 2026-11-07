@@ -162,9 +162,11 @@ harness 主目录**（本机 `~/.dsh/attachments/v1/`），消息记录文件名
 
 | 环节 | 端点 | 现状 | 缺什么 |
 |---|---|---|---|
-| 建素材 | `POST /v1/admin/content/media-assets` | staff | producer 无权 |
-| 传字节 | `PUT /v1/admin/content/media-assets/:assetId/source`（octet-stream，`x-file-sha256`） | staff | producer 无权 |
-| 入队转写 | `POST .../media-assets/:assetId/ingest` | ✅ producerGuard | 缺生产端工具 |
+| 建素材 | `POST /v1/admin/content/media-assets` | ✅ producerGuard（A2 已开） | 缺生产端工具 |
+| 签发凭据 | `POST .../media-assets/:assetId/upload-ticket` | ✅ producerGuard（A2 新增） | 缺生产端工具 |
+| 传字节 | `PUT /v1/admin/content/media-assets/:assetId/source`（octet-stream，`x-file-sha256`） | ✅ 会话或签名凭据二选一（A2 已开） | 缺生产端工具 |
+| 落库确认 | `POST .../media-assets/:assetId/upload-confirm` | ✅ producerGuard（A2 新增） | 缺生产端工具 |
+| 入队转写 | `POST .../media-assets/:assetId/ingest` | ✅ producerGuard（A2 已开） | 缺生产端工具 |
 | 轮询任务 | `GET /v1/admin/pipeline/jobs` | ✅ | 有 `cloud_pipeline_status` |
 | 读转写 / 取帧 | `GET .../transcript`、`GET .../frames` | ✅ | 有 `cloud_transcript` / `cloud_frames` |
 | VLM 理解 | — | ✅ | 有 `cloud_understanding_run`（要求 assetId） |
@@ -293,9 +295,9 @@ markdown 降级为历史留档。
 |---|---|---|
 | `POST /v1/admin/content/courses` 建课程 | staff | ✅ **开** |
 | `POST .../courses/:courseId/chapters` 建章 | staff | ✅ **开** |
-| `POST .../chapters/:chapterId/sections` 建节 | staff | ✅ **开** |
+| `PUT /v1/admin/content/sections` 建节 | producerGuard ✅ | 已开 |
 | `POST .../knowledge-points` 知识点 | staff | ✅ **开** |
-| `PUT .../sections/:id/quiz` 节级测验 | staff | ✅ **开**（已拍板：教学内容，非课程结构） |
+| `PUT .../chapters/:chapterId/quiz` 章级随堂测验 | staff | ✅ **开**（已拍板：教学内容，非课程结构） |
 | `POST /media-assets` 建素材 | staff | ✅ **开** |
 | 上传 ticket / confirm | staff | ✅ **开** |
 | `POST .../media-assets/:id/ingest` | producerGuard ✅ | 补工具 |
@@ -388,7 +390,7 @@ source_units (asset_id, start_ms, end_ms)                 ← 素材被切成的
 ### 12.1 批次与依赖
 
 ```
-A1 契约与云端文档（packages/contracts + 云端需求 v0.17 / 清单 v0.15）
+A1 契约与云端文档（packages/contracts + 云端需求 v0.23 / 清单 v0.21）
    └→ A2 云端：素材直传链路 + 权限放开
         └→ A3 生产端：素材工具 + 二进制通道
 A4 生产任务状态机（云端表 + 迁移 + 端点）
@@ -403,8 +405,8 @@ A9 装机向导（单 profile / 单模型 / 交互 login / 自检）
 
 | 批次 | 内容 | 落点 | 量 |
 |---|---|---|---|
-| **A1** | 新增契约：`mediaAssetCreate` / `uploadTicket` / `uploadConfirm` / `assetIngest` / `productionTask*`；云端需求 v0.17（分权矩阵 D3/D4）、清单 v0.15（端点与验收用例） | `packages/contracts`、云端 docs | S |
-| **A2** | ① `POST /media-assets` 放开 producer；② 新增 `POST .../upload-ticket`（签发 PUT 凭据）；③ 新增 `POST .../upload-confirm`（落元数据）；④ 媒体服务新增 `PUT /media/uploads/*`（HMAC 签名，复用 `mediaSigningSecret`）；⑤ 放开建课程/章/节/知识点/测验 | `apps/cloud/src/pipeline/routes.ts`、`apps/cloud/src/media/routes.ts`、`apps/cloud/src/media/upload-sign.ts`、`apps/cloud/src/content/routes.ts` | **M** |
+| **A1** | 新增契约：`mediaAssetCreate` / `uploadTicket` / `uploadConfirm` / `assetIngest` / `productionTask*`；云端需求 v0.23（分权矩阵 D3/D4）、清单 v0.21（端点与验收用例） | `packages/contracts`、云端 docs | S |
+| **A2** | ① `POST /media-assets` 放开 producer；② 新增 `POST .../upload-ticket`（签发 PUT 凭据）；③ 新增 `POST .../upload-confirm`（落元数据）；④ 直传 PUT 落在管线路由上（`PUT .../media-assets/:id/source`，会话或签名凭据二选一，复用 `mediaSigningSecret`；不另开媒体服务路由，避免 CDN 前置的媒体域承担校验）⑤ 放开建课程/章/节/知识点/测验 | `apps/cloud/src/pipeline/routes.ts`、`apps/cloud/src/pipeline/service.ts`、`apps/cloud/src/media/upload-sign.ts`、`apps/cloud/src/content/routes.ts` | **M** |
 | **A3** | 4 个新工具 + `TrendCloudClient` 二进制通道；直传由 dsh 侧发起（附件本地路径 → PUT） | `apps/producer/src/host/tools.ts`、`src/host/cloud-client.ts`、`src/host/contracts.ts` | **M** |
 | **A4** | 生产任务表（节 × 步骤 × 状态 × 预算）+ 迁移 + 只读聚合端点（看板用） | `apps/cloud/src/production/`、迁移脚本、`packages/contracts` | **M** |
 | **A5** | 编排改造：按任务状态推进 9 步；场景 B 选择点；选择结果持久化 | `apps/producer/src/host/orchestrator.ts`、skills | **M** |

@@ -94,6 +94,7 @@ export interface AppConfig {
   figureLocalDir?: string
   figureSigningTtlSec: number
   keyframeSigningTtlSec: number
+  uploadSigningTtlSec: number
   credentialEncryptionKey: string
   mediaLocalDir?: string
   metricsToken: string
@@ -292,6 +293,9 @@ export function loadConfig(env: Env = process.env): AppConfig {
   // 关键帧签名 TTL 与图示同数量级；生产端逐帧拉取走短时签名 URL。
   const keyframeSigningTtlSec = int(env, 'KEYFRAME_SIGNING_TTL_SECONDS', 600, { min: 60, max: 3600 })
 
+  // 直传凭据 TTL：大文件上传耗时长，但票一旦签发即绑定素材与字节数，过期即废。
+  const uploadSigningTtlSec = int(env, 'UPLOAD_SIGNING_TTL_SECONDS', 900, { min: 60, max: 3600 })
+
   // 图示独立于课程媒体目录；管线启用时默认落在 storage 同级 figures/。
   const figureDirRaw = text(env, 'PIPELINE_FIGURE_DIR')
   const figureLocalDir = figureDirRaw !== undefined
@@ -331,6 +335,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     mediaSigningSecret,
     figureSigningTtlSec: int(env, 'FIGURE_SIGNING_TTL_SECONDS', 600, { min: 60, max: 3600 }),
     keyframeSigningTtlSec,
+    uploadSigningTtlSec,
     ...(figureLocalDir === undefined ? {} : { figureLocalDir }),
     credentialEncryptionKey,
     ...(mediaLocalDir === undefined ? {} : { mediaLocalDir }),

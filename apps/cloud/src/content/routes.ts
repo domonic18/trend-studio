@@ -77,6 +77,19 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
       throw tooManyRequests()
     }
   }
+  /**
+   * 生产者可建结构、写教学内容，但写入恒为 draft：签批与发布留给他人。
+   * 返回角色，供调用处决定「状态字段是否由生产者决定」。
+   */
+  const producerGuard = async (
+    request: Parameters<typeof staff>[0],
+  ): Promise<{ userId: string; role: string }> => {
+    const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
+    if (!limiter.take(`content:${principal.userId}`, config.rateLimitContentPerMinute)) {
+      throw tooManyRequests()
+    }
+    return principal
+  }
 
   app.get('/v1/admin/content/courses', async request => {
     await readGuard(request)
@@ -84,12 +97,12 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   })
 
   app.post('/v1/admin/content/courses', async (request, reply) => {
-    await guard(request)
+    const principal = await producerGuard(request)
     const body = asObject(request.body)
     const course = await content.createCourse({
       courseId: courseIdParam(String(body.courseId ?? '')),
       title: titleField(body),
-      status: statusField(body) ?? 'draft',
+      status: principal.role === 'producer' ? 'draft' : statusField(body) ?? 'draft',
     })
     return reply.code(201).send({ course })
   })
@@ -118,7 +131,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   })
 
   app.post('/v1/admin/content/courses/:courseId/chapters', async (request, reply) => {
-    await guard(request)
+    await producerGuard(request)
     const { courseId } = request.params as { courseId: string }
     const body = asObject(request.body)
     const position = positionField(body)
@@ -131,7 +144,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   })
 
   app.patch('/v1/admin/content/courses/:courseId/chapters/:chapterId', async request => {
-    await guard(request)
+    await producerGuard(request)
     const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
     const body = asObject(request.body)
     const title = optionalStringField(body, 'title', { min: 1, max: 200 })
@@ -150,7 +163,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   app.post(
     '/v1/admin/content/courses/:courseId/chapters/:chapterId/knowledge-points',
     async (request, reply) => {
-      await guard(request)
+      await producerGuard(request)
       const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
       const body = asObject(request.body)
       const position = positionField(body)
@@ -164,7 +177,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   )
 
   app.patch('/v1/admin/content/knowledge-points/:knowledgePointId', async request => {
-    await guard(request)
+    await producerGuard(request)
     const { knowledgePointId } = request.params as { knowledgePointId: string }
     const body = asObject(request.body)
     const title = optionalStringField(body, 'title', { min: 1, max: 200 })
@@ -183,7 +196,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   app.get(
     '/v1/admin/content/courses/:courseId/chapters/:chapterId/article',
     async request => {
-      await guard(request)
+      await readGuard(request)
       const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
       return { article: await content.getChapterArticle(courseId, chapterId) }
     },
@@ -191,13 +204,13 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
 
   app.put(
     '/v1/admin/content/courses/:courseId/chapters/:chapterId/article',
-    async request => {
-      await guard(request)
+    async (request) => {
+      const principal = await producerGuard(request)
       const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
       const body = asObject(request.body)
       const article = await content.putChapterArticle(courseId, chapterId, {
         markdown: markdownField(body),
-        status: parseStatus(body.status),
+        status: principal.role === 'producer' ? 'draft' : parseStatus(body.status),
       })
       return { article }
     },
@@ -206,7 +219,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
   app.get(
     '/v1/admin/content/courses/:courseId/chapters/:chapterId/quiz',
     async request => {
-      await guard(request)
+      await readGuard(request)
       const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
       return { quiz: await content.getChapterQuiz(courseId, chapterId) }
     },
@@ -214,14 +227,14 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
 
   app.put(
     '/v1/admin/content/courses/:courseId/chapters/:chapterId/quiz',
-    async request => {
-      await guard(request)
+    async (request) => {
+      const principal = await producerGuard(request)
       const { courseId, chapterId } = request.params as { courseId: string; chapterId: string }
       const body = asObject(request.body)
       return {
         quiz: await content.putChapterQuiz(courseId, chapterId, {
           questions: body.questions,
-          status: parseStatus(body.status),
+          status: principal.role === 'producer' ? 'draft' : parseStatus(body.status),
         }),
       }
     },

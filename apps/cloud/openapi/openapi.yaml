@@ -21,6 +21,11 @@ components:
       type: http
       scheme: bearer
       description: 后台会话令牌（仅 operator/admin），与设备 accessToken 分离。
+    uploadTicketAuth:
+      type: apiKey
+      in: query
+      name: sig
+      description: 直传签名凭据（expires/size/sig 查询参数 + x-file-sha256 头），与后台会话二选一。
 
   schemas:
     Error:
@@ -1388,6 +1393,52 @@ components:
         status:
           type: string
           enum: [archived]
+
+    UploadTicketRequest:
+      type: object
+      additionalProperties: false
+      required: [sizeBytes, sha256]
+      properties:
+        sizeBytes:
+          type: integer
+          minimum: 1
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    UploadConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [sizeBytes, sha256]
+      properties:
+        sizeBytes:
+          type: integer
+          minimum: 1
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    UploadTicket:
+      type: object
+      additionalProperties: false
+      required: [assetId, uploadUrl, method, headers, expiresAt]
+      properties:
+        assetId:
+          type: string
+          pattern: '^asset_[0-9a-f]{16}$'
+        uploadUrl:
+          type: string
+          maxLength: 2000
+        method:
+          type: string
+          enum: [PUT]
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        expiresAt:
+          type: integer
+          minimum: 1
 
     IngestRequest:
       type: object
@@ -4218,7 +4269,7 @@ paths:
 
   /v1/admin/content/courses:
     get:
-      summary: 课程列表（operator/admin）
+      summary: 课程列表（operator/admin/producer）
       description: 返回全部课程及其章节、知识点、片段、文章计数。
       security:
         - sessionAuth: []
@@ -4241,7 +4292,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
-      summary: 创建课程（operator/admin）
+      summary: 创建课程（operator/admin/producer，写入恒为 draft）
       security:
         - sessionAuth: []
       requestBody:
@@ -4273,7 +4324,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}:
     get:
-      summary: 课程树（operator/admin）
+      summary: 课程树（operator/admin/producer）
       description: 返回课程、章节与知识点（含文章版本元数据），用于控制台编辑。
       security:
         - sessionAuth: []
@@ -4423,7 +4474,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}/chapters:
     post:
-      summary: 新增章节（operator/admin）
+      summary: 新增章节（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4464,7 +4515,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}/chapters/{chapterId}:
     patch:
-      summary: 修改章节（operator/admin）
+      summary: 修改章节（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4509,7 +4560,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}/chapters/{chapterId}/knowledge-points:
     post:
-      summary: 新增知识点（operator/admin）
+      summary: 新增知识点（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4556,7 +4607,7 @@ paths:
 
   /v1/admin/content/knowledge-points/{knowledgePointId}:
     patch:
-      summary: 修改知识点（operator/admin）
+      summary: 修改知识点（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4595,7 +4646,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}/chapters/{chapterId}/article:
     get:
-      summary: 读取章节教材（operator/admin）
+      summary: 读取章节教材（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4634,7 +4685,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
     put:
-      summary: 保存章节教材（operator/admin）
+      summary: 保存章节教材（operator/admin/producer，写入恒为 draft）
       description: 每次保存 version+1；发布时写 publishedAt；图片引用只允许 ![alt](figure:figureId)。
       security:
         - sessionAuth: []
@@ -4680,7 +4731,7 @@ paths:
 
   /v1/admin/content/courses/{courseId}/chapters/{chapterId}/quiz:
     get:
-      summary: 读取章节随堂测验（operator/admin）
+      summary: 读取章节随堂测验（operator/admin/producer）
       security:
         - sessionAuth: []
       parameters:
@@ -4719,7 +4770,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
     put:
-      summary: 保存章节随堂测验（operator/admin）
+      summary: 保存章节随堂测验（operator/admin/producer，写入恒为 draft）
       description: 每次保存 version+1；发布需 3–5 道题且写入 publishedAt。
       security:
         - sessionAuth: []
@@ -4925,7 +4976,7 @@ paths:
 
   /v1/admin/content/media-assets:
     get:
-      summary: 媒体素材列表（operator/admin）
+      summary: 媒体素材列表（operator/admin/producer）
       description: 仅返回素材元数据；不含源文件路径、HLS 路径与签名地址。
       security:
         - sessionAuth: []
@@ -4975,7 +5026,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
     post:
-      summary: 创建媒体素材（operator/admin）
+      summary: 创建媒体素材（operator/admin/producer）
       description: 课程必须处于 draft；新素材状态为 awaiting_upload。
       security:
         - sessionAuth: []
@@ -5014,7 +5065,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}:
     patch:
-      summary: 修改媒体素材（operator/admin）
+      summary: 修改媒体素材（operator/admin/producer；归档限 operator/admin）
       description: 仅支持改标题或归档；归档后不再接受上传与处理。
       security:
         - sessionAuth: []
@@ -5056,12 +5107,98 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /v1/admin/content/media-assets/{assetId}/source:
-    put:
-      summary: 上传媒体源文件（operator/admin）
-      description: 流式写入 application/octet-stream；可选 x-file-sha256 校验；换源会清理旧转写。
+  /v1/admin/content/media-assets/{assetId}/upload-ticket:
+    post:
+      summary: 签发直传凭据（operator/admin/producer）
+      description: 把素材、字节数、摘要与有效期签进 HMAC 签名；凭据只对这一份字节有效，过期即废。
       security:
         - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^asset_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadTicketRequest'
+      responses:
+        '201':
+          description: 已签发
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/upload-confirm:
+    post:
+      summary: 落库确认（operator/admin/producer）
+      description: 核对云端已落字节数与摘要是否与声明一致，不一致即拒。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^asset_[0-9a-f]{16}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadConfirmRequest'
+      responses:
+        '200':
+          description: 已确认
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [asset]
+                properties:
+                  asset:
+                    $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/admin/content/media-assets/{assetId}/source:
+    put:
+      summary: 上传媒体源文件（operator/admin/producer）
+      description: 流式写入 application/octet-stream；可选 x-file-sha256 校验；换源会清理旧转写。既可带会话，也可只带签名凭据（expires/size/sig 查询参数 + x-file-sha256 头）。
+      security:
+        - sessionAuth: []
+        - uploadTicketAuth: []
       parameters:
         - name: assetId
           in: path
@@ -5115,7 +5252,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/ingest:
     post:
-      summary: 入队视频处理任务（operator/admin）
+      summary: 入队视频处理任务（operator/admin/producer）
       description: 依次执行探测、转码、转写与落库；同一素材同一类型仅允许一个活动任务。
       security:
         - sessionAuth: []
@@ -5161,7 +5298,7 @@ paths:
 
   /v1/admin/content/media-assets/{assetId}/transcript:
     get:
-      summary: 查看转写片段（operator/admin）
+      summary: 查看转写片段（operator/admin/producer）
       description: 管理端唯一返回转写正文的接口；按 idx 升序分页。
       security:
         - sessionAuth: []

@@ -248,13 +248,17 @@ export interface JobFilters {
 
 export interface PipelineApi {
   listAssets(filters: AssetFilters): Promise<{ assets: AssetDto[]; total: number; offset: number; limit: number }>
+  getAsset(assetId: string): Promise<AssetDto>
   createAsset(input: { courseId: string; title: string }): Promise<AssetDto>
   patchAsset(assetId: string, input: { title?: string; status?: 'archived' }): Promise<AssetDto>
   uploadSource(
     assetId: string,
     source: AsyncIterable<Buffer>,
     expectedSha256?: string,
+    expectedSizeBytes?: number,
   ): Promise<AssetDto>
+  /** 直传落库确认：已落字节数与摘要须与客户端声明一致，否则拒绝。 */
+  confirmUpload(assetId: string, expected: { sizeBytes: number; sha256: string }): Promise<AssetDto>
   enqueueIngest(assetId: string, language: Language): Promise<JobDto>
   getTranscript(assetId: string, page: { offset: number; limit: number }): Promise<TranscriptPage>
   enqueueGeneration(assetId: string): Promise<JobDto>
@@ -647,26 +651,48 @@ export class PipelineService implements PipelineApi {
     return toAsset(row)
   }
 
+  async getAsset(assetId: string): Promise<AssetDto> {
+    return toAsset(await this.requireAsset(assetId))
+  }
+
+  /**
+   * 直传落盘。expectedSizeBytes 来自签名凭据时，字节数是契约的一部分：
+   * 多写或少写都算篡改，与摘要不符同样拒收。
+   */
   async uploadSource(
     assetId: string,
     source: AsyncIterable<Buffer>,
     expectedSha256?: string,
+    expectedSizeBytes?: number,
   ): Promise<AssetDto> {
     const asset = await this.requireAsset(assetId)
     if (asset.status !== 'awaiting_upload' && asset.status !== 'uploaded' && asset.status !== 'failed') {
       throw conflict('asset is not accepting uploads')
     }
 
+    const limitBytes = expectedSizeBytes === undefined
+      ? this.config.maxUploadBytes
+      : Math.min(this.config.maxUploadBytes, expectedSizeBytes)
+
     let written
     try {
       written = await this.store.writeSource(assetId, source, {
-        limitBytes: this.config.maxUploadBytes,
+        limitBytes,
         ...(expectedSha256 === undefined ? {} : { expectedSha256 }),
       })
     } catch (error) {
-      if (error instanceof SourceTooLargeError) throw new HttpError(413, 'source exceeds upload limit')
+      if (error instanceof SourceTooLargeError) {
+        throw expectedSizeBytes === undefined
+          ? new HttpError(413, 'source exceeds upload limit')
+          : badRequest('source size mismatch')
+      }
       if (error instanceof SourceChecksumError) throw badRequest('source checksum mismatch')
       throw error
+    }
+
+    if (expectedSizeBytes !== undefined && written.sizeBytes !== expectedSizeBytes) {
+      await this.store.removeSource(assetId)
+      throw badRequest('source size mismatch')
     }
 
     const client = await this.pool.connect()
@@ -694,6 +720,29 @@ export class PipelineService implements PipelineApi {
     } finally {
       client.release()
     }
+  }
+
+  /**
+   * 落库确认：云端已落字节数与摘要必须与客户端声明一致，否则素材不可信。
+   */
+  async confirmUpload(
+    assetId: string,
+    expected: { sizeBytes: number; sha256: string },
+  ): Promise<AssetDto> {
+    const { rows } = await this.pool.query<{ source_size_bytes: string | number | null; source_sha256: string | null }>(
+      'SELECT source_size_bytes, source_sha256 FROM media_assets WHERE asset_id = $1',
+      [assetId],
+    )
+    const row = rows[0]
+    if (row === undefined) throw notFound('media asset not found')
+    if (row.source_size_bytes === null || row.source_sha256 === null) {
+      throw conflict('source is missing')
+    }
+    const sizeBytes = Number(row.source_size_bytes)
+    if (sizeBytes !== expected.sizeBytes || row.source_sha256 !== expected.sha256) {
+      throw conflict('upload does not match declared bytes')
+    }
+    return this.getAsset(assetId)
   }
 
   async enqueueIngest(assetId: string, language: Language): Promise<JobDto> {

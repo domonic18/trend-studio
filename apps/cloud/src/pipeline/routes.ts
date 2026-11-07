@@ -2,10 +2,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AccountService } from '../accounts/service.js'
 import type { AppConfig } from '../config.js'
 import { parseContentId, titleField } from '../content/service.js'
-import { badRequest, HttpError, notFound, tooManyRequests } from '../errors.js'
+import { badRequest, HttpError, notFound, tooManyRequests, forbidden } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, optionalStringField } from '../http/validation.js'
 import { readFigureImageBytes } from '../media/figure-image.js'
+import { signUploadTicket, verifyUploadTicket } from '../media/upload-sign.js'
 import { RateLimiter } from '../rate-limit.js'
 import type { ApprovalGate } from '@trend/contracts'
 import {
@@ -28,6 +29,11 @@ export interface PipelineRouteDeps {
   config: AppConfig
   limiter: RateLimiter
 }
+
+/** 直传的授权方式：会话直通，或签名凭据绑定「素材 + 字节数 + 摘要」。 */
+type UploadAuth =
+  | { kind: 'session' }
+  | { kind: 'ticket'; sizeBytes: number }
 
 function queryInt(
   query: Record<string, unknown>,
@@ -69,7 +75,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     return principal
   }
 
-  const producerGuard = async (request: FastifyRequest): Promise<{ userId: string }> => {
+  const producerGuard = async (request: FastifyRequest): Promise<{ userId: string; role: string }> => {
     const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
     if (!limiter.take(`pipeline:${principal.userId}`, config.rateLimitPipelinePerMinute)) {
       throw tooManyRequests()
@@ -77,8 +83,39 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     return principal
   }
 
+  // 直传既可带会话（管理台 / 脚本），也可只带签名凭据（生产端），二者择一即可。
+  const uploadAuth = new WeakMap<FastifyRequest, UploadAuth>()
+
+  const resolveUploadAuth = async (request: FastifyRequest): Promise<UploadAuth | null> => {
+    try {
+      await requireSession(request, accounts, ['operator', 'admin', 'producer'])
+      return { kind: 'session' }
+    } catch {
+      // 无有效会话，落到签名凭据分支。
+    }
+    const query = asObject(request.query)
+    const assetId = parseAssetId(String((request.params as { assetId: string }).assetId))
+    const sizeBytes = Number(query.size)
+    const header = request.headers['x-file-sha256']
+    const sha256 = parseSha256Header(Array.isArray(header) ? header[0] : header)
+    if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sha256 === undefined) return null
+    const ok = verifyUploadTicket(
+      config.mediaSigningSecret,
+      assetId,
+      sizeBytes,
+      sha256,
+      query.expires,
+      typeof query.sig === 'string' ? query.sig : undefined,
+    )
+    if (!ok) return null
+    if (!limiter.take(`pipeline:ticket:${assetId}`, config.rateLimitPipelinePerMinute)) {
+      throw tooManyRequests()
+    }
+    return { kind: 'ticket', sizeBytes }
+  }
+
   app.get('/v1/admin/content/media-assets', async request => {
-    await guard(request)
+    await producerGuard(request)
     const query = asObject(request.query)
     return api.listAssets({
       ...(query.courseId === undefined
@@ -91,7 +128,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.post('/v1/admin/content/media-assets', async (request, reply) => {
-    await guard(request)
+    await producerGuard(request)
     const body = asObject(request.body)
     const asset = await api.createAsset({
       courseId: parseContentId(String(body.courseId ?? ''), 'courseId'),
@@ -101,13 +138,15 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.patch('/v1/admin/content/media-assets/:assetId', async request => {
-    await guard(request)
+    const principal = await producerGuard(request)
     const { assetId } = request.params as { assetId: string }
     const body = asObject(request.body)
     const title = optionalStringField(body, 'title', { min: 1, max: 200 })
     let status: 'archived' | undefined
     if (body.status !== undefined) {
       if (body.status !== 'archived') throw badRequest('status must be archived')
+      // 归档是运营动作，生产者只改标题。
+      if (principal.role === 'producer') throw forbidden('producers cannot change asset status')
       status = 'archived'
     }
     if (title === undefined && status === undefined) {
@@ -121,6 +160,51 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     }
   })
 
+  /**
+   * 直传凭据：把「素材 + 字节数 + 摘要 + 有效期」签进签名，客户端凭 URL 与 header 直传原始字节。
+   */
+  app.post('/v1/admin/content/media-assets/:assetId/upload-ticket', async (request, reply) => {
+    await producerGuard(request)
+    const { assetId } = request.params as { assetId: string }
+    const id = parseAssetId(assetId)
+    const body = asObject(request.body)
+    const sizeBytes = Number(body.sizeBytes)
+    if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) throw badRequest('sizeBytes must be a positive integer')
+    const sha256 = parseSha256Header(typeof body.sha256 === 'string' ? body.sha256 : undefined)
+    if (sha256 === undefined) throw badRequest('sha256 is required')
+
+    await api.getAsset(id)
+
+    const expiresAt = Math.floor(Date.now() / 1000) + config.uploadSigningTtlSec
+    const sig = signUploadTicket(config.mediaSigningSecret, { assetId: id, sizeBytes, sha256, expiresAt })
+    const url = new URL(`${config.publicBaseUrl}/v1/admin/content/media-assets/${id}/source`)
+    url.searchParams.set('expires', String(expiresAt))
+    url.searchParams.set('size', String(sizeBytes))
+    url.searchParams.set('sig', sig)
+
+    return reply.code(201).send({
+      assetId: id,
+      uploadUrl: url.toString(),
+      method: 'PUT',
+      // 摘要不回显：客户端自己算过，凭据只负责把它绑进签名。
+      headers: { 'content-type': 'application/octet-stream' },
+      expiresAt,
+    })
+  })
+
+  /** 落库确认：云端已落字节数与摘要必须与声明一致，否则素材不可信。 */
+  app.post('/v1/admin/content/media-assets/:assetId/upload-confirm', async request => {
+    await producerGuard(request)
+    const { assetId } = request.params as { assetId: string }
+    const body = asObject(request.body)
+    const sizeBytes = Number(body.sizeBytes)
+    if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) throw badRequest('sizeBytes must be a positive integer')
+    const sha256 = parseSha256Header(typeof body.sha256 === 'string' ? body.sha256 : undefined)
+    if (sha256 === undefined) throw badRequest('sha256 is required')
+    const asset = await api.confirmUpload(parseAssetId(assetId), { sizeBytes, sha256 })
+    return { asset }
+  })
+
   // 上传解析器只在本插件作用域注册，避免影响其它 JSON 接口。
   await app.register(async scope => {
     scope.addContentTypeParser('application/octet-stream', (_request, payload, done) => {
@@ -130,7 +214,9 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     scope.put('/v1/admin/content/media-assets/:assetId/source', {
       bodyLimit: uploadLimit,
       preParsing: async (request, _reply, payload) => {
-        await guard(request)
+        const auth = await resolveUploadAuth(request)
+        if (auth === null) throw new HttpError(401, 'unauthorized')
+        uploadAuth.set(request, auth)
         const raw = request.headers['content-length']
         const declared = raw === undefined ? Number.NaN : Number(raw)
         if (Number.isFinite(declared) && declared > uploadLimit) {
@@ -146,11 +232,12 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
       }
       const body = request.body as AsyncIterable<Buffer> | undefined
       if (body === undefined || typeof body !== 'object') throw badRequest('source body required')
+      const id = parseAssetId(assetId)
+      const auth = uploadAuth.get(request)
       const header = request.headers['x-file-sha256']
       const expectedSha256 = parseSha256Header(Array.isArray(header) ? header[0] : header)
-      const id = parseAssetId(assetId)
-      const asset = expectedSha256 === undefined
-        ? await api.uploadSource(id, body)
+      const asset = auth?.kind === 'ticket'
+        ? await api.uploadSource(id, body, expectedSha256, auth.sizeBytes)
         : await api.uploadSource(id, body, expectedSha256)
       return { asset }
     })
@@ -275,7 +362,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.post('/v1/admin/content/media-assets/:assetId/ingest', async (request, reply) => {
-    await guard(request)
+    await producerGuard(request)
     const { assetId } = request.params as { assetId: string }
     const body = request.body === undefined ? {} : asObject(request.body)
     const job = await api.enqueueIngest(parseAssetId(assetId), parseLanguage(body.language))
@@ -283,7 +370,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   })
 
   app.get('/v1/admin/content/media-assets/:assetId/transcript', async request => {
-    await guard(request)
+    await producerGuard(request)
     const { assetId } = request.params as { assetId: string }
     const query = asObject(request.query)
     return api.getTranscript(parseAssetId(assetId), {
