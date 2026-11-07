@@ -426,6 +426,14 @@ A5 ✅ 生产端 `production-steps.ts`（纯引擎：当前步 / 门禁 / 回灌
 `cloud_material_impact` / `cloud_material_choice`）；云端 `production_material_choices` 表（迁移 023）
 + `POST /material-impact` / `POST /material-choices` 两个端点；`section-production` 与
 `material-ingest` 两个技能包同步九步状态机与 A/B/C 决策链。
+A6 ✅ 云端管线**边转写边发布**（`worker.ts` 的 chunk runner 每转完一个 chunk 即落成 segment；
+并发发布经 `media_transcripts` 行锁串行化、锁内重读 chunk 状态，杜绝旧快照覆盖新快照）；
+关键帧轨道提前到 ASR 之前抽完（抽帧与转写无关，保证部分理解阶段画面证据齐备）；
+读侧语义：转写回执增必填 `transcript.partial`、`total` 变为「当前可读段数」；
+`source-units/read` 回执增必填 `partial`，素材闸门放宽到 `ready` 与 `processing`
+（`failed`/`archived` 仍 `409 unit_not_readable`）；生产端播放会话增 `allowPartial`
+（**学员端不变**）；生产端 `understanding.ts` 翻页改按「本页读满 limit」终止（不拿会移动的 `total` 当终点）；
+`transcript-understanding` 与 `material-ingest` 两个技能包同步增量产出纪律。
 **引擎在本地、云端只存状态**——顺序/预算/影响面规则不落云端，「云 DB 即 checkpoint」不变。
 
 ### 12.3 每批次的完成定义

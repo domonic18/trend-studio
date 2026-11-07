@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.26）
+# 趋势课程云端服务 · 架构设计（v0.27）
 
-版本：v0.27（2026-11-07；**追加素材处理决策落地**（§6.5.11）——新增表 `production_material_choices`（迁移 023）与两个端点：`POST /v1/admin/content/material-impact`（**只读**算影响面：A 必须给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）、`POST /v1/admin/content/material-choices`（落决策并把受影响节九步重置为 pending、attempt 清零而回灌预算保留，A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。九步顺序的**引擎强制落在生产端**（`apps/producer/src/host/production-steps.ts` 纯函数 + 5 个工具），云端仍只存状态不调度）
+版本：v0.28（2026-11-07；**增量转写产出落地**（§6.5.12）——管线 ingest 的 ASR 阶段改为**边转写边发布**：每个 chunk 转写完成即落成 `transcript_segments`，转写未完（`media_transcripts.status=processing`）即可读已转写前缀；关键帧轨道提前到 ASR 之前抽完（抽帧与转写无关），保证部分理解阶段画面证据齐备；读侧语义变更：转写回执增 `transcript.partial` 标记（`total` 是「当前可读段数」而非终值）、`source-units/read` 回执增 `partial`（素材 `processing` 期间照常可读，`failed`/`archived` 仍 `409 unit_not_readable`）；生产端播放会话改走 `allowPartial` 选项（学员端不变，仍只放行 `ready` 素材）。**零新增表、零新增端点**——只改管线发布时序与既有回执的读取语义）
+v0.27（2026-11-07；**追加素材处理决策落地**（§6.5.11）——新增表 `production_material_choices`（迁移 023）与两个端点：`POST /v1/admin/content/material-impact`（**只读**算影响面：A 必须给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）、`POST /v1/admin/content/material-choices`（落决策并把受影响节九步重置为 pending、attempt 清零而回灌预算保留，A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。九步顺序的**引擎强制落在生产端**（`apps/producer/src/host/production-steps.ts` 纯函数 + 5 个工具），云端仍只存状态不调度）
 v0.26（2026-11-07；**生产任务状态机落地**（§6.5.10）——新增表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022）与三个端点：`POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出）、`GET /v1/admin/content/courses/{courseId}/production-board`（看板聚合：每节一行，含已落库步骤、正文版本、课件/图示/案例股计数与最近评审结论）。九步顺序 `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance` 由生产端引擎强制（§6.5.10），云端只存状态不做调度；权限 operator/admin/producer）
 v0.25（2026-11-07；M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签；此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语；发布失败改为按机器可读错误码给中文指引（`approval_required`/`approval_stale`/`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven`）；零新增云端端点、零新增表、零契约字段变更）
 v0.24（2026-11-06；P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`，每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体（def/rule/misuse/risk）齐全且原 `:::warn` body 逐字保留只加 `variant`；既有 grounded 内容零丢失（逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code）；经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链）
@@ -670,6 +671,27 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 - **不变量**：决策表与任务表职责分离——任务表是「节 × 步骤」的行级状态，决策表是课程级的一次性决定；两者都不承载正文或产物内容。
 - **「影响面先算后问」是纪律**：人最怕「不知道它会动什么」，所以生产端必须先 `material-impact` 再把
   `affectedTitles` / `resetStepCount` 列给人，最后才 `material-choices` 落库——顺序反了就是「先斩后奏」。
+
+#### 6.5.12 增量转写产出（A6 落地）
+
+**问题**：长视频的转写耗时远超等待阈值，此前「转写没完就开不了工」是硬阻塞——生产端必须等整个素材 ingest `succeeded` 才能理解素材，理解窗口被转写时长单点绑架。
+
+**方案**：管线把「转写完成」从**整段终值**改为**可增量读取的前缀**——ASR 每转完一个 chunk 就立刻把该 chunk 的句子合并落成 segment，读侧因此可以在转写进行中消费已转写部分。
+
+| 环节 | 定义 |
+|---|---|
+| 发布时机 | `worker.ts` 的 chunk runner 每完成一个 chunk 立即调 `publishSegments(transcriptId)`（不等 `finalizeTranscript`） |
+| 并发串行化 | 发布走 `BEGIN` → `SELECT … FROM media_transcripts WHERE transcript_id=$1 FOR UPDATE` → **锁内重读** `transcript_chunks` 状态 → 重算 segment → `COMMIT`；并发 runner 的发布被行锁串行化，且锁内读的是最新已提交快照，杜绝后到的发布用旧快照覆盖先到的 |
+| 关键帧前置 | `ensureKeyframeTrack` 移到 ASR 之前（抽帧与转写无关）——否则部分理解阶段只有文字、画面证据缺位（半盲） |
+| 计数语义 | 增量发布只更新 `media_transcripts.chunk_count` / `segment_count`，**不改 `status`**——`ready` 仍由 `finalizeTranscript` 单独决定，`partial` 是读侧标记而非新状态 |
+| `total` 语义 | `GET .../transcript` 的 `total` 改为 `count(*) OVER ()`（当前可读段数）而非终值 `segment_count`；翻页以「本页读满 limit」为准，不能拿会移动的 `total` 当终止条件（否则翻页死循环） |
+| `partial` 标记 | 转写回执增 `transcript.partial`（`status=processing` 即为 true）；`source-units/read` 回执增 `partial`（素材 `processing` 即为 true）——**两处均为必填**，缺它就拒绝解析，避免把部分转写当终值消费 |
+| 素材可读性 | `readSourceUnits` 的素材闸门放宽到 `ready` 与 `processing`（且 `hls_path` 就绪）；`failed`/`archived` 仍 `409 unit_not_readable` |
+| 播放会话 | `createAssetSession` 增 `allowPartial` 选项（默认 false）；**仅生产端路由**传 true，学员端路径（`catalog/service.ts`）行为不变，仍只放行 `ready` 素材 |
+
+- **不变量**：`partial=true` 不改变素材与转写的终态语义——素材最终仍须 ingest `succeeded`；生产端的纪律是「先跑一轮部分理解，转写收尾后再跑一次补齐剩余窗口」，差集续跑不重复消耗。
+- **零新增表/端点**：只改管线发布时序与既有回执的读取语义；契约侧仅在 `@trend/contracts` 的 `transcriptOutput` 与 `sourceUnitsReadOutput` 增必填字段。
+- **实现位置**：发布在 `apps/cloud/src/pipeline/worker.ts`（`publishSegments`），读侧在 `src/pipeline/service.ts`（`getTranscript`）、`src/production/service.ts`（`readSourceUnits`）、`src/playback/service.ts`（`createAssetSession`）。
 
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 
