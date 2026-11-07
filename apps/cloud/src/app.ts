@@ -255,7 +255,7 @@ export async function buildApp({
         }),
     ...(config.figureLocalDir === undefined ? {} : { figureStore: createFigureStore(config.figureLocalDir) }),
   })
-  registerProductionRoutes(app, { service: production, accounts, config, limiter, playback })
+  registerProductionRoutes(app, { service: production, accounts, config, limiter, playback, pool })
   await registerPipelineRoutes(app, { api: pipeline.api, accounts, config, limiter })
   if (config.mediaLocalDir !== undefined) registerMediaRoutes(app, { config, pool })
 

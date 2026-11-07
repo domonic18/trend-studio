@@ -3185,6 +3185,112 @@ components:
         usageId:
           type: string
 
+    ProductionTask:
+      type: object
+      required: [taskId, courseId, sectionId, step, status, attempt, maxAttempts, note, updatedAt]
+      additionalProperties: false
+      properties:
+        taskId:
+          type: string
+          pattern: '^pt_[0-9a-f]{16}$'
+        courseId:
+          type: string
+          maxLength: 64
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        step:
+          type: string
+          enum: [case_stocks, quotes_sync, quotes_read, figures, replay_widget, article, widgets, review, provenance]
+        status:
+          type: string
+          enum: [pending, running, done, blocked, failed]
+        attempt:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        note:
+          type: 'null'
+          description: 阻塞原因或提示；≤2000 字
+        updatedAt:
+          type: integer
+          minimum: 0
+
+    ProductionTaskUpsertResponse:
+      type: object
+      required: [task]
+      additionalProperties: false
+      properties:
+        task:
+          $ref: '#/components/schemas/ProductionTask'
+
+    ProductionTaskListResponse:
+      type: object
+      required: [tasks]
+      additionalProperties: false
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionTask'
+
+    ProductionBoardSection:
+      type: object
+      required: [sectionId, chapterId, title, position, steps, articleVersion, widgetCount, figureCount, caseStockCount, reviewVerdict]
+      additionalProperties: false
+      properties:
+        sectionId:
+          type: string
+          pattern: '^sec_[0-9a-f]{16}$'
+        chapterId:
+          type: string
+          maxLength: 64
+        title:
+          type: string
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 1
+        steps:
+          type: array
+          description: 已落库的步骤行（按 9 步固定顺序）；未开始的步骤不在此列
+          items:
+            $ref: '#/components/schemas/ProductionTask'
+        articleVersion:
+          type: 'null'
+          description: 正文版本；无正文为 null
+        widgetCount:
+          type: integer
+          minimum: 0
+        figureCount:
+          type: integer
+          minimum: 0
+        caseStockCount:
+          type: integer
+          minimum: 0
+        reviewVerdict:
+          type: 'null'
+          description: 最近一次评审结论；无评审为 null
+          enum: [approve, reject, null]
+
+    ProductionBoardResponse:
+      type: object
+      required: [courseId, courseTitle, sections]
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          maxLength: 64
+        courseTitle:
+          type: string
+          maxLength: 200
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionBoardSection'
+
   responses:
     BadRequest:
       description: 入参或结构不合法
@@ -7851,6 +7957,128 @@ paths:
       responses:
         '204':
           description: 已删除（草稿/已发布均可；重复删除 404）
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/production-tasks:
+    post:
+      summary: 生产任务状态推进（operator/admin/producer，M9 生产体验线）
+      description: 按 (courseId, sectionId, step) 幂等落库一条任务行；步骤顺序固定 9 步，写入方自行保证推进次序。
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, sectionId, step, status]
+              additionalProperties: false
+              properties:
+                courseId:
+                  type: string
+                  maxLength: 64
+                sectionId:
+                  type: string
+                  pattern: '^sec_[0-9a-f]{16}$'
+                step:
+                  type: string
+                  enum: [case_stocks, quotes_sync, quotes_read, figures, replay_widget, article, widgets, review, provenance]
+                status:
+                  type: string
+                  enum: [pending, running, done, blocked, failed]
+                attempt:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 0
+                maxAttempts:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 3
+                note:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: 任务行（幂等 upsert 后返回）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionTaskUpsertResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      summary: 生产任务列表（operator/admin/producer）
+      description: 按课程列出任务行；给出 sectionId 时只返回该节。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: sectionId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^sec_[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: 任务行列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionTaskListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/admin/content/courses/{courseId}/production-board:
+    get:
+      summary: 生产看板聚合（operator/admin/producer，M9 生产体验线）
+      description: 每节一行——9 步进度（仅已落库步骤）+ 产出计数 + 最近评审结论。
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: 看板聚合
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionBoardResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

@@ -1,6 +1,8 @@
 /** /v1/admin/content 语料级生产接口（M9/M10/M3b）：operator/admin/producer 会话；发布与审批仍在 pipeline 命名空间（operator/admin）。 */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { Pool } from 'pg'
+import { PRODUCTION_STEPS, PRODUCTION_TASK_STATUSES, type ProductionStep, type ProductionTaskStatus } from '@trend/contracts'
 import type { AccountService } from '../accounts/service.js'
 import type { AppConfig } from '../config.js'
 import { parseContentId, titleField } from '../content/service.js'
@@ -11,6 +13,7 @@ import { signKeyframeUrl } from '../media/keyframe-sign.js'
 import { readQuotes, parseQuoteCodes, parseQuoteDate, parseQuotePeriod } from '../quotes/read.js'
 import type { PlaybackService } from '../playback/service.js'
 import { RateLimiter } from '../rate-limit.js'
+import { listProductionTasks, readProductionBoard, upsertProductionTask } from './production-tasks.js'
 import { parseSectionId, parseSourceUnitId, ProductionService } from './service.js'
 import { stringRecord } from './widgets/schema.js'
 
@@ -20,6 +23,7 @@ export interface ProductionRouteDeps {
   config: AppConfig
   limiter: RateLimiter
   playback: PlaybackService
+  pool: Pool
 }
 
 function queryText(query: Record<string, unknown>, key: string): string | undefined {
@@ -37,7 +41,7 @@ function queryInt(query: Record<string, unknown>, key: string, fallback: number,
 }
 
 export async function registerProductionRoutes(app: FastifyInstance, deps: ProductionRouteDeps): Promise<void> {
-  const { service, accounts, config, limiter, playback } = deps
+  const { service, accounts, config, limiter, playback, pool } = deps
 
   const guard = async (request: FastifyRequest) => {
     const principal = await requireSession(request, accounts, ['operator', 'admin', 'producer'])
@@ -324,6 +328,52 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     const params = asObject(request.params as unknown)
     const sectionId = parseSectionId(stringField(params, 'sectionId', { max: 20 }))
     return reply.send(await service.upsertSectionCaseStocks(sectionId, request.body))
+  })
+
+  app.post('/v1/admin/content/production-tasks', async (request, reply) => {
+    await guard(request)
+    const body = asObject(request.body)
+    const step = stringField(body, 'step', { min: 1, max: 32 })
+    if (!(PRODUCTION_STEPS as readonly string[]).includes(step)) {
+      throw badRequest(`step must be one of ${PRODUCTION_STEPS.join('/')}`)
+    }
+    const status = stringField(body, 'status', { min: 1, max: 16 })
+    if (!(PRODUCTION_TASK_STATUSES as readonly string[]).includes(status)) {
+      throw badRequest(`status must be one of ${PRODUCTION_TASK_STATUSES.join('/')}`)
+    }
+    const attempt = optionalInt(body, 'attempt', 0, 1_000)
+    const maxAttempts = optionalInt(body, 'maxAttempts', 1, 100)
+    const note = optionalStringField(body, 'note', { min: 1, max: 2000 })
+    const task = await upsertProductionTask(pool, {
+      courseId: parseContentId(stringField(body, 'courseId', { max: 64 }), 'courseId'),
+      sectionId: parseSectionId(stringField(body, 'sectionId', { max: 20 })),
+      step: step as ProductionStep,
+      status: status as ProductionTaskStatus,
+      ...(attempt === undefined ? {} : { attempt }),
+      ...(maxAttempts === undefined ? {} : { maxAttempts }),
+      ...(note === undefined ? {} : { note }),
+    })
+    return reply.send({ task })
+  })
+
+  app.get('/v1/admin/content/production-tasks', async (request, reply) => {
+    await guard(request)
+    const query = asObject(request.query as unknown)
+    const courseId = parseContentId(stringField(query, 'courseId', { max: 64 }), 'courseId')
+    const sectionId = queryText(query, 'sectionId')
+    return reply.send({
+      tasks: await listProductionTasks(pool, {
+        courseId,
+        ...(sectionId === undefined ? {} : { sectionId: parseSectionId(sectionId) }),
+      }),
+    })
+  })
+
+  app.get('/v1/admin/content/courses/:courseId/production-board', async (request, reply) => {
+    await guard(request)
+    const params = asObject(request.params as unknown)
+    const courseId = parseContentId(stringField(params, 'courseId', { max: 64 }), 'courseId')
+    return reply.send(await readProductionBoard(pool, courseId))
   })
 
   app.post('/v1/admin/content/provenance', async (request, reply) => {
