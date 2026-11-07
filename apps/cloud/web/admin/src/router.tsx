@@ -11,6 +11,7 @@ const CoursePreviewPage = lazy(() => import('./pages/Content/CoursePreviewPage')
 const ProductionBoardPage = lazy(() => import('./pages/Content/ProductionBoardPage').then(m => ({ default: m.ProductionBoardPage })))
 const SegmentsPage = lazy(() => import('./pages/Segments/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
 const PipelinePage = lazy(() => import('./pages/Pipeline/PipelinePage').then(m => ({ default: m.PipelinePage })))
+const ProducerSetupPage = lazy(() => import('./pages/Producer/ProducerSetupPage').then(m => ({ default: m.ProducerSetupPage })))
 const ModelsPage = lazy(() => import('./pages/Models/ModelsPage').then(m => ({ default: m.ModelsPage })))
 const AccountsPage = lazy(() => import('./pages/Accounts/AccountsPage').then(m => ({ default: m.AccountsPage })))
 const AiUsagePage = lazy(() => import('./pages/AI/UsagePage').then(m => ({ default: m.UsagePage })))
@@ -110,6 +111,10 @@ export const router = createBrowserRouter([
       { path: 'courses/:courseId/sections/:sectionId', element: <SectionPreviewPage /> },
       { path: 'segments', element: <SegmentsPage /> },
       { path: 'pipeline', element: <PipelinePage /> },
+      {
+        path: 'producer/setup',
+        element: <RequireProduction><ProducerSetupPage /></RequireProduction>,
+      },
       {
         path: 'ai/usage',
         element: <RequireOps><AiUsagePage /></RequireOps>,

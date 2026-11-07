@@ -41,6 +41,7 @@ import type {
   ProductionBoard,
   Quiz,
   QuizQuestion,
+  ReleaseManifest,
   Segment,
   SegmentList,
   Section,
@@ -145,6 +146,11 @@ export async function login(username: string, password: string): Promise<Session
 export async function currentUser(): Promise<SessionUser> {
   const body = await request<{ user: SessionUser }>('GET', '/v1/auth/session')
   return body.user
+}
+
+/** 发布清单（公开端点）：教员装机页据此给出版本号与校验值。 */
+export async function getReleases(): Promise<ReleaseManifest> {
+  return request<ReleaseManifest>('GET', '/v1/portal/releases')
 }
 
 export async function logout(): Promise<void> {

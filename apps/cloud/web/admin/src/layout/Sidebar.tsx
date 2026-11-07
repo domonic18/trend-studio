@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  CloudDownloadOutlined,
   DashboardOutlined,
   EyeOutlined,
   FileTextOutlined,
@@ -35,6 +36,7 @@ function selectedKey(pathname: string): string {
   if (pathname.endsWith('/preview')) return '/course-preview'
   if (pathname.endsWith('/board')) return '/production-board'
   if (pathname.startsWith('/courses')) return '/courses'
+  if (pathname.startsWith('/producer/setup')) return '/producer/setup'
   if (pathname.startsWith('/segments')) return '/segments'
   if (pathname.startsWith('/pipeline')) return '/pipeline'
   if (pathname.startsWith('/ai/usage')) return '/ai/usage'
@@ -72,6 +74,7 @@ export function Sidebar({
   const isOps = isAdmin || user?.role === 'operator'
 
   const isProducer = user?.role === 'producer'
+  const isStudent = user?.role === 'student'
 
   const items: MenuItem[] = [
     { key: '/', icon: <DashboardOutlined />, label: '概览' },
@@ -94,6 +97,13 @@ export function Sidebar({
         },
         { key: '/segments', icon: <FileTextOutlined />, label: '片段管理' },
         { key: '/pipeline', icon: <VideoCameraOutlined />, label: '视频建课' },
+        ...(isStudent
+          ? []
+          : [{
+            key: '/producer/setup',
+            icon: <CloudDownloadOutlined />,
+            label: '生产端安装',
+          } satisfies MenuItem]),
       ],
     },
     ...(isOps

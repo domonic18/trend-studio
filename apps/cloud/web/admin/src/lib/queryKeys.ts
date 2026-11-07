@@ -87,4 +87,5 @@ export const qk = {
   aiRun: (runId: string) => ['ai', 'runs', 'detail', runId] as const,
   aiBindings: ['ai', 'bindings'] as const,
   aiHealth: ['ai', 'health'] as const,
+  releases: ['portal', 'releases'] as const,
 }
