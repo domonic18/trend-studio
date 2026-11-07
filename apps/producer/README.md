@@ -32,8 +32,9 @@ pnpm setup:doctor       # 只自检
   用户手加的条目原样保留，旧文件备份为 `.bak`）→ 交互式收模型 API key 写进凭据库。
 - **`login` 做什么**：交互式收账号密码 → `POST /v1/auth/session` 换发令牌 → 写进凭据库
   （`TREND_PRODUCER_CONSOLE_TOKEN`）。
-- **`doctor` 做什么**：七项独立自检，逐项报告、任一不过当场报：
-  插件版本（装进 profile 的 == 仓库的）、技能包挂载、**技能链路启用**（读 `dsh --dump-config`
+- **`doctor` 做什么**：八项独立自检，逐项报告、任一不过当场报：
+  **凭据库权限**（文件只有所有者可读写——权限不对 dsh 拒绝加载，等于没装）、
+  插件版本（装进 profile 的 == **安装包**的）、技能包挂载、**技能链路启用**（读 `dsh --dump-config`
   的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）、模型位唯一、模型可达
   （真发一次最小生成请求）、云端可达（`GET /health`）、会话令牌有效且**角色是 producer**
   （角色不对会明确说「生产端需要 producer」）。
@@ -54,9 +55,9 @@ dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 
 ```bash
 npm i -g @deepseek-ai/dsh@0.2.1-rc.5   # harness；版本必须精确匹配（或全程用 npx 兜底）
-shasum -a 256 dsh-plugin-trend-producer-0.1.4.tgz   # 与页面给出的 sha256 比对
-tar -xzf dsh-plugin-trend-producer-0.1.4.tgz
-cd package && node scripts/setup.mjs     # 交互填云端地址/模型 id/base url/协议/模型 key → 换发令牌 → 七项自检
+shasum -a 256 dsh-plugin-trend-producer-0.1.9.tgz   # 与页面给出的 sha256 比对
+tar -xzf dsh-plugin-trend-producer-0.1.9.tgz
+cd package && node scripts/setup.mjs     # 交互填云端地址/模型 id/base url/协议/模型 key → 换发令牌 → 八项自检
 ```
 
 - **安装包自带九个工艺包**（`skills/`）、装机脚本与 bundle 依赖——`customSkillDirs` 指的是目录，

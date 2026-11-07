@@ -1,7 +1,7 @@
 # 趋势课程生产插件 · 架构设计
 
-版本：v0.9（2026-11-07）
-状态：与云端架构 v0.33 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.9 收口：**装机与分发（免仓库教员装机）**——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包与装机脚本、bundle `@trend/contracts` 与 `yaml`；装机脚本吃参数不读仓库，按「仓库模式 / 免仓库模式」分叉（仓库模式保留工艺包热迭代、免仓库模式把九个包复制进 profile 并让 `customSkillDirs` 指向它）；dsh 解析加 npx 兜底（教员机不必预装 harness）；doctor 的版本语义由「与仓库一致」改为「与安装包一致」。详见 §9。v0.8 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源）；回灌工艺固化为「保留既有内容、只增新块」——新增块的事实须先经 `cloud_source_units_read` 读回证据，不得自造。v0.7 P0 收口：新增 `cloud_figure_delete` 工具与云端 `DELETE .../sections/{id}/figures/{figureId}` 端点——图示写入的覆盖语义（同节同 kind 同 caption，`figure_id` 不变）救不回「废图烧掉配额」与「图示本身不该存在」两类情形，生产端此前唯一的纠错手段是覆盖，等于没有回路；补齐后图示纠错与课件纠错（`cloud_widget_delete`）对称。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
+版本：v0.11（2026-11-07）
+状态：与云端架构 v0.34 §6.5（M9 生产）/§6.6（M10 呈现层）对齐；呈现层生产职责见需求 F7（产出什么与验收口径），本文只写编排与装配。v0.11 收口三项：**课程骨架三工具**（`cloud_course_create` / `cloud_chapter_write` / `cloud_course_read`）——教员只给一个视频时 Agent 此前连课程与章都建不出来，章 ID 只能猜，猜错云端一律回 `chapter not found`；**凭据库权限与协议分流**——dsh 凭据服务拒绝加载「所有者之外可读」的凭据库（权限不对等于没装），写入时收紧 `600` 且 doctor 单列一项；理解阶段此前写死 OpenAI 兼容的 `/chat/completions` + Bearer，拿它去打 Anthropic 端点直接 404（表现为「读证据没有画面」而不是报错），现按配置分流 `/v1/messages` + `x-api-key` 与对应响应解析，doctor 增协议一致性校验；**开机参数解析**独立成 `scripts/setup/args.mjs`，带值开关登记在册（`--non-interactive` 曾把后随的 `--model-api` 吞掉，模型协议静默丢失）。v0.10 收口：**端到端验收查出的出参 schema 漏声明**——同一天连栽两例（`cloud_source_units_read` 漏 `partial`；`cloud_production_board_read`/`cloud_production_tasks_read` 漏 `courseId`/`chapterId`），根因是「出参按裁剪后的形状手写，云端契约后来加字段没人回头」。固化：`test/tools-output-schema.test.mjs` 用契约生成样例载荷喂给 dsh 的校验器，双向卡漏声明与野字段。详见 §3。v0.9 收口：**装机与分发（免仓库教员装机）**——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包与装机脚本、bundle `@trend/contracts` 与 `yaml`；装机脚本吃参数不读仓库，按「仓库模式 / 免仓库模式」分叉（仓库模式保留工艺包热迭代、免仓库模式把九个包复制进 profile 并让 `customSkillDirs` 指向它）；dsh 解析加 npx 兜底（教员机不必预装 harness）；doctor 的版本语义由「与仓库一致」改为「与安装包一致」。详见 §9。v0.8 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节经生产端 dsh 真实链路由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 / `:::sidenote` 3–4 / `:::cards` 1，`:::warn` 四型变体齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致；逐节上报 `content.section_edit` 溯源）；回灌工艺固化为「保留既有内容、只增新块」——新增块的事实须先经 `cloud_source_units_read` 读回证据，不得自造。v0.7 P0 收口：新增 `cloud_figure_delete` 工具与云端 `DELETE .../sections/{id}/figures/{figureId}` 端点——图示写入的覆盖语义（同节同 kind 同 caption，`figure_id` 不变）救不回「废图烧掉配额」与「图示本身不该存在」两类情形，生产端此前唯一的纠错手段是覆盖，等于没有回路；补齐后图示纠错与课件纠错（`cloud_widget_delete`）对称。v0.5 M3b 呈现层 R2/R3 代码落地：`cloud_quotes_sync`/`cloud_quotes_read`/`cloud_widget_delete` 工具已注册；Skill 工艺包（`chapter-authoring`/`section-production`/`courseware-design`）已增补 `:::annotation`/`:::replay`/`bar-replay-decision` 规范与断言口径；**真产一节已跑通**（TC-ZONGLUN「阻尼运动」节，2026-11-06：DSL v2 正文 + 回放课件 + 图示 + 案例股 + 行情 + 溯源全链落 draft，主编自评 approve）。v0.6 M10 R3 落地：TC-ZONGLUN 全 6 节 DSL 重写回灌完成（`dsl_version=2`，含 1 次真实打回→重写回灌）；编排顺序固化为「案例股→行情同步→行情读回→图示→回放课件→正文→其余课件→评审→溯源」（回放课件必须早于正文，`d`/`atDate` 必须落在已同步的行情缓存交易日上）；rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，grounded 增「行情数值可核」一票否决子项，通过线 8 不变）；回灌暴露并已修三处生产缺陷（`cloud_case_stocks_write` 的 `events` 结构声明缺失、`cloud_quotes_read` 未摊开 bar 致数值不可核、正文与课件标注标签口径混淆）。v0.4 梳理：Skill 包清单按实际九个包校准（原先「六包」为 M9 早期口径）；DSL 组件表述统一为「7 容器块 + 1 个股内联锚」；接口引用补 §3.14；§4 呈现层段去除与需求 F7 的重复。云端契约变化时先改云端文档再同步本文。
 
 ## 1. 定位与边界
 
@@ -51,6 +51,9 @@ test/                      Host 边界/契约测试（T1 起固化）
 | `cloud_source_units_search` | `GET .../source-units` | 混合检索（只回摘要，用于选材） |
 | `cloud_source_units_read` | `POST .../source-units/read`（M3b 新增） | 批量 ≤20 读完整证据：转写原文 + 视觉描述 + 窗内关键帧 + 播放会话；全有或全无（`409 unit_not_readable`）；写正文前的证据来源 |
 | `cloud_concepts_write` / `cloud_concepts_list` / `cloud_concept_edges_write` | `PUT /concepts`、`GET /concepts`、`POST /concept-edges` | 术语归一；`409` 冲突回灌 |
+| `cloud_course_create` | `POST /courses` | 建课程（草稿）；课程是素材与章的容器，教员新开一卷课的第一步。ID 只允许字母数字与 `.` `_` `-` |
+| `cloud_chapter_write` | `POST /courses/{courseId}/chapters` | 建章；**章是节的前置骨架**，没建章写节会被云端挡回 `chapter not found` |
+| `cloud_course_read` | `GET /courses`、`GET /courses/{courseId}` | 读课程骨架（课程清单 / 该课程的章清单）。**章 ID 不能猜**——没有读接口就只能靠试，猜错是一串 404 与半成品骨架 |
 | `cloud_sections_write` / `cloud_section_article_write` | `GET/PUT /sections`、`PUT .../article` | 节草稿与教材 |
 | `cloud_section_preview` | `GET .../sections/{id}/preview` | 读回节产物（教材正文 + 课件 spec + 图示）；主编评审（门禁②）的前置读 |
 | `cloud_widget_write` | `POST .../widgets` | 课件 spec；`409 assertion_unproven` 回灌重写 |
@@ -64,6 +67,17 @@ test/                      Host 边界/契约测试（T1 起固化）
 | `cloud_provenance` | `POST .../provenance` | 溯源上报（工具内部自动随产物调用，也允许显式调用） |
 
 工具共性：入参 zod 白名单；出参只保留 Agent 需要的字段（不透传原始响应）；云端错误映射稳定码（`bad-request/forbidden/conflict/unavailable`）；幂等键由云端承担。
+
+**出参 schema 必须声明云端实际返回的每一个字段**：dsh 按工具声明的 `output.schema` 校验返回值，且
+`additionalProperties: false`——云端多返回一个未声明字段，整个工具结果被判非法，工具表现为「读证据报
+schema 错」而不是缺字段提示。`cloud_source_units_read` 漏声明云端固定返回的 `partial` 即栽在这上面
+（2026-11-07 端到端验收发现）。裁剪出参时，确认被裁掉的字段确实不在云端载荷里；加工出参时，确认契约里
+每个字段都有去处。
+
+同一次验收还查出第二例：`cloud_production_board_read` / `cloud_production_tasks_read` 漏声明 `courseId` /
+`chapterId`，看板与九步进度读不出来。固化办法：`test/tools-output-schema.test.mjs` 拿契约生成样例载荷，
+逐个喂给工具声明的出参 schema（用 dsh 自己的校验器），双向卡住「漏声明」与「多声明野字段」；
+改契约就要改这个测试。
 
 ## 4. 生产编排
 
@@ -120,7 +134,7 @@ M10 扩充（随 R1–R3 迭代）：
 |---|---|---|
 | ① install | 填模型 provider / 模型 id / base url / 协议 + 模型 API key | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 → 密钥写托管凭据库 |
 | ② login | 填云端账号密码 | `POST /v1/auth/session` 换发令牌 → 写托管凭据库 |
-| ③ doctor | 看结果 | 七项独立自检：插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
+| ③ doctor | 看结果 | 八项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
 
 落点与不变量：
 
@@ -151,7 +165,7 @@ M10 扩充（随 R1–R3 迭代）：
 | `cordis.patch.yml`、`README.md` | 托管条目与说明 | — |
 
 - **坑**：pnpm 的 `node_modules/yaml` 是指向 `.pnpm/` 的符号链接，直接复制会把**悬空链接**打进包，教员侧 `import YAML from 'yaml'` 直接 `ERR_MODULE_NOT_FOUND`。复制必须 `realpathSync` + `dereference: true`。`yaml@2` 零运行时依赖，可整目录复制。
-- **制品内容实质变化即升版本**：`0.1.3 → 0.1.4`。
+- **制品内容实质变化即升版本**：`0.1.3 → 0.1.4 → 0.1.5`（0.1.5 修装机向导命令行解析：开关不再吃掉后随参数）。
 
 ### 10.2 两种模式
 

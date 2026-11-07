@@ -476,7 +476,7 @@ A9 ✅ 装机向导：`apps/producer/scripts/setup.mjs`（`pnpm setup` / `setup:
 profile 的 `cordis.patch.yml` 里**只有引用名**——装机全程不碰配置文件；
 `cordis.patch.yml` 合并语义=五个托管条目（`llm-pi-ai` / `agent-default-model` / `trend-producer` /
 `skill-filesystem` / `credentials`）每次重写、**用户手加的条目原样保留**，旧文件备份为 `.bak`；
-`doctor` 七项独立自检（插件版本 == 仓库版本 / 技能包挂载 / **技能链路启用**（读 `dsh --dump-config`
+`doctor` 八项独立自检（插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用**（读 `dsh --dump-config`
 的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）/ 模型位唯一 / **模型真发一次最小生成请求** /
 云端 `/health` / 令牌有效且**角色是 producer**），任一不过当场报红，角色不对会明说「生产端需要 producer」。
 顺带把视觉模型密钥接到凭据缝上：新增 `src/host/model-key.ts`（凭据服务优先 → 进程环境兜底），
