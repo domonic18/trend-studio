@@ -7,6 +7,8 @@ import type {
   AiTaskKey,
   AiUsageEventPage,
   AiUsageSummary,
+  ApprovalGate,
+  ApprovalItem,
   Article,
   AsrModelConfig,
   AsrProtocol,
@@ -54,7 +56,7 @@ const TOKEN_KEY = 'trend-coach-admin-token'
 let token: string | null = sessionStorage.getItem(TOKEN_KEY)
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code?: string) {
     super(message)
   }
 }
@@ -101,9 +103,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const payload: unknown = await response.json().catch(() => undefined)
   if (!response.ok) {
     if (response.status === 401) notifyUnauthorized()
-    throw new ApiError(response.status, errorMessage(payload, response.status))
+    const code = errorCode(payload)
+    throw new ApiError(response.status, errorMessage(payload, response.status), code)
   }
   return payload as T
+}
+
+/** 机器可读错误码：带 code 的错误体形如 { error: { code, message } }。 */
+function errorCode(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  const error = (payload as { error?: unknown }).error
+  if (typeof error !== 'object' || error === null) return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
 }
 
 /** 云端错误既可能是字符串，也可能是 { code, message }。 */
@@ -609,6 +621,23 @@ export async function publishCourse(courseId: string): Promise<CoursePublishResu
     'POST',
     `/v1/admin/content/courses/${encodeURIComponent(courseId)}/publish`,
   )
+}
+
+/** 签批记录查询：内容变更后指纹不符（approval_stale），须重签才能发布。 */
+export async function listCourseApprovals(courseId: string): Promise<ApprovalItem[]> {
+  return (await request<{ approvals: ApprovalItem[] }>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/approvals`,
+  )).approvals
+}
+
+/** 签批 = 对课程内容指纹签名；同课程同门禁幂等重批（覆盖旧记录）。 */
+export async function approveCourse(courseId: string, gate: ApprovalGate): Promise<ApprovalItem> {
+  return (await request<{ approval: ApprovalItem }>(
+    'POST',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/approvals`,
+    { gate },
+  )).approval
 }
 
 export interface LlmConfigInput {

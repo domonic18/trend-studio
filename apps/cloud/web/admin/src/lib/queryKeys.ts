@@ -65,6 +65,7 @@ export const qk = {
     ['content', 'sections', courseId, chapterId ?? ''] as const,
   sectionPreview: (sectionId: string) => ['content', 'section-preview', sectionId] as const,
   coursePreview: (courseId: string) => ['content', 'course-preview', courseId] as const,
+  approvals: (courseId: string) => ['content', 'approvals', courseId] as const,
   courseQuotes: (courseId: string, codes: string[]) =>
     ['content', 'course-quotes', courseId, codes.join(',')] as const,
   segments: (filters: SegmentFilters) => ['segments', filters] as const,

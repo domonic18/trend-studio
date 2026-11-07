@@ -85,7 +85,7 @@ M10 扩充（随 R1–R3 迭代）：
 |---|---|
 | `chapter-authoring` | 内置 DSL 写作规范与用例（7 容器块 + 1 个股内联锚的选用时机、媒体锚点声明规则）；v2 批次 `:::annotation`/`:::replay` 写法与用例已落地（标注三分类、`d` 用交易日期、判断点归 widget spec、写作顺序约束） |
 | `diagram-authoring` | 从 Mermaid 产出改为 SVG 模板参数化 spec（模板白名单 4 类，云端 §6.6.4；标注文字必须逐字核对术语与数字） |
-| `courseware-design` | 新增 `image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 三类题型工艺；`bar-replay-decision` spec/断言口径已落地，其余待试点冻结 |
+| `courseware-design` | 新增 `image-juxtaposition` / `branching-scenario` / `bar-replay-decision` 三类题型工艺；`bar-replay-decision` spec/断言口径已落地；0.3.2 起两类新题型完成真产试点（TC-ZONGLUN 总论 1 / 三元一催化），冻结「caption 与画面的绑定纪律」「树形口径（optimalPath 走讲师口径）」「服务端补 type」三条口径，记录见 `docs/research/m10-v3-widget-pilot.md`；0.4.0 追加并发批次（TC-ZONGLUN 总论 2 / 总论 3 各 1 件 `image-juxtaposition` + 1 件 `branching-scenario`，断言证明全部一次通过）冻结「`spec.citations` 与外层 `citations` 都要给且为扁平数组」「断言值布尔/空对象两种形状都被证明器接受」「载荷被改写时压成单行紧凑 JSON 重发即可通过」「同 figureId 对在一节里不出两份 `image-juxtaposition`」四条口径 |
 | `quality-rubric` | 0.3.0 → 0.4.0：`grounded` 扩义到媒体、个股与老师标注/判断点锚点（配图帧、片段窗、事件锚点、标注 quote/atMs、回放 revealText 均为可回溯引用）；0.4.0 → 0.4.1（R3 标定）：评审前置强制读回行情缓存，`grounded` 增「行情数值可核」一票否决子项（逐字对 bar、截图价须标原片日期、派生指标可复算、标注定性词与当日形态相符）；通过线 8 保持不变（6 正样本落在 8–9，负样本由子项检出） |
 | `section-production` | 写入顺序固化为「案例股 → 行情同步 → 行情读回 → 图示 → 回放课件 → 正文 → 其余课件 → 评审 → 溯源」（0.5.0，回放课件必须早于正文；`d`/`atDate` 须落在已同步的行情缓存交易日上） |
 

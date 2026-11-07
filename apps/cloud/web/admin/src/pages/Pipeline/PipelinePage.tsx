@@ -23,6 +23,7 @@ import {
 } from '../../api'
 import { PageHeader } from '../../components/PageHeader'
 import { qk } from '../../lib/queryKeys'
+import { publishErrorText } from '../../lib/publishErrors'
 import type { MediaAsset } from '../../types'
 import { AssetTable } from './AssetTable'
 import { GenerationDrawer } from './GenerationDrawer'
@@ -90,6 +91,7 @@ export function PipelinePage() {
           }。`,
       })
     },
+    onError: error => void message.error(publishErrorText(error)),
   })
 
   const selectedCourse = courses.data?.find(course => course.courseId === courseId)

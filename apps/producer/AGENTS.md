@@ -18,7 +18,7 @@
 
 ## 硬约束（写代码前必须确认）
 
-1. **职责边界**：本插件只写草稿。发布只由云端管理台显式触发；插件代码不得调用 publish 接口，不得绕过门禁①（骨架批准）与门禁②（主编评审）。**M3b 分权**：云端把内容写端点放开给 `producer` 角色，发布/审批端点只给 `operator`/`admin`——producer 调 publish 是 403，不是可绕过的软失败。发布链路由 operator/admin 走 `POST /v1/admin/content/courses/:courseId/approvals`（gate=`final`）→ 发布端点，审批后内容被改过即 `409 approval_stale`。权限边界与凭据获取见 [README](./README.md#角色与凭据m3b-分权)。
+1. **职责边界**：本插件只写草稿。发布只由云端管理台显式触发；插件代码不得调用 publish 接口，不得绕过门禁①（骨架批准）与门禁②（主编评审）。**M3b 分权**：云端把内容写端点放开给 `producer` 角色，发布/审批端点只给 `operator`/`admin`——producer 调 publish 是 403，不是可绕过的软失败。发布链路由 operator/admin 走 `POST /v1/admin/content/courses/:courseId/approvals`（gate=`final`）→ 发布端点，审批后内容被改过即 `409 approval_stale`；管理台课程编辑页已带「签批终审」按钮与签批状态签（2026-11-07 落地），发布失败按错误码给中文指引。权限边界与凭据获取见 [README](./README.md#角色与凭据m3b-分权)。
 2. **凭据边界**：云端 API 凭据只存 dsh credentials（credential-ref，producer/operator/admin 后台会话令牌）；生产端模型密钥在 dsh 模型配置（pi-ai providers）维护。两类凭据都不进日志、配置文件、代码与响应。
 3. **课件 spec-only**：课件产物仅为白名单 8 类组件（M10 起加 `image-juxtaposition`/`branching-scenario`/`bar-replay-decision`，`spec_version=2`）的 JSON spec + `assertions` + `citations`；禁止生成可执行代码。断言无证明被云端拒绝（`409 assertion_unproven`）是正常回灌信号，按校验失败处理，不按故障处理。
 4. **呈现层口径**：教材正文用云端冻结的富文本 DSL（v1 七块 + v2 两块 + v3 三块 = 12 容器块，另有 2 个内联锚——个股 `[[stock:]]`、段落级证据 `[[unit:]]`，架构 §6.6.1）；图示走节级 `figures` 端点（`cloud_figure_write`），图示类型只用参数化 SVG 模板四类（架构 §6.6.4）——**Mermaid 不是教材图示通道**，不要写 Mermaid 代码块。
@@ -52,7 +52,7 @@
 | T2 | 课程综合编排：架构师流程、概念归一、目录校验、门禁①审批。**前置已就绪**（2026-11-04）：理解模型定版 MiniMax-M3.1-Flash（问题 24 关闭）、`cloud_transcript` 工具、分块规划/断点差集编排器、`transcript-understanding` 工艺包 | 骨架+概念图谱+术语表经人工批准落库 |
 | T3 | 逐节生产：子代理并行、三层校验、图示 spec（keyframe 选帧 / SVG 模板 diagram）、课件 spec 起草与断言随附 | 单章（节教材+图示+课件）全量通过校验入 draft |
 | T4 | 主编评审（门禁②）+ 溯源全覆盖 + P0 端到端 | 与云端 M9 出口对齐：总论卷发布可检索，rubric 盲评占优 M8 |
-| T5 | 呈现层生产：DSL 教材产出、图示/片段窗/案例股落库、rubric 0.4.0。**工具已就绪**（`cloud_figure_write` / `cloud_case_stocks_write` 已接线） | 单节按富文本 DSL 重写（配图卡/片段卡/案例股锚点）通过门禁②，媒体与事件锚点全部可回溯；v2 批次（老师标注 `:::annotation` 与逐根回放 `:::replay` + `bar-replay-decision`）随首个试点节冻结；**v3 批次已回灌**（2026-11-06：TC-ZONGLUN 全 6 节 `dsl_version` 由 2 升 3，`:::think`/`:::sidenote`/`:::cards` 三块与 `:::warn` 四型变体落进真实内容，既有 grounded 内容零丢失） |
+| T5 | 呈现层生产：DSL 教材产出、图示/片段窗/案例股落库、rubric 0.4.0。**工具已就绪**（`cloud_figure_write` / `cloud_case_stocks_write` 已接线） | 单节按富文本 DSL 重写（配图卡/片段卡/案例股锚点）通过门禁②，媒体与事件锚点全部可回溯；v2 批次（老师标注 `:::annotation` 与逐根回放 `:::replay` + `bar-replay-decision`）随首个试点节冻结；**v3 批次已回灌**（2026-11-06：TC-ZONGLUN 全 6 节 `dsl_version` 由 2 升 3，`:::think`/`:::sidenote`/`:::cards` 三块与 `:::warn` 四型变体落进真实内容，既有 grounded 内容零丢失）；**v3 新题型批次已真产试点**（2026-11-07：`image-juxtaposition`/`branching-scenario` 首次在真实内容上生产，TC-ZONGLUN 总论 1/2/3 各 1 件 + 三元一催化 1 件，断言证明全过并冻结工艺口径，记录见 `docs/research/m10-v3-widget-pilot.md`） |
 
 ## 常用命令
 

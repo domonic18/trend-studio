@@ -6,6 +6,7 @@ import {
   PlusOutlined,
   QuestionCircleOutlined,
   RocketOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -29,9 +30,11 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  approveCourse,
   createChapter,
   createKnowledgePoint,
   getCourseTree,
+  listCourseApprovals,
   listSections,
   patchChapter,
   patchCourse,
@@ -41,6 +44,7 @@ import {
 } from '../../api'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
+import { approvalErrorText, publishErrorText } from '../../lib/publishErrors'
 import type { Chapter, ContentStatus, CourseTree, KnowledgePoint } from '../../types'
 import { ArticleDrawer } from './ArticleDrawer'
 import { FiguresDrawer } from './FiguresDrawer'
@@ -77,6 +81,11 @@ export function CourseEditor({ courseId }: { courseId: string }) {
   const [nameForm] = Form.useForm<NameForm>()
 
   const tree = useQuery({ queryKey: qk.course(courseId), queryFn: () => getCourseTree(courseId) })
+  const approvals = useQuery({
+    queryKey: qk.approvals(courseId),
+    queryFn: () => listCourseApprovals(courseId),
+  })
+  const finalApproval = approvals.data?.find(item => item.gate === 'final')
 
   useEffect(() => {
     if (tree.data === undefined) return
@@ -116,6 +125,17 @@ export function CourseEditor({ courseId }: { courseId: string }) {
           + `${result.indexed ? `索引已更新（${result.embedded} 条）` : '索引未更新'}。`,
       })
     },
+    onError: error => void message.error(publishErrorText(error)),
+  })
+
+  /** 签批 = 对当前课程内容指纹签名；内容再变更即 approval_stale，须重签。 */
+  const sign = useMutation({
+    mutationFn: () => approveCourse(courseId, 'final'),
+    onSuccess: async approval => {
+      await queryClient.invalidateQueries({ queryKey: qk.approvals(courseId) })
+      void message.success(`终审已签批（指纹 ${approval.digest.slice(0, 16)}）：此后请勿再改动课程内容`)
+    },
+    onError: error => void message.error(approvalErrorText(error)),
   })
 
   const addChapter = useMutation({
@@ -181,6 +201,17 @@ export function CourseEditor({ courseId }: { courseId: string }) {
     })
   }
 
+  const confirmSign = (): void => {
+    modal.confirm({
+      title: '签批终审？',
+      content: '签批 = 对当前课程内容指纹签名。签批后若再改动教材、课件、图示或案例股，'
+        + '发布会被拦下（内容指纹不符），须重新签批。',
+      okText: '签批',
+      cancelText: '取消',
+      onOk: () => sign.mutateAsync().then(() => undefined),
+    })
+  }
+
   if (tree.isLoading) return <div className="page-loading"><Spin /></div>
   if (tree.isError || tree.data === undefined) {
     return <Card><Empty description="课程不存在或加载失败" /></Card>
@@ -197,6 +228,22 @@ export function CourseEditor({ courseId }: { courseId: string }) {
             <Tooltip title="重新生成该课程全部片段的向量索引">
               <Button icon={<DatabaseOutlined />} loading={rebuild.isPending} onClick={() => rebuild.mutate()}>
                 重建向量
+              </Button>
+            </Tooltip>
+            {finalApproval === undefined ? (
+              <Tag bordered={false}>未签批</Tag>
+            ) : (
+              <Tooltip title={`内容指纹 ${finalApproval.digest.slice(0, 16)}｜签批于 ${finalApproval.approvedAt}`}>
+                <Tag bordered={false} color="green">终审已签批</Tag>
+              </Tooltip>
+            )}
+            <Tooltip title="签批 = 对当前课程内容指纹签名（发布前置门禁，限 operator/admin）">
+              <Button
+                icon={<SafetyCertificateOutlined />}
+                loading={sign.isPending}
+                onClick={confirmSign}
+              >
+                签批终审
               </Button>
             </Tooltip>
             <Button
