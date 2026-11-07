@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.33）
+# 趋势课程云端服务 · 架构设计（v0.34）
 
-版本：v0.33（2026-11-07；**教员装机分发对外化**（§6.5.16）——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包（`skills/`）、装机脚本与 bundle 依赖（`@trend/contracts`、`yaml`）——**工艺包必须随包分发**，否则 `cordis.patch.yml` 的 `customSkillDirs` 指向的目录不存在，装完会静默丢掉全部工艺包；`GET /v1/portal/releases` 顶层**新增 `producerPlugin`**（与 `plugin` 同形、可空），清单校验由手写改为契约包里的 zod schema（`packages/contracts/src/releases.ts`），**学员侧 `plugin` / `dshVersion` / `webAppPackage` 一字不变**、新字段不进 OpenAPI `required`；新增发布脚本 `apps/cloud/scripts/publish-producer-plugin.mjs`（打包 → sha256/size → 复制进 `/downloads/` → 只改写 `producerPlugin`）；门户新增公开页 `/teacher`（教员完整装机与使用流程）+ `/downloads` 加教员插件卡，管理台新增 `/admin/producer/setup`（回填本站地址、账号、模型要求与三条命令）。零新增端点、零新增表、契约仅加字段）
+版本：v0.34（2026-11-07；**教员一键安装脚本**（§6.5.16）——门户原先给的是「自己下 tgz → 算 sha256 → 解包 → cd → 跑脚本」，每一步都可能错。改为云端托管安装脚本：本体在 `content/install-producer.sh`（compose 挂宿主目录，改完即时生效），响应时把 `__BASE_URL__` 替成 `config.publicBaseUrl`，教员一条命令就能装；**脚本自己就是校验器**（读发布清单取 `fileName`/`sha256`/`dshVersion` → 下载 → 现场算 sha256 比对 → 解包 → 跑包内装机脚本）；管道执行时 stdin 不是 tty，脚本先探 `/dev/tty` 再重定向，探不到就报错不做无声降级。**不进 OpenAPI**（脚本不是 API，与 `/downloads/*` 同理），**不进门户静态目录**（放 `public/` 会被 `@fastify/static` 再注册一次导致启动崩），故由 Fastify 显式路由托管。站点地址三处兜底：服务端注入 → 构建期 `VITE_SITE_ORIGIN` → 运行期 `window.location.origin`。门户教员页收敛为一条命令 + 复制按钮，手动步骤折叠。另记本机运行口径：`MEDIA_LOCAL_DIR` 必设（须与 `PIPELINE_HLS_DIR` 相同），否则不注册 `/media/*` 路由，生产端拿到的关键帧签名 URL 全部 404。零新增表、零新增契约字段）
+v0.33（2026-11-07；**教员装机分发对外化**（§6.5.16）——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包（`skills/`）、装机脚本与 bundle 依赖（`@trend/contracts`、`yaml`）——**工艺包必须随包分发**，否则 `cordis.patch.yml` 的 `customSkillDirs` 指向的目录不存在，装完会静默丢掉全部工艺包；`GET /v1/portal/releases` 顶层**新增 `producerPlugin`**（与 `plugin` 同形、可空），清单校验由手写改为契约包里的 zod schema（`packages/contracts/src/releases.ts`），**学员侧 `plugin` / `dshVersion` / `webAppPackage` 一字不变**、新字段不进 OpenAPI `required`；新增发布脚本 `apps/cloud/scripts/publish-producer-plugin.mjs`（打包 → sha256/size → 复制进 `/downloads/` → 只改写 `producerPlugin`）；门户新增公开页 `/teacher`（教员完整装机与使用流程）+ `/downloads` 加教员插件卡，管理台新增 `/admin/producer/setup`（回填本站地址、账号、模型要求与三条命令）。零新增端点、零新增表、契约仅加字段）
 v0.32（2026-11-07；**发布交接线落地（管理台 + 回归）**（§6.5.15）——就绪度与内容编辑两端都上线：云端端点见 v0.31，**管理台落地**课程编辑页「发布就绪度」卡片（五道门禁逐条 + 当前/签批指纹 + 待办清单；签批与发布按钮按就绪度给禁用理由，producer 仍看不到这两个按钮——分权不变）与节 / 案例股 / 术语三个编辑抽屉（编辑落 draft 并提示需重签批；失败文案按机器可读错误码给中文指引）；配套两处云端收口——**节编辑落 `status='draft'`**（此前改了仍留已发布态，与正文/课件/图示的落草稿口径不一致）、**术语定义支持传 `null` 清空**（契约允许可空，此前路由层把 `null` 当非法字符串挡掉，等于没有清空通道）；B4 回归：根 `pnpm check` 8/8、根 `pnpm test` 12/12 通过（云端 226 例：225 通过 / 1 跳过 / 0 失败，新增两例覆盖节编辑落草稿改指纹与术语定义清空）。零新增表、零新增端点、零契约字段变更）
 v0.31（2026-11-07；**发布就绪度与内容编辑落地**（§6.5.15）——五道发布门禁的判定体抽成返回检查结果的函数（`src/production/readiness.ts`），发布事务与只读端点 `GET /v1/admin/content/courses/{courseId}/readiness`（operator/admin/producer）读**同一批结果**——门禁集合与发布事务执行的五道逐字一致（`figures`/`widgets`/`clips`/`annotations`/`approval`），`issues[].code` 复用发布冲突码，杜绝「卡片全绿、点发布 409」；内容编辑三处结构化可编辑（节元数据 / 案例股清单 / 术语更新与归档，写入恒为 draft，**正文 DSL 不在管理台手改**——其 d/atDate 受行情交易日与术语表约束）；**内容指纹覆盖扩展**（节的 `summary`/`conceptRefs`/`sourceAssetIds` 与概念表此前不纳入指纹，改这些内容已签批的课程照样能发出去，是发布链路的真实漏洞，扩展后必转 `approval_stale`）。零新增表）
 v0.30（2026-11-07；**生产流程向导落地**（§6.5.14）——九步顺序、中文标签与每步做法说明（目标 / 工具 / 常见坑）落到单一真相源 `packages/contracts/src/production-flow.ts`（**刻意零 import、不引 zod**，浏览器端可直接引 `@trend/contracts/production-flow` 子路径而不把 zod 打进前端 bundle），同一份数据出两个渲染：给模型的 `skills/section-production/SKILL.md` 九步速查表（由 `scripts/render-flow-guide.mjs` 渲染进标记块，漂移有测试守卫）、给人的管理台生产看板「流程向导」步骤卡（九步逐条打勾 + 每步「已完成 X/Y 节」+ 当前步 + 常见坑）；管理台原先自持的九步副本已删除。**零新增表、零新增端点、零契约字段变更**）
@@ -790,11 +791,26 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 - **sha256 口径**：对**最终下载的那份 tgz 字节**计算（打包产物，不是仓库里的源文件）；页面与清单给出的值必须一致——教员用 `shasum -a 256` 现场比对。
 - **不用 npm 重打包教员侧产物**：重打包会破坏 sha256 可追溯性。
 
+**一键安装脚本**：`GET /install-producer.sh`（**不进 OpenAPI**——是脚本不是 API，与 `/downloads/*` 同理）。
+
+- **本体在 `apps/cloud/content/install-producer.sh`**（compose 挂宿主目录，改完即时生效）；
+  响应时把 `__BASE_URL__` 替成 `config.publicBaseUrl`，教员一条命令就能装：
+  `curl -fsSL <站点>/install-producer.sh | bash -s -- --base-url <站点>`。
+- **脚本自己就是校验器**：读 `/v1/portal/releases` 取 `producerPlugin` 的 `fileName` / `sha256` /
+  `dshVersion` → 下载 tgz → 现场算 sha256 比对（`shasum` / `sha256sum` / `openssl dgst` 三选一）→
+  解包 → 跑包内 `scripts/setup.mjs all --tarball <tgz>`。
+- **交互拿终端**：管道执行时 stdin 不是 tty，脚本先探 `/dev/tty` 再重定向；探不到就报错要求
+  下载后本地跑或加 `--non-interactive`——不做无声降级。
+- **不进门户静态目录**：放 `public/` 会被 `@fastify/static` 再注册一次 `/install-producer.sh`，
+  与显式路由重复导致启动崩；故由 Fastify 显式路由托管，`.sh` 走 `cache-control: no-store`。
+- **站点地址三处兜底**：服务端注入脚本 → 构建期 `VITE_SITE_ORIGIN` → 运行期 `window.location.origin`
+  （内网访问时构建期地址未必对得上，运行期优先）。
+
 **页面落点**
 
 | 页面 | 面向 | 内容 |
 |---|---|---|
-| 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完七项自检 + 九步生产顺序 + 更新与卸载 + 角色边界（产出恒为草稿，签批发布由运营做） |
+| 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完八项自检 + 九步生产顺序 + 更新与卸载 + 角色边界（产出恒为草稿，签批发布由运营做） |
 | 门户 `/downloads` | 学员 + 教员 | 学员插件卡**一字不变**；下方新增「教员生产端插件」卡（下载 + sha256 + 前往 `/teacher`） |
 | 管理台 `/admin/producer/setup` | producer / operator / admin | 回填本站云端地址（`window.location.origin`）、当前账号与角色、模型要求（`MiniMax-M3.1-Flash` / `openai-completions`，亦支持 `anthropic-messages`）、dsh 版本；下载入口 + 三条命令 + 外链 `/teacher`。学员不可见（`RequireProduction` 拒 student） |
 
