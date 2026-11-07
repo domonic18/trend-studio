@@ -12,11 +12,14 @@ import type {
   Article,
   AsrModelConfig,
   AsrProtocol,
+  CaseStock,
+  Concept,
   ContentStatus,
   Course,
   CoursePreview,
   CoursePublishResult,
   CourseQuote,
+  CourseReadiness,
   CourseSummary,
   CourseTree,
   Figure,
@@ -288,6 +291,80 @@ export async function getAdminCourseQuotes(
   return request<{ pending: boolean; quotes: CourseQuote[] }>(
     'GET',
     `/v1/admin/content/courses/${encodeURIComponent(courseId)}/quotes?${params.toString()}`,
+  )
+}
+
+/** 发布就绪度：五道门禁 + 当前指纹 + 待办（与发布事务同一份判定）。 */
+export async function getCourseReadiness(courseId: string): Promise<CourseReadiness> {
+  return request<CourseReadiness>(
+    'GET',
+    `/v1/admin/content/courses/${encodeURIComponent(courseId)}/readiness`,
+  )
+}
+
+/** 课程术语表（含已归档——归档会改变正文 glossary 校验，故也进指纹）。 */
+export async function listConcepts(courseId: string): Promise<Concept[]> {
+  return (await request<{ concepts: Concept[] }>(
+    'GET',
+    `/v1/admin/content/concepts?courseId=${encodeURIComponent(courseId)}`,
+  )).concepts
+}
+
+/** 术语更新：改别名 / 定义 / 归档（归档可逆，置回 draft 即恢复）。 */
+export async function updateConcept(
+  courseId: string,
+  conceptId: string,
+  input: { aliases?: string[]; definition?: string | null; status?: 'draft' | 'archived' },
+): Promise<{ conceptId: string }> {
+  return request<{ conceptId: string }>(
+    'PUT',
+    `/v1/admin/content/concepts/${encodeURIComponent(conceptId)}`,
+    { courseId, ...input },
+  )
+}
+
+/** 节编辑：标题 / 摘要 / 序位 / 关联术语 / 来源素材（一律落 draft）。 */
+export async function putSection(input: {
+  sectionId: string
+  courseId: string
+  chapterId: string
+  title: string
+  position: number
+  summary?: string
+  sourceAssetIds?: string[]
+  conceptRefs?: string[]
+}): Promise<Section> {
+  return (await request<{ section: Section }>('PUT', '/v1/admin/content/sections', input)).section
+}
+
+/** 节级案例股清单。 */
+export async function listCaseStocks(sectionId: string): Promise<CaseStock[]> {
+  return (await request<{ stocks: CaseStock[] }>(
+    'GET',
+    `/v1/admin/content/sections/${encodeURIComponent(sectionId)}/case-stocks`,
+  )).stocks
+}
+
+export interface CaseStockInput {
+  name: string
+  exchange: 'SZSE' | 'SSE' | 'BSE'
+  code: string
+  period?: '1d' | '1w'
+  windowStart: string
+  windowEnd: string
+  events?: Array<{ date: string; label: string; unitId: string }>
+  note?: string
+}
+
+/** 案例股写入：同节同代号覆盖更新；整批覆盖（一次 PUT 提交全部案例股）。 */
+export async function writeCaseStocks(
+  sectionId: string,
+  stocks: CaseStockInput[],
+): Promise<{ saved: Array<{ stockRefId: string; code: string; deduped: boolean }> }> {
+  return request(
+    'PUT',
+    `/v1/admin/content/sections/${encodeURIComponent(sectionId)}/case-stocks`,
+    { sectionId, stocks },
   )
 }
 

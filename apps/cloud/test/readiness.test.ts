@@ -95,10 +95,10 @@ async function insertAsset(courseId: string, title: string): Promise<string> {
   return assetId
 }
 
-async function readiness(headers: Record<string, string>): Promise<ReadinessReport> {
+async function readiness(headers: Record<string, string>, courseId = COURSE_ID): Promise<ReadinessReport> {
   const response = await app.inject({
     method: 'GET',
-    url: `/v1/admin/content/courses/${COURSE_ID}/readiness`,
+    url: `/v1/admin/content/courses/${courseId}/readiness`,
     headers,
   })
   assert.equal(response.statusCode, 200, response.body)
@@ -407,4 +407,66 @@ test('术语：更新别名与定义、归档可逆；术语改动会让内容�
     payload: { courseId: COURSE_ID, status: 'draft' },
   })
   assert.equal(unknown.statusCode, 404, unknown.body)
+})
+
+test('节编辑：改动落草稿并改指纹（标题 / 摘要进指纹）', async () => {
+  const courseId = `${COURSE_ID}-2`
+  const listed = await app.inject({
+    method: 'GET',
+    url: `/v1/admin/content/sections?courseId=${courseId}`,
+    headers: adminHeaders,
+  })
+  assert.equal(listed.statusCode, 200, listed.body)
+  const section = (listed.json() as { sections: { sectionId: string; position: number }[] }).sections[0]
+  assert.ok(section !== undefined, '课程应有节')
+
+  const before = await readiness(adminHeaders, courseId)
+  const updated = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/sections',
+    headers: adminHeaders,
+    payload: {
+      sectionId: section.sectionId,
+      courseId,
+      chapterId: `${CHAPTER_ID}-2`,
+      title: '改过的节标题',
+      position: section.position,
+      summary: '改过的节摘要。',
+      conceptRefs: [],
+      sourceAssetIds: [],
+    },
+  })
+  assert.equal(updated.statusCode, 200, updated.body)
+  assert.equal((updated.json() as { section: { status: string } }).section.status, 'draft')
+
+  const after = await readiness(adminHeaders, courseId)
+  assert.notEqual(after.fingerprint, before.fingerprint, '节标题/摘要改动必须改指纹')
+})
+
+test('术语定义可清空：definition 传 null 落库为 null', async () => {
+  const created = await app.inject({
+    method: 'PUT',
+    url: '/v1/admin/content/concepts',
+    headers: adminHeaders,
+    payload: { courseId: COURSE_ID, name: '待清空定义', definition: '初版定义。' },
+  })
+  assert.equal(created.statusCode, 200, created.body)
+  const conceptId = (created.json() as { conceptId: string }).conceptId
+
+  const cleared = await app.inject({
+    method: 'PUT',
+    url: `/v1/admin/content/concepts/${conceptId}`,
+    headers: adminHeaders,
+    payload: { courseId: COURSE_ID, definition: null },
+  })
+  assert.equal(cleared.statusCode, 200, cleared.body)
+
+  const listed = await app.inject({
+    method: 'GET',
+    url: `/v1/admin/content/concepts?courseId=${COURSE_ID}`,
+    headers: adminHeaders,
+  })
+  assert.equal(listed.statusCode, 200, listed.body)
+  const concepts = (listed.json() as { concepts: { conceptId: string; definition: string | null }[] }).concepts
+  assert.equal(concepts.find(item => item.conceptId === conceptId)?.definition, null)
 })

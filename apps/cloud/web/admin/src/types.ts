@@ -694,3 +694,66 @@ export interface ProductionBoard {
   sections: ProductionBoardSection[]
   materialChoices: MaterialChoiceItem[]
 }
+
+// === 发布交接线：发布就绪度 / 内容编辑 ===
+
+export type ReadinessGate = 'figures' | 'widgets' | 'clips' | 'annotations' | 'approval'
+export type ReadinessGateStatus = 'pass' | 'fail' | 'pending'
+
+export interface ReadinessIssue {
+  /** 与发布冲突码同名，便于按码给中文指引。 */
+  code: string
+  message: string
+  /** 命中的对象（figureId / widgetId…），供界面定位。 */
+  targets?: string[]
+}
+
+export interface ReadinessFinding {
+  gate: ReadinessGate
+  label: string
+  status: ReadinessGateStatus
+  summary: string
+  issues: ReadinessIssue[]
+}
+
+/** 发布就绪度：门禁集合与发布事务同源——卡片全绿却发布失败，是两套判定漂移的典型症状。 */
+export interface CourseReadiness {
+  courseId: string
+  /** 当前内容指纹（十六进制）。 */
+  fingerprint: string
+  /** 签批时记录的指纹；无签批记录为 null。 */
+  approvedFingerprint: string | null
+  gates: ReadinessFinding[]
+  publishable: boolean
+  pending: string[]
+}
+
+export interface Concept {
+  conceptId: string
+  name: string
+  aliases: string[]
+  definition: string | null
+  status: 'draft' | 'published' | 'archived'
+}
+
+export interface CaseStockEvent {
+  date: string
+  label: string
+  unitId: string
+}
+
+export interface CaseStock {
+  stockRefId: string
+  sectionId: string
+  name: string
+  exchange: string
+  code: string
+  period: string
+  windowStart: string
+  windowEnd: string
+  events: CaseStockEvent[]
+  note: string | null
+  status: string
+  position: number
+  createdAt: string
+}

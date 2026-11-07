@@ -66,6 +66,9 @@ export const qk = {
   sectionPreview: (sectionId: string) => ['content', 'section-preview', sectionId] as const,
   coursePreview: (courseId: string) => ['content', 'course-preview', courseId] as const,
   approvals: (courseId: string) => ['content', 'approvals', courseId] as const,
+  readiness: (courseId: string) => ['content', 'readiness', courseId] as const,
+  concepts: (courseId: string) => ['content', 'concepts', courseId] as const,
+  caseStocks: (sectionId: string) => ['content', 'case-stocks', sectionId] as const,
   courseQuotes: (courseId: string, codes: string[]) =>
     ['content', 'course-quotes', courseId, codes.join(',')] as const,
   productionBoard: (courseId: string) => ['content', 'production-board', courseId] as const,

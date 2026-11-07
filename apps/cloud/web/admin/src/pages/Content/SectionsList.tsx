@@ -1,14 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileTextOutlined } from '@ant-design/icons'
+import { EditOutlined, FileTextOutlined, StockOutlined } from '@ant-design/icons'
 import { Button, Empty, List, Space, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { listSections } from '../../api'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
-import type { Chapter } from '../../types'
+import type { Chapter, Section } from '../../types'
 
-/** 章内节导航：点击进入管理台节预览页（教材 + 课件 + 图示）。 */
-export function SectionsList({ courseId, chapter }: { courseId: string; chapter: Chapter }) {
+/** 章内节导航：点击进入管理台节预览页（教材 + 课件 + 图示）；可编辑时给出节与案例股入口。 */
+export function SectionsList({
+  courseId,
+  chapter,
+  canEdit = false,
+  onEditSection,
+  onEditCaseStocks,
+}: {
+  courseId: string
+  chapter: Chapter
+  canEdit?: boolean
+  onEditSection?: (section: Section) => void
+  onEditCaseStocks?: (section: Section) => void
+}) {
   const navigate = useNavigate()
   const sections = useQuery({
     queryKey: qk.sections(courseId, chapter.chapterId),
@@ -41,6 +53,32 @@ export function SectionsList({ courseId, chapter }: { courseId: string; chapter:
                 >
                   预览
                 </Button>,
+                ...(canEdit && onEditSection !== undefined
+                  ? [
+                    <Button
+                      key="edit"
+                      type="link"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => onEditSection(section)}
+                    >
+                      编辑节
+                    </Button>,
+                  ]
+                  : []),
+                ...(canEdit && onEditCaseStocks !== undefined
+                  ? [
+                    <Button
+                      key="stocks"
+                      type="link"
+                      size="small"
+                      icon={<StockOutlined />}
+                      onClick={() => onEditCaseStocks(section)}
+                    >
+                      案例股
+                    </Button>,
+                  ]
+                  : []),
               ]}
             >
               <List.Item.Meta

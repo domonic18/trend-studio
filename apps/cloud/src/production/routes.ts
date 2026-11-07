@@ -194,7 +194,10 @@ export async function registerProductionRoutes(app: FastifyInstance, deps: Produ
     await guard(request)
     const params = asObject(request.params as unknown)
     const body = asObject(request.body)
-    const definition = optionalStringField(body, 'definition', { min: 1, max: 2000 })
+    // definition 显式传 null 表示清空；缺省表示不改。
+    const definition = body.definition === null
+      ? null
+      : optionalStringField(body, 'definition', { min: 1, max: 2000 })
     const status = body.status === undefined
       ? undefined
       : stringField(body, 'status', { min: 1, max: 16 }) as 'draft' | 'archived'

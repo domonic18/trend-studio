@@ -329,7 +329,8 @@ export class ProductionService {
     }
     const { rows } = await this.pool.query<SectionRow>(
       `UPDATE sections SET title = $3, position = $4, summary = $5,
-              source_asset_ids = $6::jsonb, concept_refs = $7::jsonb, updated_at = now()
+              source_asset_ids = $6::jsonb, concept_refs = $7::jsonb,
+              status = 'draft', updated_at = now()
        WHERE section_id = $1 AND course_id = $2
        RETURNING ${SECTION_COLUMNS}`,
       [

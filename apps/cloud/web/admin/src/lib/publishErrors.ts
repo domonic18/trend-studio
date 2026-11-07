@@ -24,6 +24,11 @@ export function publishErrorText(error: unknown): string {
   return error instanceof Error ? error.message : '发布失败'
 }
 
+/** 就绪度卡片上的门禁问题：给一句中文指引（门禁码与发布冲突码同名）。 */
+export function gateIssueText(code: string): string {
+  return PUBLISH_ERRORS[code] ?? `门禁未通过（${code}）`
+}
+
 /** 签批失败：分权不变——producer 负责生产，不能自签（云端架构 §6.5.1）。 */
 export function approvalErrorText(error: unknown): string {
   if (error instanceof ApiError && error.status === 403) {

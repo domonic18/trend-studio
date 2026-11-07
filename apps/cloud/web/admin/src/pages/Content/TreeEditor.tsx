@@ -1,4 +1,5 @@
 import {
+  BookOutlined,
   DatabaseOutlined,
   EditOutlined,
   FileTextOutlined,
@@ -34,6 +35,7 @@ import {
   approveCourse,
   createChapter,
   createKnowledgePoint,
+  getCourseReadiness,
   getCourseTree,
   listCourseApprovals,
   listSections,
@@ -47,10 +49,14 @@ import { useAuth } from '../../auth/AuthProvider'
 import { StatusTag } from '../../components/StatusTag'
 import { qk } from '../../lib/queryKeys'
 import { approvalErrorText, publishErrorText } from '../../lib/publishErrors'
-import type { Chapter, ContentStatus, CourseTree, KnowledgePoint } from '../../types'
+import type { Chapter, ContentStatus, CourseTree, KnowledgePoint, Section } from '../../types'
 import { ArticleDrawer } from './ArticleDrawer'
+import { CaseStocksDrawer } from './CaseStocksDrawer'
+import { ConceptsDrawer } from './ConceptsDrawer'
 import { FiguresDrawer } from './FiguresDrawer'
 import { QuizDrawer } from './QuizDrawer'
+import { ReadinessCard } from './ReadinessCard'
+import { SectionDrawer } from './SectionDrawer'
 import { SectionsList } from './SectionsList'
 
 interface CourseInfoForm {
@@ -82,19 +88,39 @@ export function CourseEditor({ courseId }: { courseId: string }) {
   const [chapterModal, setChapterModal] = useState(false)
   const [pointModal, setPointModal] = useState<{ chapterId: string } | null>(null)
   const [rename, setRename] = useState<EditableChapter | EditablePoint | null>(null)
+  const [editingSection, setEditingSection] = useState<Section | null>(null)
+  const [caseStockSection, setCaseStockSection] = useState<Section | null>(null)
+  const [conceptsOpen, setConceptsOpen] = useState(false)
   const [nameForm] = Form.useForm<NameForm>()
 
   /** 签批与发布限 operator/admin——producer 只产内容，按钮直接不给他看。 */
   const canOperate = user?.role === 'admin' || user?.role === 'operator'
   /** 看板与生产端能力对非学员开放。 */
   const canSeeBoard = user !== null && user.role !== 'student'
+  /** 内容编辑限 operator/admin/producer；学员看不到编辑入口。 */
+  const canEditContent = canSeeBoard
 
   const tree = useQuery({ queryKey: qk.course(courseId), queryFn: () => getCourseTree(courseId) })
   const approvals = useQuery({
     queryKey: qk.approvals(courseId),
     queryFn: () => listCourseApprovals(courseId),
   })
+  const readiness = useQuery({
+    queryKey: qk.readiness(courseId),
+    queryFn: () => getCourseReadiness(courseId),
+  })
   const finalApproval = approvals.data?.find(item => item.gate === 'final')
+
+  /** 发布按钮的禁用理由：未过的门禁逐条说清，避免点了才报 409。 */
+  const blockingGates = (readiness.data?.gates ?? []).filter(gate => gate.status !== 'pass')
+  const publishBlockReason = blockingGates.length === 0
+    ? undefined
+    : blockingGates.map(gate => `${gate.label}：${gate.summary}`).join('；')
+  const signBlockReason = readiness.data !== undefined
+    && readiness.data.approvedFingerprint !== null
+    && readiness.data.approvedFingerprint === readiness.data.fingerprint
+    ? '当前内容已签批且未变更，无需重复签批'
+    : undefined
 
   useEffect(() => {
     if (tree.data === undefined) return
@@ -105,6 +131,7 @@ export function CourseEditor({ courseId }: { courseId: string }) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: qk.course(courseId) }),
       queryClient.invalidateQueries({ queryKey: qk.courses }),
+      queryClient.invalidateQueries({ queryKey: qk.readiness(courseId) }),
     ])
   }
 
@@ -142,6 +169,7 @@ export function CourseEditor({ courseId }: { courseId: string }) {
     mutationFn: () => approveCourse(courseId, 'final'),
     onSuccess: async approval => {
       await queryClient.invalidateQueries({ queryKey: qk.approvals(courseId) })
+      await queryClient.invalidateQueries({ queryKey: qk.readiness(courseId) })
       void message.success(`终审已签批（指纹 ${approval.digest.slice(0, 16)}）：此后请勿再改动课程内容`)
     },
     onError: error => void message.error(approvalErrorText(error)),
@@ -255,23 +283,31 @@ export function CourseEditor({ courseId }: { courseId: string }) {
             )}
             {canOperate ? (
               <>
-                <Tooltip title="签批 = 对当前课程内容指纹签名（发布前置门禁，限 operator/admin）">
-                  <Button
-                    icon={<SafetyCertificateOutlined />}
-                    loading={sign.isPending}
-                    onClick={confirmSign}
-                  >
-                    签批终审
-                  </Button>
+                <Tooltip title={signBlockReason ?? '签批 = 对当前课程内容指纹签名（发布前置门禁，限 operator/admin）'}>
+                  <span>
+                    <Button
+                      icon={<SafetyCertificateOutlined />}
+                      loading={sign.isPending}
+                      disabled={signBlockReason !== undefined}
+                      onClick={confirmSign}
+                    >
+                      签批终审
+                    </Button>
+                  </span>
                 </Tooltip>
-                <Button
-                  type="primary"
-                  icon={<RocketOutlined />}
-                  loading={publish.isPending}
-                  onClick={confirmPublish}
-                >
-                  发布课程
-                </Button>
+                <Tooltip title={publishBlockReason ?? '发布草稿内容并重建检索索引（限 operator/admin）'}>
+                  <span>
+                    <Button
+                      type="primary"
+                      icon={<RocketOutlined />}
+                      loading={publish.isPending}
+                      disabled={publishBlockReason !== undefined}
+                      onClick={confirmPublish}
+                    >
+                      发布课程
+                    </Button>
+                  </span>
+                </Tooltip>
               </>
             ) : null}
           </Space>
@@ -297,9 +333,22 @@ export function CourseEditor({ courseId }: { courseId: string }) {
         </Form>
       </Card>
 
+      <ReadinessCard courseId={courseId} />
+
       <Card
         title="课程结构"
-        extra={<Button icon={<PlusOutlined />} onClick={() => setChapterModal(true)}>新增章节</Button>}
+        extra={
+          <Space wrap>
+            {canEditContent ? (
+              <Tooltip title="术语别名、定义与归档（改动进内容指纹）">
+                <Button icon={<BookOutlined />} onClick={() => setConceptsOpen(true)}>
+                  课程术语
+                </Button>
+              </Tooltip>
+            ) : null}
+            <Button icon={<PlusOutlined />} onClick={() => setChapterModal(true)}>新增章节</Button>
+          </Space>
+        }
       >
         {data.chapters.length === 0 ? (
           <Empty description="还没有章节，先创建一个章节。" />
@@ -410,7 +459,13 @@ export function CourseEditor({ courseId }: { courseId: string }) {
                       <div className="section-list-divider"><Typography.Text type="secondary">以上为本章知识点</Typography.Text></div>
                     </>
                   )}
-                  <SectionsList courseId={courseId} chapter={chapter} />
+                  <SectionsList
+                    courseId={courseId}
+                    chapter={chapter}
+                    canEdit={canEditContent}
+                    onEditSection={setEditingSection}
+                    onEditCaseStocks={setCaseStockSection}
+                  />
                 </>
               ),
             }))}
@@ -438,6 +493,27 @@ export function CourseEditor({ courseId }: { courseId: string }) {
         chapter={figuresChapter}
         open={figuresChapter !== null}
         onClose={() => setFiguresChapter(null)}
+      />
+
+      <SectionDrawer
+        courseId={courseId}
+        section={editingSection}
+        open={editingSection !== null}
+        onClose={() => setEditingSection(null)}
+      />
+
+      <CaseStocksDrawer
+        courseId={courseId}
+        sectionId={caseStockSection?.sectionId ?? null}
+        sectionTitle={caseStockSection?.title}
+        open={caseStockSection !== null}
+        onClose={() => setCaseStockSection(null)}
+      />
+
+      <ConceptsDrawer
+        courseId={courseId}
+        open={conceptsOpen}
+        onClose={() => setConceptsOpen(false)}
       />
 
       <CreateModal
