@@ -1,6 +1,7 @@
 # 趋势课程云端服务 · 架构设计（v0.26）
 
-版本：v0.26（2026-11-07；**生产任务状态机落地**（§6.5.10）——新增表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022）与三个端点：`POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出）、`GET /v1/admin/content/courses/{courseId}/production-board`（看板聚合：每节一行，含已落库步骤、正文版本、课件/图示/案例股计数与最近评审结论）。九步顺序 `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance` 由生产端引擎强制（§6.5.10），云端只存状态不做调度；权限 operator/admin/producer）
+版本：v0.27（2026-11-07；**追加素材处理决策落地**（§6.5.11）——新增表 `production_material_choices`（迁移 023）与两个端点：`POST /v1/admin/content/material-impact`（**只读**算影响面：A 必须给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）、`POST /v1/admin/content/material-choices`（落决策并把受影响节九步重置为 pending、attempt 清零而回灌预算保留，A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。九步顺序的**引擎强制落在生产端**（`apps/producer/src/host/production-steps.ts` 纯函数 + 5 个工具），云端仍只存状态不调度）
+v0.26（2026-11-07；**生产任务状态机落地**（§6.5.10）——新增表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022）与三个端点：`POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出）、`GET /v1/admin/content/courses/{courseId}/production-board`（看板聚合：每节一行，含已落库步骤、正文版本、课件/图示/案例股计数与最近评审结论）。九步顺序 `case_stocks → quotes_sync → quotes_read → figures → replay_widget → article → widgets → review → provenance` 由生产端引擎强制（§6.5.10），云端只存状态不做调度；权限 operator/admin/producer）
 v0.25（2026-11-07；M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签；此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮点下去必然吃 `409 approval_required`/`approval_stale` 且无提示语；发布失败改为按机器可读错误码给中文指引（`approval_required`/`approval_stale`/`widget_unproven`/`figure_unresolved`/`clip_invalid`/`annotation_unresolved`/`replay_unproven`）；零新增云端端点、零新增表、零契约字段变更）
 v0.24（2026-11-06；P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`，每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体（def/rule/misuse/risk）齐全且原 `:::warn` body 逐字保留只加 `variant`；既有 grounded 内容零丢失（逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code）；经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链）
 v0.23（2026-11-06；P0 收口：新增 `DELETE /v1/admin/content/sections/{sectionId}/figures/{figureId}` 图示纠错删除端点（§6.6.2）——图示行与候选行同事务删除、候选字节文件一并清理，图示不在该节下 `404`，草稿/已发布均可删；删除改课程内容指纹 → 既有终审审批转 `approval_stale`；补上生产端唯一的图示纠错回路，此前写错的图示只能人工清理。M10 里程碑行与 §8 待冻结项按已落地事实回写）
@@ -484,6 +485,11 @@ queued ──claim──> running ──success──> succeeded
 | `POST /v1/admin/content/provenance` | 溯源上报（任务/模型/token/skill_versions，落 AI 账本） |
 | `POST/GET /v1/admin/content/courses/{courseId}/approvals` | 审批签批与查询（**operator/admin 专属**，producer 不可自签；M3b B4 落地，见 §6.5.9） |
 
+| `POST/GET /v1/admin/content/production-tasks` | 生产任务状态机：按 `(courseId, sectionId, step)` 幂等 upsert / 按课程列出（§6.5.10） |
+| `GET /v1/admin/content/courses/{courseId}/production-board` | 生产看板聚合：每节一行九步状态 + 产出计数 + 最近评审结论 + 最近追加素材决策（§6.5.10/§6.5.11） |
+| `POST /v1/admin/content/material-impact` | 追加素材影响面（**只读**，A/B/C 各会动哪几节）（§6.5.11） |
+| `POST /v1/admin/content/material-choices` | 追加素材处理决策落库 + 受影响节九步重置（§6.5.11） |
+
 M3b 分权：上表与 M10 端点表（§6.5.1/§6.6）的 `/v1/admin/content/*` 生产端点均接受 **operator/admin/producer** 会话；发布（publish）、审批（approvals，M3b B4 落地）、账号管理与模型配置仍限 operator/admin。生产插件凭据使用 `producer` 角色专用令牌，不再复用 operator 令牌。
 
 M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、资产时间窗播放会话，契约见 §6.6.2/§6.6.3 与对接清单 §3.14）：
@@ -646,6 +652,24 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 - **不变量**：任务行只描述「做到哪」，不含任何正文或产物内容；`note` 是唯一的自由文本出口，长度受限。
 - **看板只渲染已落库步骤**：未开始的步骤不入列，由前端按九步顺序补位——避免「空行」与「尚未开始」混淆。
+
+#### 6.5.11 追加素材处理决策（A5 落地）
+
+**问题**：课程做到一半再拖一个视频进来，「补这节 / 重做骨架 / 只入库」此前只是 `skills/material-ingest` 的文档段落——选择是一次性问答，不落库，人也没法知道「它会动哪几节」。
+
+**方案**：决策先算影响面（只读），人明确选之后才落库；落库同时把受影响节的九步状态重置为待开始，让重跑可精确续跑。
+
+| 环节 | 定义 |
+|---|---|
+| 决策表 | `production_material_choices`（迁移 023）：`choice_id`（`pmc_<16 hex>`）、`course_id`、`asset_id`、`section_id`（A 场景指哪一节，C 为空）、`choice`（A/B/C）、`affected_section_ids`、`note`（≤2000）、`created_at`；`course_id`/`asset_id`/`section_id` 均有外键且级联删除 |
+| 影响面 | `POST /v1/admin/content/material-impact`（**只读不落库**）：A 必须给 `sectionId`（缺了 `400`，节不存在 `404`）、素材不属于本课程 `404`；B 返回全课程未归档节；C 返回空。回 `affectedSectionIds` / `affectedTitles` / `resetStepCount`（= 受影响节数 × 9） |
+| 落决策 | `POST /v1/admin/content/material-choices`：写决策行 → A 场景把素材幂等挂进 `sections.source_asset_ids` → 受影响节九步 `status` 重置 `pending`（`attempt` 清零、`note` 清空，**`max_attempts` 回灌预算保留**），缺失的步骤行补建，保证看板网格完整、续跑位置精确 |
+| 读取 | 决策随 `GET /v1/admin/content/courses/{courseId}/production-board` 一并返回（`materialChoices`，按 `created_at` 倒序），**不另开端点** |
+| 权限 | operator/admin/producer；决策与任务行一样**只记状态，不改内容**——不参与发布门禁，不影响内容指纹（§6.5.9） |
+
+- **不变量**：决策表与任务表职责分离——任务表是「节 × 步骤」的行级状态，决策表是课程级的一次性决定；两者都不承载正文或产物内容。
+- **「影响面先算后问」是纪律**：人最怕「不知道它会动什么」，所以生产端必须先 `material-impact` 再把
+  `affectedTitles` / `resetStepCount` 列给人，最后才 `material-choices` 落库——顺序反了就是「先斩后奏」。
 
 ### 6.6 教材呈现层与个股实盘对照（M10，目标架构）
 

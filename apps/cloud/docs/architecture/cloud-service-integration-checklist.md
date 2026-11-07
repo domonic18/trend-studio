@@ -1,8 +1,8 @@
 # 云端服务对接清单
 
 本文用于启动**独立的云端服务仓库**，供 `dsh-plugin-trend-coach` 插件对接。
-版本：v0.22（2026-11-07）
-状态：接口口径以需求 v0.24 §3（C13/C14/C15）与架构 v0.26 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.22 **生产体验线第二批**（A4 生产任务状态机）——新增 §3.16 生产任务状态机与看板聚合：表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022），端点 `POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert）与 `GET /v1/admin/content/courses/{courseId}/production-board`（每节一行：已落库步骤 + 产出计数 + 最近评审结论）；权限 operator/admin/producer，云端只存状态不调度。v0.21 **生产体验线第一批**（A1 契约 + A2 云端落地）——新增 §3.15 素材入库直传通道（建素材 → 签发直传凭据 → 直传字节 → 落库确认 → 入队转写）：`POST .../upload-ticket` 签发 HMAC 签名凭据（绑定素材+字节数+摘要+有效期），`PUT .../source` 会话或凭据二选一，`POST .../upload-confirm` 核对已落字节数与摘要；producer 分权矩阵落地（建课程/章/知识点/节/测验/素材/直传/入队转写/读转写可做且写入恒为 draft，签批、发布、课程状态与素材归档仍限 operator/admin）；零新增表。v0.20 M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签（此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮必然吃 `409 approval_required`/`approval_stale` 且无提示语），发布失败按机器可读错误码给中文指引；零新增端点、零新增表、零契约字段变更。v0.19 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体 def/rule/misuse/risk 齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致），经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链，零新增端点、零新增表、零契约字段变更。v0.18 P0 收口：新增 `DELETE /v1/admin/content/sections/{sectionId}/figures/{figureId}` 图示纠错删除端点（§3.14 状态 P0）——图示行与候选行同事务删除、候选字节文件一并清理，图示不在该节下 `404`，草稿/已发布均可删，删除改课程内容指纹（既有终审审批转 `approval_stale`）；补上生产端唯一的图示纠错回路，此前写错的图示只能人工清理。v0.17 M10 呈现层对齐原型：DSL 升 v3（新增 `:::think`/`:::sidenote`/`:::cards` 三块、`:::warn` 增 `def|rule|misuse|risk` 四型变体，服务端同时接受 1/2/3）；课件白名单扩至 11 类——`image-juxtaposition`（前后对比滑块）与 `branching-scenario`（分支情景练习）随 `spec_version=2` 冻结并落地（含 6 条断言证明器，迁移 021 扩 `widget_specs.type` CHECK 约束）；零新增端点、零新增表。v0.16 M10 S1 学员端富媒体课程页落地：零新增云端端点（复用 catalog v3 课程树/节详情/行情/按节播放会话），节载荷增 `summary` 与 `conceptNames`（可选字段，缺失视为未撰写），管理台课程预览同字段。v0.15 M10 R3 落地：6 节全量 DSL 重写回灌完成（`dsl_version=2`），rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，通过线 8 不变，grounded 增「行情数值可核」子项）；producer 可读管线作业状态（GET 两条路由放开 producer，重试/取消仍限 operator/admin）。v0.14 M3b 呈现层 R2/R3 代码落地：§3.14 状态列更新——DSL v2（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 断言证明、K 线组件与管理台课程预览页已落地；新增 `GET /v1/admin/content/courses/{courseId}/preview`（operator/admin/producer，课程树草稿全量预览）与 `GET /v1/admin/content/courses/{courseId}/quotes`（operator/admin/producer，草稿行情可见，不限 published）；`POST /courses/{courseId}/quotes-sync` 角色放宽为 operator/admin/producer（producer 可触发行情回填）。v0.13 M3b 批次 B6——学员端节级学习契约落地：课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）。v0.13 M3b 批次 B5——§3.14 行情侧落地：新增 `POST /courses/{courseId}/quotes-sync`（operator/admin，同步执行腾讯前复权日 K，`(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes`（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `pending=true`；成交量单位手、成交额恒 null）；v0.12 M3b 批次 B4——§3.13 增 `POST|GET /courses/{courseId}/approvals` 审批签批（operator/admin 专属，producer 不可自签；签批 = 对课程内容指纹 sha256 签名），publish 新增硬门禁（无 final 签批 `409 approval_required`、内容变更后 `409 approval_stale`）并同步翻转节级案例股清单 draft→published；v0.11 M3b 批次 B3——§3.13 增 `POST /source-units/read` 完整证据读取（转写原文 + 视觉 + 关键帧签名 URL + 播放会话；全有或全无，409 unit_not_readable）；v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
+版本：v0.23（2026-11-07）
+状态：接口口径以需求 v0.25 §3（C13/C14/C15）与架构 v0.27 §6.5/§6.6 为准；冲突时先改那两份文档，再同步本文。v0.23 **生产体验线第三批**（A5 追加素材处理决策）——新增 §3.17：表 `production_material_choices`（迁移 023），端点 `POST /v1/admin/content/material-impact`（只读算影响面：A 必给 sectionId、素材不属于本课程 404；回 affectedSectionIds / affectedTitles / resetStepCount）与 `POST /v1/admin/content/material-choices`（落决策 + 受影响节九步重置为 pending、attempt 清零而回灌预算保留、A 场景把素材幂等挂进该节素材清单）；决策随 `GET .../production-board` 的 `materialChoices` 返回，不另开端点；权限 operator/admin/producer，只记状态不改正文。v0.22 **生产体验线第二批**（A4 生产任务状态机）——新增 §3.16 生产任务状态机与看板聚合：表 `production_tasks`（节 × 步骤 × 状态 × 预算，迁移 022），端点 `POST/GET /v1/admin/content/production-tasks`（按 `(courseId, sectionId, step)` 幂等 upsert）与 `GET /v1/admin/content/courses/{courseId}/production-board`（每节一行：已落库步骤 + 产出计数 + 最近评审结论）；权限 operator/admin/producer，云端只存状态不调度。v0.21 **生产体验线第一批**（A1 契约 + A2 云端落地）——新增 §3.15 素材入库直传通道（建素材 → 签发直传凭据 → 直传字节 → 落库确认 → 入队转写）：`POST .../upload-ticket` 签发 HMAC 签名凭据（绑定素材+字节数+摘要+有效期），`PUT .../source` 会话或凭据二选一，`POST .../upload-confirm` 核对已落字节数与摘要；producer 分权矩阵落地（建课程/章/知识点/节/测验/素材/直传/入队转写/读转写可做且写入恒为 draft，签批、发布、课程状态与素材归档仍限 operator/admin）；零新增表。v0.20 M3b 管理台补齐终审签批入口——课程编辑页新增「签批终审」按钮与签批状态签（此前 `POST/GET /v1/admin/content/courses/{courseId}/approvals` 只有 curl 路径，管理台「发布课程」按钮必然吃 `409 approval_required`/`approval_stale` 且无提示语），发布失败按机器可读错误码给中文指引；零新增端点、零新增表、零契约字段变更。v0.19 P0 收口第三项：**DSL v3 正文回灌**——TC-ZONGLUN 全 6 节由 `dsl_version=2` 升到 `dsl_version=3`（每节补 `:::think` 2 个 / `:::sidenote` 3–4 个 / `:::cards` 1 个，`:::warn` 四型变体 def/rule/misuse/risk 齐全且原 block body 逐字保留只加 `variant`；既有 grounded 内容零丢失，逐块核对 `[[unit:]]` 锚集、figureId、annotation 属性与 replay code 与回灌前一致），经生产端 dsh 真实链路 `cloud_section_article_write` 写入并逐节上报 `content.section_edit` 溯源——v3 契约首次在真实内容上跑通全链，零新增端点、零新增表、零契约字段变更。v0.18 P0 收口：新增 `DELETE /v1/admin/content/sections/{sectionId}/figures/{figureId}` 图示纠错删除端点（§3.14 状态 P0）——图示行与候选行同事务删除、候选字节文件一并清理，图示不在该节下 `404`，草稿/已发布均可删，删除改课程内容指纹（既有终审审批转 `approval_stale`）；补上生产端唯一的图示纠错回路，此前写错的图示只能人工清理。v0.17 M10 呈现层对齐原型：DSL 升 v3（新增 `:::think`/`:::sidenote`/`:::cards` 三块、`:::warn` 增 `def|rule|misuse|risk` 四型变体，服务端同时接受 1/2/3）；课件白名单扩至 11 类——`image-juxtaposition`（前后对比滑块）与 `branching-scenario`（分支情景练习）随 `spec_version=2` 冻结并落地（含 6 条断言证明器，迁移 021 扩 `widget_specs.type` CHECK 约束）；零新增端点、零新增表。v0.16 M10 S1 学员端富媒体课程页落地：零新增云端端点（复用 catalog v3 课程树/节详情/行情/按节播放会话），节载荷增 `summary` 与 `conceptNames`（可选字段，缺失视为未撰写），管理台课程预览同字段。v0.15 M10 R3 落地：6 节全量 DSL 重写回灌完成（`dsl_version=2`），rubric 阈值按 6 正 1 负样本标定（0.4.0→0.4.1，通过线 8 不变，grounded 增「行情数值可核」子项）；producer 可读管线作业状态（GET 两条路由放开 producer，重试/取消仍限 operator/admin）。v0.14 M3b 呈现层 R2/R3 代码落地：§3.14 状态列更新——DSL v2（`:::annotation`/`:::replay`）服务端校验与渲染、`bar-replay-decision` 断言证明、K 线组件与管理台课程预览页已落地；新增 `GET /v1/admin/content/courses/{courseId}/preview`（operator/admin/producer，课程树草稿全量预览）与 `GET /v1/admin/content/courses/{courseId}/quotes`（operator/admin/producer，草稿行情可见，不限 published）；`POST /courses/{courseId}/quotes-sync` 角色放宽为 operator/admin/producer（producer 可触发行情回填）。v0.13 M3b 批次 B6——学员端节级学习契约落地：课程存在已发布节正文时 `contractVersion=3` 且课程树附带节摘要；新增 `GET /v1/catalog/courses/{courseId}/sections/{sectionId}`（设备令牌；正文 + 课件 spec + 图示签名地址 + 案例股）与 `POST /v1/catalog/sections/{sectionId}/playback`（播放窗须完整落在该节已发布正文的 clip 窗内，越窗 `409 playback_window_invalid`）；渲染组件包外迁至 monorepo `packages/widgets`（`@trend/widgets`）。v0.13 M3b 批次 B5——§3.14 行情侧落地：新增 `POST /courses/{courseId}/quotes-sync`（operator/admin，同步执行腾讯前复权日 K，`(code, trade_date)` 幂等 upsert，落 `quotes_sync` 任务记录）与 `GET /v1/catalog/courses/{courseId}/quotes`（设备令牌，只放行已发布课程的已发布案例股，清单外代号过滤、未同步 `pending=true`；成交量单位手、成交额恒 null）；v0.12 M3b 批次 B4——§3.13 增 `POST|GET /courses/{courseId}/approvals` 审批签批（operator/admin 专属，producer 不可自签；签批 = 对课程内容指纹 sha256 签名），publish 新增硬门禁（无 final 签批 `409 approval_required`、内容变更后 `409 approval_stale`）并同步翻转节级案例股清单 draft→published；v0.11 M3b 批次 B3——§3.13 增 `POST /source-units/read` 完整证据读取（转写原文 + 视觉 + 关键帧签名 URL + 播放会话；全有或全无，409 unit_not_readable）；v0.10 M3b 批次 B2——§3.14 增补段落级 `[[unit:]]` 内联锚（label ≤50 字；锚 unitId 不在本课程 → 400 unit_anchor_unknown；引用集 = 扁平 citations ∪ 锚，去重计数）；v0.9 M3b 批次 B1——§3.13 生产接口角色放宽为 operator/admin/producer（producer 为生产端专用角色，不可发布/审批/管理账号）；v0.8 文档体系梳理——§3.14 标注各端点的 R1 实现状态并补 `playback-sessions` 端点、修正 keyframe 越界错误码（`sec_not_grounded`）、拆分学员行情接口与 admin 接口表、§6/§7 补 M10 验收用例与交付物、修正 §15 交叉引用。
 
 历史：v0.7（2026-11-05）§3.14 增补老师标注与逐根回放（DSL v2 草案 `:::annotation`/`:::replay`、`spec_version=2` 批次增 `bar-replay-decision`；零新端点零新表，验收用例与错误码见 §3.14，契约细节以架构 §6.6.1/§6.6.5 为准）；v0.6 新增教材呈现层与个股实盘接口（§3.14，M10：节级图示写入、案例股清单、行情缓存与学员行情查询；DSL 语法冻结于架构 §6.6.1）；v0.5 课件 spec schema v1 冻结（断言词表/生成器白名单见架构 §6.5.5，§3.13 补 `409 failed` 字段）；v0.4 新增语料级生产与交互课件接口（§3.13，M9，生产 Agent 循环在外部 `dsh-plugin-trend-producer`，本文仅为云端契约）；v0.3 新增门户与 AI 运营接口（§3.11、§3.12）。
 
@@ -1187,6 +1187,43 @@ GET  /v1/admin/content/courses/{courseId}/production-board   # 看板聚合
 
 **权限**：operator/admin/producer。任务行只描述「做到哪」，不含正文或产物内容；不参与发布门禁，也不进课程内容指纹。
 
+### 3.17 追加素材处理决策（M10+，P0）
+
+课程做到一半再拖一个视频进来时的 A/B/C 处理方式：**先算影响面（只读），人明确选之后才落库**。落库同时把受影响节的九步状态重置为待开始，让重跑可精确续跑。
+
+```http
+POST /v1/admin/content/material-impact     # 只读：算影响面，不落库
+POST /v1/admin/content/material-choices    # 落决策 + 重置受影响节的九步
+```
+
+请求/响应：
+
+```jsonc
+// POST /v1/admin/content/material-impact
+{ "courseId": "TC-ZONGLUN", "assetId": "asset_...", "choice": "A", "sectionId": "sec_..." }
+// 200 → { "choice": "A",
+//         "affectedSectionIds": [ "sec_..." ],
+//         "affectedTitles": [ "总论 1" ],
+//         "resetStepCount": 9 }
+
+// POST /v1/admin/content/material-choices
+{ "courseId": "TC-ZONGLUN", "assetId": "asset_...", "choice": "B", "note": "人的补充说明（可选）" }
+// 200 → { "choice": { "choiceId": "pmc_...", "courseId": "...", "assetId": "...",
+//                    "sectionId": null, "choice": "B",
+//                    "affectedSectionIds": [ "sec_...", "sec_..." ],
+//                    "note": null, "createdAt": 1760000000000 } }
+```
+
+**A/B/C 语义**：A=只补这节（`sectionId` 必填，素材幂等挂进该节 `source_asset_ids`）；B=重做课程骨架（受影响节=全课程未归档节）；C=只入库先不生产（不影响任何节）。
+
+**错误**：`choice` 非 A/B/C → `400`；A 缺 `sectionId` → `400`；素材不属于该课程或节不存在 → `404`；`assetId` 格式非法 → `400`。
+
+**重置语义**：受影响节的九步 `status` 置 `pending`、`attempt` 清零、`note` 清空，**`max_attempts` 回灌预算保留**；缺失的步骤行补建，保证看板网格完整、续跑位置精确。
+
+**读取**：决策随 `GET /v1/admin/content/courses/{courseId}/production-board` 的 `materialChoices` 字段返回（按 `created_at` 倒序），**不另开端点**。
+
+**权限**：operator/admin/producer。决策只记状态，不改正文，不参与发布门禁，不进课程内容指纹。
+
 ## 4. 数据与内容前置
 
 - M1 内容管线可产出带时间戳转写、章节/知识点切分、片段与文章草稿，经人工审核发布；真实样片与 ASR/内容 LLM/embedding 已完成验收。M8 起改为章节教材 + 图示，需另备至少 1 门样课验证章节教材与图片渲染。
@@ -1266,6 +1303,8 @@ GET  /v1/admin/content/courses/{courseId}/production-board   # 看板聚合
 | 课件 | 断言证明与白名单 | 缺证明 `409 assertion_unproven`；`type`/`spec_version` 越界 `400`；同 seed 重放一致 |
 | 生产任务 | 重复上报同一步骤 | 同一行 `taskId` 不变，`status`/`note` 覆盖；非法 `step`/`status` `400`；节不存在 `404` |
 | 生产任务 | 看板聚合 | 每节一行含已落库步骤（按九步顺序）、正文版本与产出计数；无评审 `reviewVerdict=null`；课程不存在 `404`；学员令牌 `403` |
+| 追加素材 | 影响面只读 | A 缺 `sectionId` `400`；素材不属于本课程 `404`；A/B/C 回对应受影响节与 `resetStepCount`；**不落库**（重复调用结果一致） |
+| 追加素材 | 决策落库与步骤重置 | 决策入库（`choiceId` `pmc_` 前缀）；受影响节九步置 `pending` 且缺失行补建；`attempt` 清零而回灌预算保留；A 场景素材进该节清单且重复落库不重复挂；C 场景不影响任何节；决策随看板 `materialChoices` 返回 |
 | 课件 | 三层校验收敛 | 失败回灌重写；3 次不过进人工待办；节教材 citations 非法 `400` |
 | 溯源 | provenance 入账本 | `source='producer'` 可筛选；缺字段 `400`；不含 prompt/正文 |
 | 呈现 | DSL 教材写入与引用完整性 | 容器块/属性/body 合法；未知图示 `400 figure_ref_unknown`；未知 unit `400 unit_ref_unknown`；片段窗不落 unit `400 clip_not_grounded` |
