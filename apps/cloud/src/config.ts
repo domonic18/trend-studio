@@ -98,6 +98,8 @@ export interface AppConfig {
   credentialEncryptionKey: string
   mediaLocalDir?: string
   metricsToken: string
+  /** 启动时是否自动跑迁移。生产由独立 migrate 步骤执行，这里关掉。 */
+  migrateOnStart: boolean
   sessionTtlSec: number
   inviteTtlSec: number
   bootstrapAdmin?: { username: string; password: string }
@@ -340,6 +342,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     credentialEncryptionKey,
     ...(mediaLocalDir === undefined ? {} : { mediaLocalDir }),
     metricsToken,
+    migrateOnStart: bool(env, 'MIGRATE_ON_START', true),
     sessionTtlSec: int(env, 'SESSION_TTL_SECONDS', 12 * 60 * 60, { min: 300 }),
     inviteTtlSec: int(env, 'INVITE_TTL_SECONDS', 7 * 24 * 60 * 60, { min: 3600 }),
     ...(bootstrapAdmin === undefined ? {} : { bootstrapAdmin }),
