@@ -1,0 +1,34 @@
+# 本机容器化运行：云端应用跑在容器里，数据库复用宿主上已有的
+# trend-cloud-db-5434 容器（宿主 5432 被 agent-sims 占用），Caddy 不参与
+# （本地直接走 127.0.0.1:3939）。
+#
+#   docker compose -f docker-compose.local.yml up -d --build
+#   门户 http://127.0.0.1:3939/ · 管理台 http://127.0.0.1:3939/admin/
+name: trend-coach-local
+
+services:
+  app:
+    build:
+      # 构建上下文是 monorepo 根目录（pnpm workspace），见 apps/cloud/Dockerfile。
+      context: ../..
+      dockerfile: apps/cloud/Dockerfile
+    image: trend-coach-cloud:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3939"
+      # 容器内 127.0.0.1 是容器自身，数据库走宿主映射端口。
+      DATABASE_URL: postgres://trend_coach:trend_coach@host.docker.internal:5434/trend_coach
+      PIPELINE_STORAGE_DIR: /data/storage
+      PIPELINE_HLS_DIR: /data/hls
+    ports:
+      - "3939:3939"
+    volumes:
+      # 管线工作区与 HLS 输出必须同一挂载点，HLS 才能原子 rename。
+      - ./workspace/pipeline:/data
+      - ./workspace/media:/media
+      # 下载制品与发布清单挂宿主目录：发布脚本写宿主这份，容器即刻能下，
+      # 不必重建镜像（清单每次请求现读）。
+      - ./dist/downloads:/app/apps/cloud/dist/downloads
+      - ./content:/app/apps/cloud/content

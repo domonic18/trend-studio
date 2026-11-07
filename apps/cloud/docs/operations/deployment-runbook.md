@@ -1,6 +1,6 @@
 # 部署 Runbook
 
-版本：v0.5（2026-11-01）
+版本：v0.6（2026-11-07）——镜像构建上下文改为 monorepo 根（pnpm workspace），新增本机容器化运行路径，发布插件包改为挂宿主目录即时生效
 
 面向运维与开发：把云端服务部署到一台 Linux 主机，覆盖 TLS、数据库迁移、备份恢复、媒体 CDN、视频管线与本地 staging 验证。监控见 [监控与告警](./monitoring.md)，数据与合规基线见 [合规与公测检查清单](./compliance.md)。
 
@@ -91,7 +91,7 @@ curl -fsS -X POST https://$DOMAIN/v1/auth/device/approve \
 ```
 
 - 内容管理控制台：浏览器打开 `https://$DOMAIN/admin/`，用 operator/admin 账号登录，管理课程、章节、知识点、文章与片段。镜像构建已包含 `web/admin` 并输出到 `dist/admin`；服务端只在 `dist/admin/index.html` 存在时挂载 `/admin/`，缺失时该路径 404 而 API 不受影响。前端是纯静态 SPA，会话令牌存 `sessionStorage`，关标签即失效，不使用 Cookie，因此 `/admin/` 反向代理无需额外鉴权配置（接口本身仍校验 Bearer）。
-- 公开门户：浏览器打开 `https://$DOMAIN/`。镜像构建同时输出预渲染门户 `dist/portal`（含 `routes.json`、`sitemap.xml`、`robots.txt`），服务端按精确路由托管，未知前端路径回落 SPA 壳；`/v1/*` 未命中仍为 JSON 404。门户注册/登录/个人中心会话同样存 `sessionStorage`。发布插件包时把 tgz 放入 `dist/downloads/`，并更新 `content/releases.json` 的版本、文件名、SHA-256、大小与说明；下载由服务端以 `attachment` 提供。
+- 公开门户：浏览器打开 `https://$DOMAIN/`。镜像构建同时输出预渲染门户 `dist/portal`（含 `routes.json`、`sitemap.xml`、`robots.txt`），服务端按精确路由托管，未知前端路径回落 SPA 壳；`/v1/*` 未命中仍为 JSON 404。门户注册/登录/个人中心会话同样存 `sessionStorage`。发布插件包时把 tgz 放入 `dist/downloads/`（已挂进容器），并更新 `content/releases.json` 的版本、文件名、SHA-256、大小与说明；两者都在宿主目录，发布后即刻生效、无需重建镜像或重启服务；下载由服务端以 `attachment` 提供。
 - 视频建课：「视频建课」页创建 draft 课程与素材 → 上传 → 处理 → 查看转写 → 生成 → 预览 → 应用到草稿 → 发布。发布前会按配置重建索引；索引失败返回 `503` 且课程保持 draft。源视频默认保留在 `workspace/pipeline/storage/sources/`，清理策略未冻结前不要手工删除 `sources/`。
 
 ## 4. TLS
@@ -195,6 +195,8 @@ IMAGE_TAG=2026-10-30 docker compose --env-file .env.prod -f docker-compose.prod.
 - 发布前：`npm run typecheck && npm test`、备份、确认迁移可向前兼容；`npm run build` 会同时产出服务端 `dist/server`、`dist/admin` 与预渲染门户 `dist/portal`（`PUBLIC_BASE_URL` 决定 canonical/sitemap）；用 `scripts/restore-drill.sh` 验证备份可导入。
 - 发布后：`/health`、一次设备授权/刷新、一次检索、一次播放会话、打开 `/admin/` 完成一次登录与内容读写，检查 5xx 与 P95；跑一次 `npm run loadtest` 对比基线。
 - 迁移已改变数据时，仅回滚镜像可能不兼容；优先前滚修复，否则按 §6 恢复。
+- **构建上下文是 monorepo 根目录**：镜像用 pnpm 装依赖（`workspace:*` 无法用 npm 解析），compose 里 `build.context` 指向仓库根、`dockerfile` 指向 `apps/cloud/Dockerfile`；命令仍在 `apps/cloud` 目录执行。
+- **发布插件包不必重建镜像**：宿主 `dist/downloads/` 与 `content/` 已挂进容器，发布脚本写宿主这份即可——制品立刻可下、清单立刻生效（清单每次请求现读），无需重启服务。
 
 ## 10. 本地 staging 验证
 
@@ -223,6 +225,18 @@ curl -kfsS https://localhost/health
 ```
 
 验证通过后即可把同一 Compose 指向真实域名与 CDN；两者差异只在 `.env.prod`。
+
+**本机快速路径**（开发机自测，不碰 Caddy 与公网域名）：
+
+```bash
+# 应用跑在容器里，数据库复用宿主上已有的 trend-cloud-db-5434 容器
+docker compose -f docker-compose.local.yml up -d --build
+curl -fsS http://127.0.0.1:3939/health
+```
+
+`docker-compose.local.yml` 只起 app：读 `apps/cloud/.env`，把 `DATABASE_URL` 指向
+`host.docker.internal:5434`（容器内 127.0.0.1 是容器自身），发布 3939 端口，
+并把 `workspace/pipeline`、`workspace/media`、`dist/downloads`、`content` 挂进容器。
 
 ## 11. 视频管线运维
 

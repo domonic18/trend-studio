@@ -44,6 +44,7 @@ npm run migrate          # 启动时也会自动执行
 npm run seed
 npm run dev              # 127.0.0.1:3939
 npm run dev:admin        # 管理端 Vite 开发服务器（/v1 代理到 3939）
+docker compose -f docker-compose.local.yml up -d --build   # 应用跑容器里（复用宿主 5434 的库）
 npm run loadtest         # 无依赖压测（默认 /health，阈值见 docs/operations/monitoring.md）
 scripts/restore-drill.sh # 备份导入独立演练库，不触碰业务库
 curl -X POST localhost:3939/v1/auth/session -H 'content-type: application/json' \
