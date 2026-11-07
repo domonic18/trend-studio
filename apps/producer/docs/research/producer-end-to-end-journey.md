@@ -434,6 +434,14 @@ A6 ✅ 云端管线**边转写边发布**（`worker.ts` 的 chunk runner 每转�
 （`failed`/`archived` 仍 `409 unit_not_readable`）；生产端播放会话增 `allowPartial`
 （**学员端不变**）；生产端 `understanding.ts` 翻页改按「本页读满 limit」终止（不拿会移动的 `total` 当终点）；
 `transcript-understanding` 与 `material-ingest` 两个技能包同步增量产出纪律。
+A7 ✅ 管理台「生产看板」页（`/admin/courses/:courseId/board`）：每节一行九步状态 + 产出计数
+（正文版本 / 课件 / 图示 / 案例股）+ 最近评审结论 + **当前步**（口径与生产端引擎一致：九步里第一个未
+`done` 的，含尚未落库任务的步）+ 最近的追加素材决策；看板页带「同步行情」按钮
+（`POST .../quotes-sync`，只写行情缓存不改内容状态，故对 producer 开放；`upserted=0` 时提示
+「可能还没有案例股或行情源暂无数据」而不当成功报）；签批与发布按钮**对 producer 直接隐藏**
+（分权不变，不靠点下去吃 403 才发现没权限）；新增 `lib/productionSteps.ts`（九步契约副本，
+浏览器端不引 zod）与 `lib/productionErrors.ts`（素材 / 任务 / 行情三类失败的可执行中文指引）；
+顺带补上素材与任务表此前**完全没有 onError** 的静默失败（上传 / 处理 / 生成 / 归档 / 取消 / 重试）。
 **引擎在本地、云端只存状态**——顺序/预算/影响面规则不落云端，「云 DB 即 checkpoint」不变。
 
 ### 12.3 每批次的完成定义
