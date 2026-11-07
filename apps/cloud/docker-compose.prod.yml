@@ -22,7 +22,9 @@ services:
 
   app:
     build:
-      context: .
+      # 构建上下文是 monorepo 根目录（pnpm workspace），见 apps/cloud/Dockerfile。
+      context: ../..
+      dockerfile: apps/cloud/Dockerfile
     image: trend-coach-cloud:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env.prod
@@ -40,6 +42,10 @@ services:
       - ${MEDIA_HOST_DIR:-./workspace/media}:/media
       # 管线工作区与 HLS 输出必须在同一挂载点内，HLS 才能原子 rename。
       - ./workspace/pipeline:/data
+      # 下载制品与发布清单挂宿主目录：发布脚本写宿主这份，容器即刻能下、
+      # 清单即刻生效，不必重建镜像也不必重启服务（清单每次请求现读）。
+      - ./dist/downloads:/app/apps/cloud/dist/downloads
+      - ./content:/app/apps/cloud/content
     networks: [edge, backend]
 
   caddy:

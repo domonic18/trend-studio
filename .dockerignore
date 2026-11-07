@@ -1,0 +1,28 @@
+# 构建上下文是 monorepo 根目录（见 apps/cloud/Dockerfile）。
+# 依赖与构建产物不进镜像：镜像内自建。排除项一律按包根锚定——源码目录里
+# 也有 media/、test/、docs/ 这类同名目录，通配全仓会把源码一起排掉。
+**/node_modules
+/apps/*/dist
+/apps/*/lib
+/apps/*/build
+/apps/*/coverage
+/apps/*/docs
+/apps/*/test
+/apps/*/openapi
+/apps/*/deploy
+/apps/*/media
+/apps/*/workspace
+/packages/*/dist
+/packages/*/lib
+/packages/*/build
+/packages/*/coverage
+/packages/*/docs
+/packages/*/test
+/workspace
+**/.turbo
+.git
+.github
+**/*.tgz
+**/*.log
+**/.env
+**/.env.*
