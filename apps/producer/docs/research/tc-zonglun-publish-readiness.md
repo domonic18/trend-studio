@@ -139,6 +139,9 @@ curl -X POST "$CLOUD_BASE/v1/admin/content/courses/TC-ZONGLUN/publish" \
 - **门禁② 复评入账本**（`content.rubric_review`）：总论 2（approve）、阻尼运动（approve）。两节均按
   rubric 0.4.1 逐条核过行情数值可核，并复算派生指标——000722 于 2026-09-04 的 M60＝最近 60 个交易日
   收盘均值 12.9533≈课件 12.95；002079 于 2026-07-14 的 M60＝12.5848≈正文 12.585。
+- **补报溯源**（并发会话落库时其令牌已到期而中断的两件）：总论 3 修正版
+  `wgt_95cba663774745ff`（image-juxtaposition）与 `wgt_e7e73107b0e3e412`（branching-scenario）
+  已按 `content.widget_spec` 补齐账本，v3 试点记录里的「待补报溯源清单」至此清空。
 
 **代码侧**：
 
