@@ -56,6 +56,7 @@ export function buildManagedEntries(config) {
         consoleTokenRef: tokenRef,
         understanding: {
           apiKeyEnv: model.keyRef,
+          api: model.api,
           baseUrl: model.baseUrl,
           model: model.id,
           maxTokens: model.maxTokens,
@@ -153,6 +154,10 @@ export function readManagedConfig(file) {
       baseUrl: String(producerConfig.baseUrl ?? ''),
       environment: String(producerConfig.environment ?? ''),
       tokenRef: String(producerConfig.consoleTokenRef ?? ''),
+    },
+    understanding: {
+      api: String(producerConfig.understanding?.api ?? ''),
+      baseUrl: String(producerConfig.understanding?.baseUrl ?? ''),
     },
     skillsDirs: skills?.config?.customSkillDirs ?? [],
   }

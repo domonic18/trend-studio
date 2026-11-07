@@ -1,6 +1,6 @@
 /** 装机向导的纯函数单测：模型位唯一、patch 合并不吞用户条目、凭据库读写保形。 */
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -9,6 +9,7 @@ import YAML from 'yaml'
 import { buildManagedEntries, mergePatchEntries, PLATFORM_BUNDLES, readManagedConfig, readPatch, renderPatch, writeProfilePackage } from '../scripts/setup/profile.mjs'
 import { readRef, writeRef } from '../scripts/setup/credentials.mjs'
 import { resolveInstallContext } from '../scripts/setup/context.mjs'
+import { parseArgs } from '../scripts/setup/args.mjs'
 import { installSkills, listSkills } from '../scripts/setup/skills.mjs'
 
 const producerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -138,6 +139,17 @@ test('凭据库：文件不存在时建一份 version 1 的新库', () => {
   assert.equal(YAML.parse(readFileSync(file, 'utf8')).version, 1)
 })
 
+test('凭据库：写完权限收紧到 600——dsh 拒绝加载他人可读的凭据库', () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'trend-cred-')), '.credentials.yaml')
+  writeRef(file, 'TREND_PRODUCER_MODEL_KEY', 'sk-new')
+  assert.equal(statSync(file).mode & 0o777, 0o600, '新建的库不能是 644')
+
+  // 已有文件权限不会被 writeFileSync 改掉——显式收紧必须覆盖到。
+  chmodSync(file, 0o644)
+  writeRef(file, 'TREND_PRODUCER_CONSOLE_TOKEN', 'tok-123')
+  assert.equal(statSync(file).mode & 0o777, 0o600, '旧库的宽松权限要收紧')
+})
+
 /** 造一个解包后的安装包目录：只有 package.json 与 skills，没有仓库里的 pack.mjs。 */
 function fakeUnpackedPackage(root, version = '0.1.4') {
   const dir = path.join(root, 'package')
@@ -232,4 +244,23 @@ test('工艺包：复制进 profile，并清掉上次留下的旧包', () => {
 test('工艺包：源目录没有工艺包时报错', () => {
   const empty = mkdtempSync(path.join(tmpdir(), 'trend-empty-'))
   assert.throws(() => installSkills(empty, path.join(empty, 'target')), /没有工艺包/)
+})
+
+test('命令行：开关不吃掉后面的参数', () => {
+  const options = parseArgs(
+    ['all', '--profile', 'trend-producer', '--non-interactive', '--model-api', 'anthropic-messages'],
+    { profile: 'trend-producer', nonInteractive: false },
+  )
+  assert.equal(options.nonInteractive, true)
+  assert.equal(options['model-api'], 'anthropic-messages', '开关后面紧跟的参数不能被吞')
+  assert.equal(options.profile, 'trend-producer')
+})
+
+test('命令行：取值参数吃下一个 argv，等号写法也认', () => {
+  const options = parseArgs(
+    ['all', '--model-base-url', 'https://api.minimaxi.com/anthropic', '--model-id=MiniMax-M3.1-Flash'],
+    { profile: 'trend-producer', nonInteractive: false },
+  )
+  assert.equal(options['model-base-url'], 'https://api.minimaxi.com/anthropic')
+  assert.equal(options['model-id'], 'MiniMax-M3.1-Flash')
 })

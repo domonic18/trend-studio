@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ask, askSecret } from './setup/prompt.mjs'
+import { parseArgs } from './setup/args.mjs'
 import { writeRef } from './setup/credentials.mjs'
 import { buildManagedEntries, mergePatchEntries, readManagedConfig, readPatch, writePatch, writeProfilePackage } from './setup/profile.mjs'
 import { credentialsFile, dshHome, profileDir, producerDir } from './setup/paths.mjs'
@@ -27,20 +28,7 @@ const DEFAULT_CLOUD = 'http://127.0.0.1:3939'
 const DEFAULT_MODEL_KEY_REF = 'TREND_PRODUCER_MODEL_KEY'
 const DEFAULT_TOKEN_REF = 'TREND_PRODUCER_CONSOLE_TOKEN'
 
-function parseArgs(argv) {
-  const options = { profile: DEFAULT_PROFILE, nonInteractive: false }
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]
-    if (!arg.startsWith('--')) continue
-    const [flag, inline] = arg.slice(2).split('=', 2)
-    const value = inline ?? argv[++i] ?? ''
-    if (flag === 'profile') options.profile = value
-    else if (flag === 'non-interactive') options.nonInteractive = true
-    else options[flag] = value
-  }
-  return options
-}
-
+/** 不带值的开关：出现即真，不能把后面的参数吞掉。 */
 function pluginManifest() {
   return JSON.parse(readFileSync(path.join(producerDir, 'package.json'), 'utf8'))
 }
@@ -223,7 +211,7 @@ async function doctor(options) {
 async function main() {
   const argv = process.argv.slice(2)
   const command = argv[0] !== undefined && !argv[0].startsWith('--') ? argv[0] : 'all'
-  const options = parseArgs(argv)
+  const options = parseArgs(argv, { profile: DEFAULT_PROFILE, nonInteractive: false })
   switch (command) {
     case 'install':
       await install(options)

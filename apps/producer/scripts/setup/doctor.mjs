@@ -2,10 +2,10 @@
  * 装机自检：装完当场验，不等到跑到一半才 403。
  * 每项独立采集、独立报告——一项不过不掩盖其他项。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readRef } from './credentials.mjs'
+import { CREDENTIALS_MODE, readRef } from './credentials.mjs'
 import { health, session } from './cloud.mjs'
 import { probeModel } from './model.mjs'
 import { readManagedConfig } from './profile.mjs'
@@ -51,6 +51,18 @@ export async function runDoctor(input) {
     ? readManagedConfig(input.patchFile)
     : { model: null, cloud: { baseUrl: '', environment: '', tokenRef: '' }, skillsDirs: [] }
 
+  // ⓪ 凭据库权限：dsh 凭据服务拒绝加载「所有者之外可读」的库，权限不对
+  // 就等于密钥与令牌都没装——而且启动才报错，必须当场看见。
+  if (!existsSync(input.credentialsFile)) {
+    checks.push({ id: 'credentials_mode', label: '凭据库权限', status: 'fail', detail: `凭据库不存在：${input.credentialsFile}——重跑 setup install` })
+  } else {
+    const mode = statSync(input.credentialsFile).mode & 0o777
+    const othersReadable = mode & 0o077
+    checks.push(othersReadable === 0
+      ? { id: 'credentials_mode', label: '凭据库权限', status: 'pass', detail: `${mode.toString(8).padStart(3, '0')}（仅所有者可读写）` }
+      : { id: 'credentials_mode', label: '凭据库权限', status: 'fail', detail: `权限是 ${mode.toString(8).padStart(3, '0')}——dsh 拒绝加载，跑：chmod 600 ${input.credentialsFile}` })
+  }
+
   // ① 插件版本：装进 profile 的版本必须等于安装包版本，否则行为与源码不一致
   const installedManifest = path.join(input.profileDir, 'node_modules', input.pluginName, 'package.json')
   const installedVersion = existsSync(installedManifest)
@@ -86,9 +98,17 @@ export async function runDoctor(input) {
   // ③ 模型位唯一：agent 与理解阶段共用一个 provider + 一个 model
   const model = managed.model
   const single = model !== null && model.id !== ''
-  checks.push(single
-    ? { id: 'model_slot', label: '模型位', status: 'pass', detail: `${model.provider}/${model.id}（agent 与理解阶段共用）` }
-    : { id: 'model_slot', label: '模型位', status: 'fail', detail: 'profile 里没有配 llm-pi-ai provider——重跑 setup install' })
+  const understandingApi = managed.understanding?.api ?? ''
+  const providerApi = model?.api ?? ''
+  // 协议不一致 = 理解阶段会拿 OpenAI 的报文去打 Anthropic 端点，直接 404。
+  // 缺 api 视作插件默认值 openai-completions。
+  const effectiveUnderstandingApi = understandingApi === '' ? 'openai-completions' : understandingApi
+  const protocolMismatch = single && providerApi !== '' && effectiveUnderstandingApi !== providerApi
+  checks.push(!single
+    ? { id: 'model_slot', label: '模型位', status: 'fail', detail: 'profile 里没有配 llm-pi-ai provider——重跑 setup install' }
+    : protocolMismatch
+      ? { id: 'model_slot', label: '模型位', status: 'fail', detail: `理解阶段协议是 ${understandingApi === '' ? 'openai-completions（未写）' : understandingApi}，生产模型是 ${providerApi}——必须同一个协议，重跑 setup install` }
+      : { id: 'model_slot', label: '模型位', status: 'pass', detail: `${model.provider}/${model.id}（agent 与理解阶段共用，协议 ${providerApi}）` })
 
   // ④ 模型可达
   if (model === null || model.id === '') {

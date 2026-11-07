@@ -9,9 +9,15 @@ export type Environment = (typeof ENVIRONMENTS)[number]
 export const LOG_LEVELS = ['silent', 'error', 'warn', 'info', 'debug'] as const
 export type LogLevel = (typeof LOG_LEVELS)[number]
 
+/** 视觉模型的协议形态——与 pi-ai provider 的 `api` 同一套取值。 */
+export const MODEL_APIS = ['openai-completions', 'anthropic-messages'] as const
+export type ModelApi = (typeof MODEL_APIS)[number]
+
 export interface UnderstandingConfig {
   /** 生产端视觉模型密钥的环境变量名（dsh .env / 启动环境注入）。 */
   apiKeyEnv: string
+  /** 协议形态：OpenAI 兼容走 `/chat/completions`，Anthropic 走 `/v1/messages`。 */
+  api: ModelApi
   baseUrl: string
   model: string
   /** 强制 thinking 模型：预算给小必截断（选型实测红线）。 */
@@ -56,6 +62,7 @@ export const Config = Schema.object({
   logLevel: Schema.string().default(logLevelOrDefault()),
   understanding: Schema.object({
     apiKeyEnv: Schema.string().default('MINIMAX_API_KEY'),
+    api: Schema.union(MODEL_APIS.map(api => Schema.const(api))).default('openai-completions'),
     baseUrl: Schema.string().default('https://api.minimaxi.com/v1'),
     model: Schema.string().default('MiniMax-M3.1-Flash'),
     maxTokens: Schema.number().default(32_768),

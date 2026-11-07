@@ -5,9 +5,12 @@
  * 装机向导负责写，用户不碰配置文件。写入用 YAML 文档 API，保留文件里
  * 其他条目（其他 profile 的密钥、records）的原样排布。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import YAML from 'yaml'
+
+/** dsh 凭据服务拒绝加载「所有者之外可读」的凭据库——权限不对等于没装。 */
+export const CREDENTIALS_MODE = 0o600
 
 export function readRef(file, ref) {
   if (!existsSync(file)) return null
@@ -23,7 +26,9 @@ export function writeRef(file, ref, value) {
   const doc = YAML.parseDocument(text)
   doc.set('version', 1)
   doc.setIn(['refs', ref], value)
-  writeFileSync(file, doc.toString(), 'utf8')
+  writeFileSync(file, doc.toString(), { encoding: 'utf8', mode: CREDENTIALS_MODE })
+  // 已有文件的权限不会被 writeFileSync 改掉，得显式收紧。
+  chmodSync(file, CREDENTIALS_MODE)
 }
 
 /** 只看 ref 名是否已配置（不取值，避免值进日志）。 */

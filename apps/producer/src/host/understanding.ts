@@ -60,30 +60,115 @@ interface VlmResponse {
   outTokens: number
 }
 
+/** 中立的多模态输入片段——两种协议的线格式由各自适配层展开。 */
+export interface VlmPart {
+  text?: string
+  imageDataUrl?: string
+  label?: string
+}
+
 function timeoutSignal(ms: number, extra?: AbortSignal): AbortSignal {
   return extra === undefined ? AbortSignal.timeout(ms) : AbortSignal.any([extra, AbortSignal.timeout(ms)])
 }
 
-async function callVlm(
+/** `data:image/jpeg;base64,xxx` → Anthropic 要的 `{ media_type, data }`。 */
+function splitDataUrl(dataUrl: string): { mediaType: string; data: string } {
+  const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl)
+  if (match === null) throw new Error('帧图不是 base64 data URL')
+  return { mediaType: match[1], data: match[2] }
+}
+
+/** Anthropic 消息体：system 独立字段，图片走 base64 source 块。 */
+function anthropicContent(parts: VlmPart[]): Record<string, unknown>[] {
+  return parts.flatMap(part => {
+    if (part.imageDataUrl === undefined) return [{ type: 'text', text: part.text ?? '' }]
+    const { mediaType, data } = splitDataUrl(part.imageDataUrl)
+    return [
+      ...(part.label === undefined ? [] : [{ type: 'text', text: part.label }]),
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
+    ]
+  })
+}
+
+/** OpenAI 兼容消息体：图片走 image_url 块。 */
+function openaiContent(parts: VlmPart[]): Record<string, unknown>[] {
+  return parts.map(part => part.imageDataUrl === undefined
+    ? { type: 'text', text: part.text ?? '' }
+    : { type: 'image_url', image_url: { url: part.imageDataUrl }, text: part.label })
+}
+
+/**
+ * 按协议拼出视觉模型请求。
+ *
+ * 两种协议的路径与鉴权头都不一样：OpenAI 兼容走 `/chat/completions` + `Bearer`，
+ * Anthropic 走 `/v1/messages` + `x-api-key`。**拿错协议去打会直接 404**——
+ * 装机向导允许两种协议，必须按配置走，不能写死一种。
+ */
+export function buildVlmRequest(
   config: UnderstandingConfig,
   apiKey: string,
-  body: Record<string, unknown>,
-  signal?: AbortSignal,
-): Promise<VlmResponse> {
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
-    signal: timeoutSignal(300_000, signal),
-  })
-  const payload = await response.json().catch(() => undefined) as unknown
-  if (!response.ok) {
-    const { code, message } = errorPayload(payload)
-    throw new UpstreamError(response.status, code, {}, message === '' ? `视觉模型 HTTP ${response.status}` : message)
+  parts: VlmPart[],
+  system: string,
+): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
+  const base = config.baseUrl.trim().replace(/\/+$/, '')
+  if (config.api === 'anthropic-messages') {
+    return {
+      url: `${base}/v1/messages`,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: {
+        model: config.model,
+        max_tokens: config.maxTokens,
+        system,
+        messages: [{ role: 'user', content: anthropicContent(parts) }],
+      },
+    }
   }
+  return {
+    url: `${base}/chat/completions`,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+    body: {
+      model: config.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: openaiContent(parts) },
+      ],
+      temperature: 0.2,
+      max_tokens: config.maxTokens,
+    },
+  }
+}
+
+/** 按协议解析视觉模型响应。 */
+export function parseVlmResponse(config: UnderstandingConfig, payload: unknown): VlmResponse {
   const record = payload as {
     choices?: { message?: { content?: string | null }; finish_reason?: string }[]
-    usage?: { prompt_tokens?: number; completion_tokens?: number }
+    content?: { type?: string; text?: string }[]
+    stop_reason?: string
+    usage?: {
+      prompt_tokens?: number
+      completion_tokens?: number
+      input_tokens?: number
+      output_tokens?: number
+    }
+  }
+  if (config.api === 'anthropic-messages') {
+    // Anthropic 会先回 thinking 块再回 text 块——只取 text，别把思考当答案。
+    const text = (record.content ?? [])
+      .filter(block => block.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text as string)
+      .join('')
+    if (text === '') {
+      throw new Error(`视觉模型返回空内容 stop=${record.stop_reason ?? 'unknown'}`)
+    }
+    return {
+      content: text,
+      inTokens: record.usage?.input_tokens ?? 0,
+      outTokens: record.usage?.output_tokens ?? 0,
+    }
   }
   const choice = record.choices?.[0]
   const content = choice?.message?.content
@@ -95,6 +180,25 @@ async function callVlm(
     inTokens: record.usage?.prompt_tokens ?? 0,
     outTokens: record.usage?.completion_tokens ?? 0,
   }
+}
+
+async function callVlm(
+  request: { url: string; headers: Record<string, string>; body: Record<string, unknown> },
+  config: UnderstandingConfig,
+  signal?: AbortSignal,
+): Promise<VlmResponse> {
+  const response = await fetch(request.url, {
+    method: 'POST',
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+    signal: timeoutSignal(300_000, signal),
+  })
+  const payload = await response.json().catch(() => undefined) as unknown
+  if (!response.ok) {
+    const { code, message } = errorPayload(payload)
+    throw new UpstreamError(response.status, code, {}, message === '' ? `视觉模型 HTTP ${response.status}` : message)
+  }
+  return parseVlmResponse(config, payload)
 }
 
 function extractUnits(text: string): unknown[] {
@@ -239,28 +343,20 @@ export class UnderstandingRunner {
   private async runChunk(assetId: string, todo: ChunkTodo, signal?: AbortSignal): Promise<ChunkResult & { unitIds: string[] }> {
     const frames = await fetchFrameDataUrls(this.client, assetId, todo, this.config.frameEveryNth, signal)
     const transcript = await this.transcriptText(assetId, todo, signal)
-    const content: Record<string, unknown>[] = [
-      { type: 'text', text: `转写文本（时段 ${todo.startMs}–${todo.endMs} 毫秒）：\n${transcript}\n\n关键帧序列：` },
-      ...frames.map(frame => ({ type: 'image_url', image_url: { url: frame.dataUrl }, text: frame.label })),
+    const parts: VlmPart[] = [
+      { text: `转写文本（时段 ${todo.startMs}–${todo.endMs} 毫秒）：\n${transcript}\n\n关键帧序列：` },
+      ...frames.map(frame => ({ imageDataUrl: frame.dataUrl, label: frame.label })),
     ]
-    const body = {
-      model: this.config.model,
-      messages: [
-        { role: 'system', content: UNDERSTANDING_SYSTEM_PROMPT },
-        { role: 'user', content },
-      ],
-      temperature: 0.2,
-      max_tokens: this.config.maxTokens,
-    }
 
     let lastError = ''
     const apiKey = await this.resolveApiKey(this.config.apiKeyEnv)
     if (apiKey === undefined || apiKey === '') {
       throw new Error(`视觉模型密钥缺失：凭据库里没有 ${this.config.apiKeyEnv}——跑 setup install 写入模型密钥`)
     }
+    const request = buildVlmRequest(this.config, apiKey, parts, UNDERSTANDING_SYSTEM_PROMPT)
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const started = Date.now()
-      const response = await callVlm(this.config, apiKey, body, signal)
+      const response = await callVlm(request, this.config, signal)
       try {
         const units = normalizeUnits(extractUnits(response.content), assetId, this.config.model, todo)
         const saved = await this.client.writeSourceUnits({ units }, signal)
@@ -288,7 +384,7 @@ export class UnderstandingRunner {
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error)
         // 一次修正回灌：把校验错误喂回去重写（对齐三层校验收敛规则）
-        ;(body.messages as Record<string, unknown>[]).push({
+        ;(request.body.messages as Record<string, unknown>[]).push({
           role: 'assistant',
           content: response.content,
         }, {
