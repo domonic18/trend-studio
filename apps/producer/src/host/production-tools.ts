@@ -25,6 +25,9 @@ const taskSchema = {
   type: 'object',
   properties: {
     taskId: { type: 'string', required: true },
+    // 云端 productionTaskDto 带 courseId；漏声明会让整个读取结果被
+    // additionalProperties:false 判为非法——工具表现为「看板读不出来」。
+    courseId: { type: 'string', required: true },
     sectionId: { type: 'string', required: true },
     step: { type: 'string', required: true },
     status: { type: 'string', required: true },
@@ -242,6 +245,7 @@ export function registerProductionTools(ctx: Context, client: TrendCloudClient):
               type: 'object',
               properties: {
                 sectionId: { type: 'string', required: true },
+                chapterId: { type: 'string', required: true },
                 title: { type: 'string', required: true },
                 position: { type: 'number', required: true },
                 steps: { type: 'array', required: true, items: taskSchema },
@@ -261,6 +265,7 @@ export function registerProductionTools(ctx: Context, client: TrendCloudClient):
               type: 'object',
               properties: {
                 choiceId: { type: 'string', required: true },
+                courseId: { type: 'string', required: true },
                 assetId: { type: 'string', required: true },
                 sectionId: nullableString,
                 choice: { type: 'string', required: true },

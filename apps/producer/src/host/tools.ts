@@ -409,6 +409,9 @@ export function registerCloudTools(
               additionalProperties: false,
             },
           },
+          // 云端固定回这个字段：素材仍在转写时为 true。漏声明会让整个结果被
+          // additionalProperties:false 判为非法——工具表现为「读证据报 schema 错」。
+          partial: { type: 'boolean' },
         },
         additionalProperties: false,
       },
