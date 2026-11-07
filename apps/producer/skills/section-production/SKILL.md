@@ -27,6 +27,26 @@ version: 0.7.0
 - 回放课件先于正文：正文 `:::replay` 按 `code` 解析本节唯一一份回放课件。
 - 图示先于正文：正文 `:::figure figureId=...` 校验该 figure 属于本节。
 
+## 流程向导（九步速查）
+
+下表由契约真相源（`@trend/contracts` 的 `PRODUCTION_STEP_GUIDE`）渲染，与管理台「生产看板」
+的流程向导步骤卡是**同一份数据**——人看到的卡片与你看到的这张表不会漂移。
+改步骤说明要改契约再重渲染（`node scripts/render-flow-guide.mjs`），不要直接改这张表。
+
+<!-- flow-guide:start -->
+| 步 | 步骤 | 目标 | 工具 | 常见坑 |
+|---|---|---|---|---|
+| 1 | 案例股 | 落本节案例股清单（含周期口径），供正文股票锚与行情同步取数。 | `cloud_case_stocks_write` | 清单没落库就写正文 → 400 stock_not_in_list（股票锚校验本节清单）；每只股票都要定 period（1d 日线 / 1w 周线）：日线源只回溯到 2024-03 前后，讲更早年份必须写 1w |
+| 2 | 行情同步 | 同步课程级行情缓存（按案例股代码取日/周 K），让标注与回放判断点有真实交易日可用。 | `cloud_quotes_sync` | 案例股没落库就同步不到行情——本步依赖第 1 步；同步是幂等的，可重跑；跑完不保证有数据，要看第 3 步读回多少根 |
+| 3 | 行情读回 | 从缓存读回 bar，正文里的价格与成交量只能取自这次读回。 | `cloud_quotes_read` | 标注日期与判断点日期只能从返回的 tradeDate 里挑——视频里出现的日期未必落在缓存窗口内；禁止绕道外部行情源取价：渲染层画的就是这份缓存，数字对不上等于正文没 grounded |
+| 4 | 图示 | 按 diagram-authoring 选型落图示拿到 figureId，供正文 :::figure 引用。 | `cloud_figure_write`、`cloud_figure_delete` | 图示没落库就写正文 → 400 figure_ref_unknown；超配额（diagram ≤2、keyframe ≤6）→ 409 figure_quota_exceeded；写错了要删而不是覆盖：cloud_figure_delete 不可恢复，正文若已引用该 id 要一并改 |
+| 5 | 回放课件 | 落本节唯一一份回放课件（bar-replay-decision），正文 :::replay 按 code 解析它。 | `cloud_widget_write`、`cloud_widget_delete` | 课件没落库就写正文 → 400 replay_widget_unknown；同 code 两份 → 400 replay_widget_ambiguous；spec 的 period 与 overlays（均线位）必须与正文所讲周期、均线口径一致 |
+| 6 | 正文 | 写 grounded 正文（Markdown + 富文本 DSL 容器块），段落级证据用 [[unit:]] 锚挂住。 | `cloud_section_article_write` | 引用未落库的图示 / 回放课件 / 非交易日标注会被拒（400），先补前序步骤；锚的 unitId 必须属于本课程，否则 400 unit_anchor_unknown；没有依据的具体说法不得落笔 |
+| 7 | 其余课件 | 补齐其余白名单课件，并让每份课件的断言全部证明通过。 | `cloud_widget_write` | 409 assertion_unproven：按返回的 failed 断言改，不要盲改 spec；image-juxtaposition 可能引用本节 figureId，须等第 4 步图示落库后再写 |
+| 8 | 评审 | 读回本节成品（教材 + 课件 + 图示）按 quality-rubric 打分，结论落 approve / reject。 | `cloud_section_preview` | 不靠记忆评分——先读回成品再打分；reject 重写后要把重写的那一步重新上报（attempt 自增），不能原地改 note 假装通过；≤3 轮仍不过转人工 |
+| 9 | 溯源 | 上报本节的溯源记录：content.section_draft / content.widget_spec / content.rubric_review。 | `cloud_provenance` | token 与 latency 严禁估算——拿不到就留空，只报可核字段；溯源是发布门禁的一环，漏报会让内容无法正常发布 |
+<!-- flow-guide:end -->
+
 ## 九步状态机（每步都要上报，引擎强制顺序）
 
 这九步同时是**生产任务状态机**的九步，`cloud_production_task_write` 的 `step` 枚举：
