@@ -5195,7 +5195,7 @@ paths:
   /v1/admin/content/media-assets/{assetId}/source:
     put:
       summary: 上传媒体源文件（operator/admin/producer）
-      description: 流式写入 application/octet-stream；可选 x-file-sha256 校验；换源会清理旧转写。既可带会话，也可只带签名凭据（expires/size/sig 查询参数 + x-file-sha256 头）。
+      description: 流式写入 application/octet-stream；可选 x-file-sha256 校验；换源会清理旧转写。带签名凭据（expires/size/sig 查询参数 + x-file-sha256 头）时以凭据为准——凭据无效即 401，会话不能顶替；不带凭据则按会话鉴权。
       security:
         - sessionAuth: []
         - uploadTicketAuth: []

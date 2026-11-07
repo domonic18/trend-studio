@@ -87,31 +87,35 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
   const uploadAuth = new WeakMap<FastifyRequest, UploadAuth>()
 
   const resolveUploadAuth = async (request: FastifyRequest): Promise<UploadAuth | null> => {
+    const query = asObject(request.query)
+    const sig = typeof query.sig === 'string' ? query.sig : undefined
+    // 带凭据即以凭据为准：会话不能顶替凭据，否则直传绑定的字节数形同虚设。
+    if (sig !== undefined) {
+      const assetId = parseAssetId(String((request.params as { assetId: string }).assetId))
+      const sizeBytes = Number(query.size)
+      const header = request.headers['x-file-sha256']
+      const sha256 = parseSha256Header(Array.isArray(header) ? header[0] : header)
+      if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sha256 === undefined) return null
+      const ok = verifyUploadTicket(
+        config.mediaSigningSecret,
+        assetId,
+        sizeBytes,
+        sha256,
+        query.expires,
+        sig,
+      )
+      if (!ok) return null
+      if (!limiter.take(`pipeline:ticket:${assetId}`, config.rateLimitPipelinePerMinute)) {
+        throw tooManyRequests()
+      }
+      return { kind: 'ticket', sizeBytes }
+    }
     try {
       await requireSession(request, accounts, ['operator', 'admin', 'producer'])
       return { kind: 'session' }
     } catch {
-      // 无有效会话，落到签名凭据分支。
+      return null
     }
-    const query = asObject(request.query)
-    const assetId = parseAssetId(String((request.params as { assetId: string }).assetId))
-    const sizeBytes = Number(query.size)
-    const header = request.headers['x-file-sha256']
-    const sha256 = parseSha256Header(Array.isArray(header) ? header[0] : header)
-    if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sha256 === undefined) return null
-    const ok = verifyUploadTicket(
-      config.mediaSigningSecret,
-      assetId,
-      sizeBytes,
-      sha256,
-      query.expires,
-      typeof query.sig === 'string' ? query.sig : undefined,
-    )
-    if (!ok) return null
-    if (!limiter.take(`pipeline:ticket:${assetId}`, config.rateLimitPipelinePerMinute)) {
-      throw tooManyRequests()
-    }
-    return { kind: 'ticket', sizeBytes }
   }
 
   app.get('/v1/admin/content/media-assets', async request => {

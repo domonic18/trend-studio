@@ -780,6 +780,17 @@ test('管线：签名直传通道（ticket → PUT → confirm）', async () => 
   })
   assert.equal(forgedPut.statusCode, 401, forgedPut.body)
 
+  // 带凭据即以凭据为准：会话有效也不能顶替过期凭据。
+  const expired = new URL(issued.uploadUrl)
+  expired.searchParams.set('expires', '1')
+  const expiredPut = await app.inject({
+    method: 'PUT',
+    url: `${expired.pathname}${expired.search}`,
+    headers: { ...producer, 'content-type': 'application/octet-stream', 'x-file-sha256': digest },
+    payload: SOURCE,
+  })
+  assert.equal(expiredPut.statusCode, 401, expiredPut.body)
+
   // 字节数是契约的一部分：少一个字节也要拒。
   const shortAsset = await createAsset(COURSE_ID, '字节不符')
   const shortTicket = await app.inject({
