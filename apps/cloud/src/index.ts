@@ -7,7 +7,8 @@ const config = loadConfig()
 const pool = createPool(config.databaseUrl)
 
 try {
-  const migrated = await runMigrations(pool)
+  // 生产由独立 migrate 步骤先跑迁移，应用只负责服务；本地开发仍保持启动即迁移。
+  const migrated = config.migrateOnStart ? await runMigrations(pool) : []
   const app = await buildApp({ config, pool, startPipeline: true })
   await app.listen({ host: config.host, port: config.port })
   app.log.info({ environment: config.env, port: config.port, migrated }, 'trend-coach-cloud started')

@@ -1,6 +1,6 @@
 # 部署 Runbook
 
-版本：v0.6（2026-11-07）——镜像构建上下文改为 monorepo 根（pnpm workspace），新增本机容器化运行路径，发布插件包改为挂宿主目录即时生效
+版本：v0.7（2026-11-08）——发布路径改为 CI 驱动：镜像推 TCR、服务器只 pull、迁移独立一步、失败自动回滚
 
 面向运维与开发：把云端服务部署到一台 Linux 主机，覆盖 TLS、数据库迁移、备份恢复、媒体 CDN、视频管线与本地 staging 验证。监控见 [监控与告警](./monitoring.md)，数据与合规基线见 [合规与公测检查清单](./compliance.md)。
 
@@ -51,18 +51,68 @@ openssl rand -hex 32   # CREDENTIAL_ENCRYPTION_KEY
 - `CREDENTIAL_ENCRYPTION_KEY` 至少 32 字符，非 local 必填且不得使用本地默认值；更换后已存模型密钥无法解密，需在后台重新录入，旧值应保留在密钥管理以便回滚。
 - ASR/内容 LLM/embedding 由后台「模型配置」维护；未配置或未启用不阻止服务启动，但对应阶段返回 `503`。
 
-## 3. 首次部署
+## 3. 发布路径与首次部署
+
+发布只有一条路径：**CI 构建镜像 → 推 TCR → SSH 调用服务器上的 `deploy/deploy.sh`**。服务器只 pull 不构建；发布逻辑只有 `deploy/deploy.sh` 一份（可评审、可回溯），CI 不内联长命令。
+
+```
+PR ──► check（类型检查）──► test（单测+契约，pgvector 服务容器）
+                            └──► build（构建镜像，推 TCR：<branch>-<sha7>，不推 latest）
+merge main ──► Environment: production（人工审批）──► deploy-production
+                                                 └─► 直传发布资产 ─► deploy.sh ─► 健康检查 ─► 落状态
+```
+
+镜像 tag 不可变（`<branch>-<sha7>`），回滚目标稳定；`latest` 不推。
+
+### 3.1 服务器基线（一次性）
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-curl -fsS https://$DOMAIN/health   # {"ok":true}
+# Docker Engine 24+ 与 Compose v2；国内机器走腾讯镜像加速
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://mirrors.tencent.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.tencent.com/docker-ce/linux/ubuntu jammy stable" | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+
+# /etc/docker/daemon.json：基础镜像走加速器，容器日志限量
+{ "registry-mirrors": ["https://mirror.ccs.tencentyun.com"],
+  "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } } | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker
+
+# 内存小的机器加 swap（2C2G 机器必须）
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# TCR 凭据只放服务器侧，CI 不向服务器传 registry 密码
+sudo mkdir -p /root/.docker && sudo chmod 600 /root/.docker/config.json   # 写入 ccr.ccs.tencentyun.com 的 auth
+```
+
+部署目录（`DEPLOY_PATH`，即 compose 文件所在目录，相当于仓库里的 `apps/cloud`）：
+
+```bash
+sudo mkdir -p /opt/trend-coach/workspace/{postgres,pipeline,caddy/data,caddy/config,media,backups} \
+  /opt/trend-coach/dist/downloads /opt/trend-coach/content
+sudo chown -R 1000:1000 /opt/trend-coach/workspace/pipeline /opt/trend-coach/workspace/media /opt/trend-coach/dist/downloads
+```
+
+`.env.prod` 放服务器上（600，属主给运维账号），内容见 §2。CI 只写 `IMAGE_TAG` 与 `TREND_IMAGE_REPO`（镜像 tag 与镜像仓库路径，都必须与本次推送目标一致），其余不动。
+
+### 3.2 首次发布
+
+合并到 `main` 后在 GitHub 的 `production` Environment 里审批放行，CI 自动完成发布。发布后核对：
+
+```bash
+cd /opt/trend-coach
+cat .deploy-state                     # current_tag / previous_tag / commit / status
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+curl -fsS https://$DOMAIN/health      # {"ok":true}
 ```
 
 要点：
 
-- 迁移在 app 启动时自动执行；多实例并发时由 PostgreSQL advisory lock 串行化。迁移只向前，不自动回滚。
-- `caddy` 等待 app healthy 后启动；首次签发证书需要域名可解析且 80/443 可达。
+- 发布资产（`deploy/deploy.sh`、`deploy/caddy/Caddyfile`、`scripts/backup.sh`、`docker-compose.prod.yml`）由 CI 直传，落地后逐项校验齐全——服务器到 GitHub 链路不稳，不依赖服务器自己拉代码。
+- 迁移是独立一步，先于换容器执行（见 §5）；失败即中止，旧版本继续服务。
+- `caddy` 等待 app healthy 后启动；首次签发证书需要域名可解析且 80/443 可达。域名未就绪时 `DOMAIN=localhost` 走 Caddy 本地 CA，访问加 `-k`。
 - staging 可导入种子数据（生产走内容管线，不执行）：
 
 ```bash
@@ -104,7 +154,9 @@ Caddy 为 `$DOMAIN` 自动申请与续期证书（Let's Encrypt / ZeroSSL）。�
 
 ## 5. 迁移
 
-- 启动即执行 `migrations/*.sql`，记录在 `schema_migrations`。
+- 迁移是发布的独立一步，不在 app 启动时自动执行：`compose run --rm --no-deps --pull never -T migrate`，与应用同一个镜像——线上执行的迁移必然与本次发布的代码同 commit。
+- 多实例并发时由 PostgreSQL advisory lock 串行化；迁移只向前，不自动回滚。
+- 本地开发仍是启动即迁移（`MIGRATE_ON_START=true`，默认值）；生产 compose 置 `false`。
 - 新增迁移：只追加文件、不改已执行文件；在一个事务内执行。
 - 需要回退时按 §6 恢复备份，再部署对应版本镜像；不要手写逆向 SQL。
 
@@ -185,17 +237,26 @@ npm run loadtest -- --base-url https://$DOMAIN --path /health --concurrency 20 -
 
 ## 9. 发布与回滚
 
+发布入口只有 `deploy/deploy.sh`（CI 与人工都只调它，禁止手写 `docker compose up` 发布）：
+
 ```bash
-# 发布：固定镜像标签，避免 “latest” 漂移
-IMAGE_TAG=2026-10-31 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
-# 回滚：切回上一镜像标签
-IMAGE_TAG=2026-10-30 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# 生产：CI 经 SSH 调用，--tag 必须是 main-<sha>
+sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
+  --image-repo ccr.ccs.tencentyun.com/<namespace>/trend-cloud
 ```
 
-- 发布前：`npm run typecheck && npm test`、备份、确认迁移可向前兼容；`npm run build` 会同时产出服务端 `dist/server`、`dist/admin` 与预渲染门户 `dist/portal`（`PUBLIC_BASE_URL` 决定 canonical/sitemap）；用 `scripts/restore-drill.sh` 验证备份可导入。
-- 发布后：`/health`、一次设备授权/刷新、一次检索、一次播放会话、打开 `/admin/` 完成一次登录与内容读写，检查 5xx 与 P95；跑一次 `npm run loadtest` 对比基线。
+流程：预检（docker/compose/磁盘/db 健康）→ 轮转 `.env.prod` 备份并钉 `IMAGE_TAG` 与 `TREND_IMAGE_REPO` → 拉镜像 → 发布前数据库备份 → 迁移 → 换容器 → 健康检查 → 落 `.deploy-state` → 清理旧镜像与备份。
+
+- **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
+- **CI 前置校验**：仓库变量 `TCR_NAMESPACE` 与 secret `DEPLOY_HOST`/`DEPLOY_PATH`/`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
+
+- **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
+- 回滚状态与依据都在 `/opt/trend-coach/.deploy-state`（`current_tag`/`previous_tag`/`commit`/`image_repo`/`status`）。
+- 镜像保留最新 3 个 `main-<sha>`（当前 + 2 个回滚目标），只清悬空层，**不用 `docker image prune -a`**（会连回滚目标一起删）。
+- 发布前：`check` 与 `test` 全绿、`scripts/restore-drill.sh` 验证备份可导入。
+- 发布后：`/health`、一次设备授权/刷新、一次检索、一次播放会话、打开 `/admin/` 完成一次登录与内容读写，检查 5xx 与 P95。
 - 迁移已改变数据时，仅回滚镜像可能不兼容；优先前滚修复，否则按 §6 恢复。
-- **构建上下文是 monorepo 根目录**：镜像用 pnpm 装依赖（`workspace:*` 无法用 npm 解析），compose 里 `build.context` 指向仓库根、`dockerfile` 指向 `apps/cloud/Dockerfile`；命令仍在 `apps/cloud` 目录执行。
+- **构建上下文是 monorepo 根目录**：镜像用 pnpm 装依赖（`workspace:*` 无法用 npm 解析），compose 里 `build.context` 指向仓库根、`dockerfile` 指向 `apps/cloud/Dockerfile`；命令仍在 `apps/cloud` 目录执行。生产不走 `build` 这条路——镜像由 CI 构建并推 TCR，服务器只 pull（deploy.sh 带 `--no-build --pull never`）。
 - **发布插件包不必重建镜像**：宿主 `dist/downloads/` 与 `content/` 已挂进容器，发布脚本写宿主这份即可——制品立刻可下、清单立刻生效（清单每次请求现读），无需重启服务。
 
 ## 10. 本地 staging 验证

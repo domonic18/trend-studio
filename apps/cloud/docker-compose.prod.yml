@@ -1,5 +1,6 @@
 # 用法见 docs/operations/deployment-runbook.md：
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#   本机 staging：docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#   生产发布：CI 推镜像到 TCR，服务器只 pull；入口是 deploy/deploy.sh，不要手工 compose up。
 # 不内置监控服务；/metrics 保留，接入外部 Prometheus 时参考 deploy/monitoring/。
 name: trend-coach
 
@@ -23,9 +24,10 @@ services:
   app:
     build:
       # 构建上下文是 monorepo 根目录（pnpm workspace），见 apps/cloud/Dockerfile。
+      # 生产发布不走这条路：镜像由 CI 构建并推 TCR，服务器只 pull（deploy.sh 带 --no-build）。
       context: ../..
       dockerfile: apps/cloud/Dockerfile
-    image: trend-coach-cloud:${IMAGE_TAG:-latest}
+    image: ${TREND_IMAGE_REPO:-ccr.ccs.tencentyun.com/domonic18/trend-cloud}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env.prod
     environment:
@@ -33,6 +35,8 @@ services:
       PORT: "3939"
       # 密码含特殊字符时需先 URL 编码。
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # 迁移由独立 migrate 步骤执行（发布前先行），应用不再启动即迁移。
+      MIGRATE_ON_START: "false"
     depends_on:
       db:
         condition: service_healthy
@@ -47,6 +51,22 @@ services:
       - ./dist/downloads:/app/apps/cloud/dist/downloads
       - ./content:/app/apps/cloud/content
     networks: [edge, backend]
+
+  # 迁移是一次性动作，不常驻：profile 让 compose up 不启动它，
+  # 发布时用 `docker compose run --rm --no-deps --pull never -T migrate` 触发。
+  # 与应用同一个镜像——迁移文件随镜像版本化，线上执行的迁移必然与本次发布的代码同 commit。
+  migrate:
+    image: ${TREND_IMAGE_REPO:-ccr.ccs.tencentyun.com/domonic18/trend-cloud}:${IMAGE_TAG:-latest}
+    profiles: [migrate]
+    command: ["node", "dist/server/migrate-cli.js"]
+    restart: "no"
+    env_file: .env.prod
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
 
   caddy:
     image: caddy:2-alpine
