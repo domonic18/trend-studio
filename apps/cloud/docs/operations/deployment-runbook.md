@@ -95,7 +95,7 @@ sudo mkdir -p /opt/trend-coach/workspace/{postgres,pipeline,caddy/data,caddy/con
 sudo chown -R 1000:1000 /opt/trend-coach/workspace/pipeline /opt/trend-coach/workspace/media /opt/trend-coach/dist/downloads
 ```
 
-`.env.prod` 放服务器上（600，属主给运维账号），内容见 §2。CI 只写 `IMAGE_TAG`，其余不动。
+`.env.prod` 放服务器上（600，属主给运维账号），内容见 §2。CI 只写 `IMAGE_TAG` 与 `TREND_IMAGE_REPO`（镜像 tag 与镜像仓库路径，都必须与本次推送目标一致），其余不动。
 
 ### 3.2 首次发布
 
@@ -241,13 +241,17 @@ npm run loadtest -- --base-url https://$DOMAIN --path /health --concurrency 20 -
 
 ```bash
 # 生产：CI 经 SSH 调用，--tag 必须是 main-<sha>
-sudo bash deploy/deploy.sh --env prod --tag main-<sha7>
+sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
+  --image-repo ccr.ccs.tencentyun.com/<namespace>/trend-cloud
 ```
 
-流程：预检（docker/compose/磁盘/db 健康）→ 轮转 `.env.prod` 备份并钉 `IMAGE_TAG` → 拉镜像 → 发布前数据库备份 → 迁移 → 换容器 → 健康检查 → 落 `.deploy-state` → 清理旧镜像与备份。
+流程：预检（docker/compose/磁盘/db 健康）→ 轮转 `.env.prod` 备份并钉 `IMAGE_TAG` 与 `TREND_IMAGE_REPO` → 拉镜像 → 发布前数据库备份 → 迁移 → 换容器 → 健康检查 → 落 `.deploy-state` → 清理旧镜像与备份。
+
+- **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
+- **CI 前置校验**：仓库变量 `TCR_NAMESPACE` 与 secret `DEPLOY_HOST`/`DEPLOY_PATH`/`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
 
 - **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
-- 回滚状态与依据都在 `/opt/trend-coach/.deploy-state`（`current_tag`/`previous_tag`/`commit`/`status`）。
+- 回滚状态与依据都在 `/opt/trend-coach/.deploy-state`（`current_tag`/`previous_tag`/`commit`/`image_repo`/`status`）。
 - 镜像保留最新 3 个 `main-<sha>`（当前 + 2 个回滚目标），只清悬空层，**不用 `docker image prune -a`**（会连回滚目标一起删）。
 - 发布前：`check` 与 `test` 全绿、`scripts/restore-drill.sh` 验证备份可导入。
 - 发布后：`/health`、一次设备授权/刷新、一次检索、一次播放会话、打开 `/admin/` 完成一次登录与内容读写，检查 5xx 与 P95。

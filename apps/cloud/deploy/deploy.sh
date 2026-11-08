@@ -3,9 +3,9 @@
 # 生产部署脚本 —— CI/CD 的唯一部署入口
 #
 # 用法：
-#   sudo bash deploy/deploy.sh --env prod --tag main-<sha>
+#   sudo bash deploy/deploy.sh --env prod --tag main-<sha> [--image-repo <registry/ns/repo>]
 #
-# 流程：参数校验 → 预检 → .env.prod 备份轮转 + 钉 IMAGE_TAG → 数据库备份（前置）→
+# 流程：参数校验 → 预检 → .env.prod 备份轮转 + 钉 IMAGE_TAG/TREND_IMAGE_REPO → 数据库备份（前置）→
 #       拉镜像 → 数据库迁移（先行）→ 换容器 → 健康检查 → 落 .deploy-state →
 #       失败自动回滚 → 镜像/备份清理
 #
@@ -26,6 +26,7 @@ cd "$APP_ROOT"
 
 ENV_NAME=""
 IMAGE_TAG=""
+IMAGE_REPO=""
 KEEP_IMAGES="${DEPLOY_KEEP_IMAGES:-3}"
 DISK_MIN_FREE_GB="${DEPLOY_DISK_MIN_FREE_GB:-5}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-300}"
@@ -44,10 +45,13 @@ fail() { printf '[deploy %s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&
 
 usage() {
     cat <<'EOF'
-用法: bash deploy/deploy.sh --env prod --tag main-<sha>
+用法: bash deploy/deploy.sh --env prod --tag main-<sha> [--image-repo <registry/ns/repo>]
 
   --env   prod（生产）。staging 尚未接线，暂不支持。
   --tag   期望 main-<sha>（短 sha 或完整 sha）
+  --image-repo  镜像仓库路径（registry/namespace/repo）。CI 必传：与本次推送的
+                仓库严格一致，避免 compose 里的默认路径与 CI 推送目标漂移。
+                省略时沿用 .env.prod 里已钉的 TREND_IMAGE_REPO。
 EOF
 }
 
@@ -58,6 +62,7 @@ parse_args() {
         case "$1" in
             --env) ENV_NAME="${2:-}"; shift 2 ;;
             --tag) IMAGE_TAG="${2:-}"; shift 2 ;;
+            --image-repo) IMAGE_REPO="${2:-}"; shift 2 ;;
             -h|--help) usage; exit 0 ;;
             *) fail "未知参数：$1（-h 看用法）" ;;
         esac
@@ -72,6 +77,12 @@ validate() {
     local tag_re='^main-[0-9a-f]{7,40}$'
     echo "$IMAGE_TAG" | grep -Eq "$tag_re" \
         || fail "非法镜像 tag：${IMAGE_TAG}（要求匹配 ${tag_re}）"
+    # 镜像仓库路径同样进 .env.prod（compose 的 image 引用），按 registry/ns/repo 三段校验
+    if [ -n "$IMAGE_REPO" ]; then
+        local repo_re='^[a-zA-Z0-9._-]+(:[0-9]+)?/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$'
+        echo "$IMAGE_REPO" | grep -Eq "$repo_re" \
+            || fail "非法镜像仓库路径：${IMAGE_REPO}（要求 registry/namespace/repo）"
+    fi
 }
 
 compose() { docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml "$@"; }
@@ -121,9 +132,13 @@ restore_owner() {
 }
 
 restore_prev_tag() {
-    # 失败发生在换容器之前：把 IMAGE_TAG 退回上一个版本，保持配置与实际运行版本一致
-    local prev="$1" owner="$2"
+    # 失败发生在换容器之前：把 IMAGE_TAG（与镜像仓库路径）退回上一个版本，
+    # 保持配置与实际运行版本一致
+    local prev="$1" owner="$2" prev_repo="${3:-}"
     set_env_var IMAGE_TAG "$prev"
+    if [ -n "$prev_repo" ]; then
+        set_env_var TREND_IMAGE_REPO "$prev_repo"
+    fi
     restore_owner "$owner"
     warn "IMAGE_TAG 已退回 ${prev:-（空）}"
 }
@@ -196,27 +211,29 @@ run_migrations() {
 
 # ---------------------------------------------------------------- 镜像拉取
 
-# 镜像仓库前缀（如 ccr.ccs.tencentyun.com/domonic18）从 compose 推导，
+# 镜像仓库路径（registry/namespace/repo）从 compose 推导，
 # 避免脚本里再写一份镜像地址。
 # 注意：config --images 的输出顺序是散列序，不能取第一行——第一行可能是
 #       caddy:2-alpine 这类三方镜像，推出来的前缀就错了。
 #       只认「registry/namespace/repo」三段式，本项目自有镜像才符合。
-image_prefix() {
+#       仓库名（第三段）必须保留：去掉它会把 repo 误认成 namespace，
+#       于是「本地已有镜像可继续」与「按仓库保留最新 N 个」两条都失效。
+image_repo_path() {
     { docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml config --images 2>/dev/null \
-        | grep -E '^[^/]+/[^/]+/[^/]+:' | sed -n '1p' | sed -E 's|/[^/]+:[^/:]+$||' || true; }
+        | grep -E '^[^/]+/[^/]+/[^/]+:' | sed -n '1p' | sed -E 's|:[^/:]+$||' || true; }
 }
 
 pull_images() {
     # sha 短 tag 不可变：拉取失败但本地已有同 tag 镜像时继续走（回滚场景下仓库不可达）
-    local svc prefix repo failed=""
-    prefix="$(image_prefix)"
-    repo="${prefix##*/}"
+    local svc repo_path failed=""
+    repo_path="$(image_repo_path)"
+    [ -n "$repo_path" ] || { warn "无法推导镜像仓库路径"; return 1; }
     for svc in $APP_SERVICES; do
         if compose pull "$svc"; then
             continue
         fi
-        if [ -n "$repo" ] && docker image inspect "$prefix/$repo:$IMAGE_TAG" >/dev/null 2>&1; then
-            warn "$svc 拉取失败，本地已有 $prefix/$repo:${IMAGE_TAG}，继续"
+        if docker image inspect "$repo_path:$IMAGE_TAG" >/dev/null 2>&1; then
+            warn "$svc 拉取失败，本地已有 $repo_path:${IMAGE_TAG}，继续"
         else
             failed="$failed $svc"
         fi
@@ -286,18 +303,20 @@ resolve_commit() {
 }
 
 write_state() {
-    local status="$1" current="$2" previous="$3" commit="$4"
+    local status="$1" current="$2" previous="$3" commit="$4" repo="$5" prev_repo="$6"
     cat > "$STATE_FILE" <<EOF
 current_tag=$current
 previous_tag=$previous
 commit=$commit
+image_repo=$repo
+previous_image_repo=$prev_repo
 deployed_at=$(date '+%Y-%m-%dT%H:%M:%S%z')
 status=$status
 EOF
 }
 
 rollback_to() {
-    local prev="$1" prev_commit="$2"
+    local prev="$1" prev_commit="$2" prev_repo="${3:-}"
     if [ -z "$prev" ]; then
         warn "没有可回滚的版本（.env.prod.bak 中无 IMAGE_TAG），保持现场等待人工处理"
         return 1
@@ -305,28 +324,32 @@ rollback_to() {
     [ -n "$prev_commit" ] || prev_commit="${prev#*-}"
     warn "开始回滚到 $prev"
     set_env_var IMAGE_TAG "$prev"
+    # 回滚目标可能属于另一个镜像仓库（namespace 变更过），一并退回
+    if [ -n "$prev_repo" ]; then
+        set_env_var TREND_IMAGE_REPO "$prev_repo"
+    fi
     restore_owner "$ENV_OWNER"
     if pull_images >/dev/null 2>&1 && compose up -d --wait --remove-orphans --no-build --pull never >/dev/null 2>&1; then
         if wait_healthy 180 && probe_health; then
             warn "回滚成功：当前运行 $prev"
-            write_state ROLLED_BACK "$prev" "" "$prev_commit"
+            write_state ROLLED_BACK "$prev" "" "$prev_commit" "$(env_get TREND_IMAGE_REPO '')" ""
             return 0
         fi
     fi
     warn "回滚失败，需人工介入"
-    write_state FAILED_ROLLED_BACK_FAILED "$prev" "" "$prev_commit"
+    write_state FAILED_ROLLED_BACK_FAILED "$prev" "" "$prev_commit" "$(env_get TREND_IMAGE_REPO '')" ""
     return 1
 }
 
 # ---------------------------------------------------------------- 镜像与备份清理
 
 cleanup_images() {
-    local current_tag="$1" protect_tag="$2" prefix repo tags i t
-    prefix="$(image_prefix)"
-    [ -n "$prefix" ] || { warn "无法推导镜像仓库前缀，跳过镜像清理"; return 0; }
-    repo="${prefix##*/}"
+    local current_tag="$1" protect_tag="$2" repo_path repo tags i t
+    repo_path="$(image_repo_path)"
+    [ -n "$repo_path" ] || { warn "无法推导镜像仓库路径，跳过镜像清理"; return 0; }
+    repo="${repo_path##*/}"
 
-    tags="$(docker images --format '{{.Tag}}\t{{.CreatedAt}}' "$prefix/$repo" 2>/dev/null \
+    tags="$(docker images --format '{{.Tag}}\t{{.CreatedAt}}' "$repo_path" 2>/dev/null \
         | awk -F'\t' '$1 ~ /^main-[0-9a-f]{7,40}$/' \
         | sort -k2 -r | cut -f1)"
     [ -n "$tags" ] || return 0
@@ -335,8 +358,8 @@ cleanup_images() {
         i=$((i + 1))
         # 当前版本与上一个版本（回滚目标）永不删除
         if [ "$i" -gt "$KEEP_IMAGES" ] && [ "$t" != "$current_tag" ] && [ "$t" != "$protect_tag" ]; then
-            docker image rm "$prefix/$repo:$t" >/dev/null 2>&1 \
-                || warn "镜像删除失败（可能被容器引用）：$prefix/$repo:$t"
+            docker image rm "$repo_path:$t" >/dev/null 2>&1 \
+                || warn "镜像删除失败（可能被容器引用）：$repo_path:$t"
         fi
     done
     # 只清悬空层：docker image prune -a 会连回滚目标一起删掉
@@ -369,7 +392,7 @@ main() {
     validate
     preflight
 
-    local owner previous commit prev_commit
+    local owner previous commit prev_commit previous_repo current_repo
     owner="$(stat_owner "$ENV_FILE")"
     ENV_OWNER="$owner"
     # 上一个版本 = 当前配置里的 IMAGE_TAG（改之前）；空则退到备份与状态文件
@@ -378,45 +401,57 @@ main() {
     [ -n "$previous" ] || previous="$(read_state_field previous_tag)"
     # 上一个版本的 commit = 旧状态文件里的 commit（本次发布覆盖前先取出来）
     prev_commit="$(read_state_field commit)"
+    # 上一个版本的镜像仓库路径：namespace 变更过时回滚必须退到旧仓库
+    previous_repo="$(read_state_field image_repo)"
+    [ -n "$previous_repo" ] || previous_repo="$(env_get TREND_IMAGE_REPO '')"
     commit="$(resolve_commit "$IMAGE_TAG")"
 
     rotate_env_backup
     set_env_var IMAGE_TAG "$IMAGE_TAG"
+    # 镜像仓库路径由 CI 传入（与本次推送目标严格一致）；未传则沿用已钉的值
+    current_repo="$IMAGE_REPO"
+    [ -n "$current_repo" ] || current_repo="$(env_get TREND_IMAGE_REPO '')"
+    if [ -n "$current_repo" ]; then
+        set_env_var TREND_IMAGE_REPO "$current_repo"
+    fi
     restore_owner "$owner"
     log "IMAGE_TAG 钉为 ${IMAGE_TAG}（上一个版本：${previous:-无}）"
+    if [ -n "$current_repo" ]; then
+        log "镜像仓库钉为 ${current_repo}"
+    fi
 
     # 拉镜像 / 备份 / 迁移阶段失败时还没换容器，必须把 IMAGE_TAG 退回上一个版本——
     # 否则配置会指向一个从未跑起来的 tag，下一次部署的回滚目标就错了
     if ! pull_images; then
-        restore_prev_tag "$previous" "$owner"
+        restore_prev_tag "$previous" "$owner" "$previous_repo"
         fail "镜像拉取失败：$IMAGE_TAG"
     fi
 
     if ! run_backup; then
-        restore_prev_tag "$previous" "$owner"
+        restore_prev_tag "$previous" "$owner" "$previous_repo"
         fail "发布前备份失败：已中止发布，旧版本继续服务（未换容器）"
     fi
 
     if ! run_migrations; then
-        restore_prev_tag "$previous" "$owner"
+        restore_prev_tag "$previous" "$owner" "$previous_repo"
         fail "数据库迁移失败：已中止发布，旧版本继续服务（未换容器）"
     fi
 
     if ! compose up -d --wait --remove-orphans --no-build --pull never; then
         warn "容器更新失败"
-        write_state FAILED "$IMAGE_TAG" "$previous" "$commit"
-        rollback_to "$previous" "$prev_commit" || true
+        write_state FAILED "$IMAGE_TAG" "$previous" "$commit" "$current_repo" "$previous_repo"
+        rollback_to "$previous" "$prev_commit" "$previous_repo" || true
         fail "部署失败，已尝试回滚"
     fi
 
     if ! wait_healthy "$HEALTH_TIMEOUT" || ! probe_health; then
         warn "健康检查未通过"
-        write_state FAILED "$IMAGE_TAG" "$previous" "$commit"
-        rollback_to "$previous" "$prev_commit" || true
+        write_state FAILED "$IMAGE_TAG" "$previous" "$commit" "$current_repo" "$previous_repo"
+        rollback_to "$previous" "$prev_commit" "$previous_repo" || true
         fail "部署失败（健康检查未通过），已尝试回滚"
     fi
 
-    write_state OK "$IMAGE_TAG" "$previous" "$commit"
+    write_state OK "$IMAGE_TAG" "$previous" "$commit" "$current_repo" "$previous_repo"
     log "部署成功：${IMAGE_TAG}（commit ${commit}）"
 
     cleanup_images "$IMAGE_TAG" "$previous"
