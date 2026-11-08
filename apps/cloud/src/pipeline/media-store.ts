@@ -155,7 +155,7 @@ function checkAssetId(assetId: string): string {
   return assetId
 }
 
-/** 发布前校验 ENDLIST 与全部分片，避免把不完整目录暴露给 CDN。 */
+/** 发布前校验 ENDLIST 与全部分片，避免把不完整目录暴露给播放器。 */
 export async function assertCompleteHls(dir: string): Promise<void> {
   let playlist: string
   try {

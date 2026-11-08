@@ -41,7 +41,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      # 仅本地 staging 验证需要；生产媒体走 CDN。本地 staging 的
+      # 仅本地 staging 验证需要；生产媒体走对象存储。本地 staging 的
       # PIPELINE_HLS_DIR=/media，故以可写方式挂载。
       - ${MEDIA_HOST_DIR:-./workspace/media}:/media
       # 管线工作区与 HLS 输出必须在同一挂载点内，HLS 才能原子 rename。

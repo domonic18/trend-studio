@@ -22,7 +22,7 @@ services:
       DATABASE_URL: postgres://trend_coach:trend_coach@host.docker.internal:5434/trend_coach
       PIPELINE_STORAGE_DIR: /data/storage
       PIPELINE_HLS_DIR: /data/hls
-      # 本地由业务进程托管媒体（生产走 CDN，故生产不设此项）。
+      # 本地由业务进程托管媒体（生产走对象存储，故生产不设此项）。
       # 不设 MEDIA_LOCAL_DIR 时 app 不注册 /media/* 路由——生产端拿到的
       # 关键帧签名 URL 会全部 404，VLM 无帧可用。须与 PIPELINE_HLS_DIR 相同。
       MEDIA_LOCAL_DIR: /data/hls

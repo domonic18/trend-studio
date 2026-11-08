@@ -19,7 +19,7 @@ export function signKeyframeUrl(
   if (!KEYFRAME_PATH.test(relPath)) throw new Error('invalid keyframe path')
   const expires = Math.floor(now / 1000) + ttlSec
   const path = relPath.split('/').map(encodeURIComponent).join('/')
-  // mediaBaseUrl 已含 /media 前缀（本地）或 CDN 映射根（生产），与 figure URL 同约定。
+  // mediaBaseUrl 已含 /media 前缀（本地），与 figure URL 同约定。
   return `${mediaBaseUrl.replace(/\/+$/, '')}/keyframes/${path}?expires=${expires}&sig=${signature(secret, relPath, expires)}`
 }
 

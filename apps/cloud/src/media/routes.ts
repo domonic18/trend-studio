@@ -32,7 +32,7 @@ export interface MediaRouteDeps {
   cos?: CosStore
 }
 
-/** 仅本地开发使用；生产媒体走 CDN 或对象存储，业务进程不代理媒体流。 */
+/** 生产媒体走对象存储：应用只签发预签名地址，业务进程不代理媒体流。 */
 export function registerMediaRoutes(app: FastifyInstance, deps: MediaRouteDeps): void {
   const root = resolve(deps.config.mediaLocalDir ?? '.')
   const { config, pool, cos } = deps
