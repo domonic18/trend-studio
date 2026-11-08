@@ -102,22 +102,35 @@ jobs:
   # ---------------------------------------------------------------- 镜像构建
   build:
     name: Build / 构建镜像
-    runs-on: ubuntu-latest
-    # job 预算必须容得下「两次尝试 + 收尾」：单次尝试 18 分钟，两次 36 分钟，
-    # 加上 checkout / buildx 初始化 / 登录约 2 分钟，留 45 分钟。
-    # 之前 job 只给 30 分钟而步骤无独立超时——推 TCR 卡住时会把整个 job 预算吃光，
-    # 重试步骤根本没机会跑（2026-11-08 main 发布实测：推送层挂起 28 分钟，
-    # job 超时取消，重试从未执行）。
-    timeout-minutes: 45
+    # 境内自托管 runner 构建并推 TCR。
+    # ubuntu-latest 的跨境推送链路是边缘可用：2026-11-08 实测两次
+    # `pushing layers` 无进展、各撞 18 分钟步骤上限（另一次挂起 28 分钟），
+    # 成功的一次也要 948 秒——生产发布完全押在这条链路上，一半失败不可接受。
+    # 同机自托管 runner 推 TCR 实测 35 秒~5 分 51 秒，且 buildx 缓存常驻可复用。
+    runs-on: [self-hosted]
+    # 仓库是 public：PR（含 fork）绝不在自托管机上执行仓库代码。
+    # 自托管 runner 持有 docker 与部署目录权限，让外部 PR 的代码在上面跑，
+    # 等于把构建机开放出去。镜像构建只在主干 push 上跑——develop 的 push
+    # 同样会构建，Dockerfile 写坏了在进 main 之前就会暴露。
+    # workflow_dispatch 例外：手动触发是发布前的演练入口，只有有写权限的人
+    # 能触发（ai-invest 同一口径）。
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    # 预算 = 构建 20 + 推送 30 + 收尾；推送那 30 分钟是看门狗的三个 10 分钟
+    # 上限（挂死的推送不会一直占着预算，重试因此有机会执行）。
+    timeout-minutes: 60
     needs: [check, test]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      # 常驻 buildx 构建器：buildkitd 配了国内 docker.io 镜像源（Docker Hub
+      # 直连拉不到 node:22-alpine），且构建缓存跨 job 持久，失败重跑秒级复用。
+      # 不用 setup-buildx-action——它会另建临时 builder 顶掉选择，
+      # 临时 builder 没有镜像源配置，基础镜像直接拉不动。
+      - name: Select builder / 选择构建器
+        run: docker buildx use ci-builder
 
       # 镜像仓库路径由仓库变量拼装；变量缺失就明确失败，
       # 不推到一个写死在 YAML 里的命名空间（推错仓库等于把坏镜像发到线上）。
-      # PR 构建虽不推镜像，但 tag 里同样带命名空间，故 PR 也校验。
       - name: Preconditions / 前置校验
         run: |
           set -eu
@@ -131,79 +144,117 @@ jobs:
           case "$GITHUB_REF" in
             refs/heads/main)    tag="main-${sha_short}" ;;
             refs/heads/develop) tag="develop-${sha_short}" ;;
-            *)                 tag="pr-${sha_short}" ;;
+            # 手动触发（发布前演练）可以落在任意分支上，按分支名打 tag
+            *)                 tag="$(basename "$GITHUB_REF" | tr '/' '-')-${sha_short}" ;;
           esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "image=$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME:$tag" >> "$GITHUB_OUTPUT"
 
-      # 只有 push 才推 TCR：PR 构建只验证 Dockerfile 可构建，不污染仓库
       # id 供重试条件用：登录失败属配置错误，不进重试（避免白建镜像且盖住真错）
       - name: Login TCR / 登录镜像仓库
         id: login
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.TCR_REGISTRY }}
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
 
-      # provenance: false——TCR 不认 OCI attestation 附加清单
-      # continue-on-error: 首推失败不染红 job，成败由后面的裁定步骤说了算
-      # （重试条件须用 outcome 而非 failure()，continue-on-error 会把 failure() 归 false）
-      # timeout-minutes 18：跨境推 TCR 偶发挂起（实测卡在 pushing layers 二十多分钟无进展），
-      # 不给步骤单独的上限，挂起会吃光整个 job 预算、连重试的机会都没有
-      - name: Build / 构建并推送（第 1 次尝试）
-        id: build1
-        continue-on-error: true
-        timeout-minutes: 18
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/cloud/Dockerfile
-          platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          provenance: false
-          tags: ${{ steps.vars.outputs.image }}
-          cache-from: type=gha,scope=${{ github.ref_name }}
-          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}
+      # 只构建不入库：load 进本地 docker，构建缓存留在构建机上，
+      # 推送交给后面的独立步骤——挂死时只需重推，不必重建。
+      # --provenance=false：TCR 不认 OCI attestation 附加清单
+      - name: Build / 本地构建镜像
+        id: build
+        timeout-minutes: 20
+        env:
+          IMAGE: ${{ steps.vars.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker buildx build --builder ci-builder --platform linux/amd64 \
+            --file apps/cloud/Dockerfile --load --provenance=false \
+            --tag "$IMAGE" .
 
-      # 跨境链路偶发超时：buildx 的 gha 缓存让重试几乎不重新构建
-      # cache-to 的 scope 必须与第 1 次不同：同 job 内两个 gha 导出用同一 scope
-      # 会撞 "Unable to reserve cache"，第二个导出直接失败
-      # scope 带分支名而非写死：concurrency 按 ref 串行，同分支不会撞车；
-      # 跨分支（develop 与 main 并发）各写各的，避免共用默认 scope 抢预留
-      - name: Build / 构建并推送（重试）
-        id: build-retry
-        if: steps.build1.outcome == 'failure' && (steps.login.conclusion == 'success' || github.event_name != 'push')
-        timeout-minutes: 18
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/cloud/Dockerfile
-          platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          provenance: false
-          tags: ${{ steps.vars.outputs.image }}
-          cache-from: type=gha,scope=${{ github.ref_name }}
-          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-retry
+      # 每次推送自带看门狗：docker push 走跨境链路，卡住时不会自己返回，
+      # 也不认超时参数；runner 是 macOS（BSD userland），没有 GNU coreutils 的
+      # timeout，故用「后台进程 + 轮询 ps 状态」实现单次尝试的 600 秒上限：
+      # 超时就杀掉本次、进入下一次重试。
+      # 没有这个上限，重试就是摆设——单次挂死即吃光整轮预算。
+      - name: Push to TCR / 推送镜像
+        id: push
+        continue-on-error: true
+        timeout-minutes: 35
+        env:
+          IMAGE: ${{ steps.vars.outputs.image }}
+          PUSH_ATTEMPTS: 3
+          # 单次推送的看门狗上限（秒）。超过即判定本次挂死，杀掉后重试。
+          PUSH_DEADLINE_S: 600
+        run: |
+          set -euo pipefail
+
+          # 单次推送 + 看门狗。
+          # docker push 卡住时不会自己返回，也不认超时参数。
+          # runner 是 macOS（BSD userland），没有 GNU coreutils 的 timeout，
+          # 故用「后台进程 + 轮询 ps 状态」实现，不引入额外依赖。
+          push_once() {
+            local image="$1" limit_s="$2" pid waited=0 stat
+            docker push "$image" &
+            pid=$!
+            while :; do
+              # 空 = 进程已不存在；Z = 僵尸（已退出待回收）——都算已结束
+              stat="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+              case "$stat" in
+                ""|Z*) break ;;
+              esac
+              if [ "$waited" -ge "$limit_s" ]; then
+                echo "[push] 单次推送超过 ${limit_s}s 仍无进展，终止本次尝试" >&2
+                kill -TERM "$pid" 2>/dev/null || true
+                sleep 2
+                kill -KILL "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                return 124
+              fi
+              sleep 5
+              waited=$((waited + 5))
+            done
+            wait "$pid"
+          }
+
+          attempt=1
+          while [ "$attempt" -le "$PUSH_ATTEMPTS" ]; do
+            echo "[push] 第 $attempt/$PUSH_ATTEMPTS 次：$IMAGE"
+            if push_once "$IMAGE" "$PUSH_DEADLINE_S"; then
+              exit 0
+            fi
+            echo "[push] 第 $attempt 次失败" >&2
+            attempt=$((attempt + 1))
+            # 不用 `[ ... ] && sleep`：条件为假时整个 && 复合命令返回 1，
+            # set -e 下会把循环体当失败直接终止（最后一轮必踩）
+            if [ "$attempt" -le "$PUSH_ATTEMPTS" ]; then
+              sleep 10
+            fi
+          done
+          echo "[push] $PUSH_ATTEMPTS 次全部失败" >&2
+          exit 1
 
       - name: Conclude build outcome / 构建推送结论裁定
         if: always()
-        # 任一次尝试成功即 job 成功；两次皆败才判红（首推超时→重试成功，
-        # job 仍红会误导发布判断）。登录失败单独判定：配置问题，重试无意义，
-        # 且会让构建步骤被跳过——不单独判，日志里只会看到「构建失败」，把真错盖住
+        # 裁定顺序 = 登录 → 构建 → 推送：前一步失败时后一步的 outcome 是 skipped，
+        # 不按顺序判就会把「登录失败」报成「构建失败」，把真错盖住
         # 镜像地址经 env 传入：直接插值含 namespace secret，日志里会被 GitHub 掩成 ***
         env:
           IMAGE: ${{ steps.vars.outputs.image }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ steps.login.outcome }}" != "success" ]; then
+          if [ "${{ steps.login.outcome }}" != "success" ]; then
             echo "[FAIL] 镜像仓库登录失败（配置问题，重试无意义）" >&2
             exit 1
           fi
-          if [ "${{ steps.build1.outcome }}" = "success" ] || [ "${{ steps.build-retry.outcome }}" = "success" ]; then
-            echo "[OK] 镜像构建推送成功：$IMAGE"
+          if [ "${{ steps.build.outcome }}" != "success" ]; then
+            echo "[FAIL] 镜像构建失败" >&2
+            exit 1
+          fi
+          if [ "${{ steps.push.outcome }}" = "success" ]; then
+            echo "[OK] 镜像推送成功：$IMAGE"
           else
-            echo "[FAIL] 镜像构建推送失败（两次尝试皆败）" >&2
+            echo "[FAIL] 镜像推送失败（重试耗尽）" >&2
             exit 1
           fi
 
