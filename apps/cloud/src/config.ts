@@ -65,6 +65,21 @@ export interface PipelineConfig {
 
 export type LlmProtocol = 'openai' | 'anthropic'
 
+/** 媒体存储后端：local=应用自托管文件，cos=对象存储（S3 兼容）。 */
+export type MediaStorage = 'local' | 'cos'
+
+export interface CosConfig {
+  region: string
+  bucket: string
+  /** 形如 cos.ap-shanghai.myqcloud.com，不含协议与路径。 */
+  endpoint: string
+  secretId: string
+  secretKey: string
+  /** virtual-host 寻址（COS 要求；path-style 会被拒）。 */
+  virtualHost: boolean
+  secure: boolean
+}
+
 export interface LlmConfig {
   protocol: LlmProtocol
   baseUrl: string
@@ -97,6 +112,8 @@ export interface AppConfig {
   uploadSigningTtlSec: number
   credentialEncryptionKey: string
   mediaLocalDir?: string
+  mediaStorage: MediaStorage
+  cos?: CosConfig
   metricsToken: string
   /** 启动时是否自动跑迁移。生产由独立 migrate 步骤执行，这里关掉。 */
   migrateOnStart: boolean
@@ -304,6 +321,29 @@ export function loadConfig(env: Env = process.env): AppConfig {
     ? resolve(figureDirRaw)
     : pipeline === undefined ? undefined : resolve(pipeline.storageDir, '..', 'figures')
 
+  // 媒体存储后端：local=应用自托管文件（开发/staging），cos=对象存储（生产）。
+  const mediaStorageRaw = text(env, 'MEDIA_STORAGE') ?? 'local'
+  if (mediaStorageRaw !== 'local' && mediaStorageRaw !== 'cos') {
+    fail('MEDIA_STORAGE 必须是 local 或 cos')
+  }
+  const mediaStorage = mediaStorageRaw
+  let cos: CosConfig | undefined
+  if (mediaStorage === 'cos') {
+    const region = text(env, 'COS_REGION') ?? fail('MEDIA_STORAGE=cos 时 COS_REGION 必填')
+    const bucket = text(env, 'COS_BUCKET') ?? fail('MEDIA_STORAGE=cos 时 COS_BUCKET 必填')
+    const secretId = text(env, 'COS_SECRET_ID') ?? fail('MEDIA_STORAGE=cos 时 COS_SECRET_ID 必填')
+    const secretKey = text(env, 'COS_SECRET_KEY') ?? fail('MEDIA_STORAGE=cos 时 COS_SECRET_KEY 必填')
+    if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket)) fail('COS_BUCKET 不是合法的桶名')
+    const endpoint = text(env, 'COS_ENDPOINT') ?? `cos.${region}.myqcloud.com`
+    const virtualHost = bool(env, 'COS_VIRTUAL_HOST', true)
+    const secure = bool(env, 'COS_SECURE', true)
+    // 本地目录与对象存储同存会出现两个真相源：媒体到底在哪份，播放与签名会对不上
+    if (mediaLocalDir !== undefined) fail('MEDIA_STORAGE=cos 时不得设置 MEDIA_LOCAL_DIR')
+    // 管线把 HLS 写本地目录，与 cos 后端不是同一条路，生产暂不支持该组合
+    if (pipeline !== undefined) fail('MEDIA_STORAGE=cos 时不得启用视频管线（PIPELINE_ENABLED）')
+    cos = { region, bucket, endpoint, secretId, secretKey, virtualHost, secure }
+  }
+
   // 模型连接信息（baseUrl/model/key）在管理端「模型配置」维护；这里只保留生成侧调参。
   const llmTemperature = float(env, 'CONTENT_LLM_TEMPERATURE', 0.2)
   if (llmTemperature < 0 || llmTemperature > 2) fail('CONTENT_LLM_TEMPERATURE 必须在 0–2 之间')
@@ -341,6 +381,8 @@ export function loadConfig(env: Env = process.env): AppConfig {
     ...(figureLocalDir === undefined ? {} : { figureLocalDir }),
     credentialEncryptionKey,
     ...(mediaLocalDir === undefined ? {} : { mediaLocalDir }),
+    mediaStorage,
+    ...(cos === undefined ? {} : { cos }),
     metricsToken,
     migrateOnStart: bool(env, 'MIGRATE_ON_START', true),
     sessionTtlSec: int(env, 'SESSION_TTL_SECONDS', 12 * 60 * 60, { min: 300 }),
