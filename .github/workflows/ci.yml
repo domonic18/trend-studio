@@ -103,7 +103,12 @@ jobs:
   build:
     name: Build / 构建镜像
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # job 预算必须容得下「两次尝试 + 收尾」：单次尝试 18 分钟，两次 36 分钟，
+    # 加上 checkout / buildx 初始化 / 登录约 2 分钟，留 45 分钟。
+    # 之前 job 只给 30 分钟而步骤无独立超时——推 TCR 卡住时会把整个 job 预算吃光，
+    # 重试步骤根本没机会跑（2026-11-08 main 发布实测：推送层挂起 28 分钟，
+    # job 超时取消，重试从未执行）。
+    timeout-minutes: 45
     needs: [check, test]
     steps:
       - uses: actions/checkout@v4
@@ -145,9 +150,12 @@ jobs:
       # provenance: false——TCR 不认 OCI attestation 附加清单
       # continue-on-error: 首推失败不染红 job，成败由后面的裁定步骤说了算
       # （重试条件须用 outcome 而非 failure()，continue-on-error 会把 failure() 归 false）
+      # timeout-minutes 18：跨境推 TCR 偶发挂起（实测卡在 pushing layers 二十多分钟无进展），
+      # 不给步骤单独的上限，挂起会吃光整个 job 预算、连重试的机会都没有
       - name: Build / 构建并推送（第 1 次尝试）
         id: build1
         continue-on-error: true
+        timeout-minutes: 18
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -167,6 +175,7 @@ jobs:
       - name: Build / 构建并推送（重试）
         id: build-retry
         if: steps.build1.outcome == 'failure' && (steps.login.conclusion == 'success' || github.event_name != 'push')
+        timeout-minutes: 18
         uses: docker/build-push-action@v6
         with:
           context: .

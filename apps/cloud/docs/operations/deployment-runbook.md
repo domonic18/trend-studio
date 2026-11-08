@@ -305,6 +305,7 @@ sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
 - **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
 - **CI 前置校验**：仓库 secret `TCR_NAMESPACE` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` 与仓库变量 `DEPLOY_HOST` / `DEPLOY_PATH` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
 - **镜像构建推送的语义在 `build` job 一处**：`provenance: false`（TCR 不认 OCI attestation 附加清单）；首次推送失败自动重试一次（跨境链路偶发超时，gha 缓存让重试几乎不重新构建），成败由 `Conclude build outcome` 步骤裁定——任一次尝试成功即 job 成功，两次皆败才判红；登录失败单独判定（配置问题，重试无意义，且不判的话日志里只会看到「构建失败」，把真错盖住）。重试步骤的 gha 缓存导出用独立 scope（`<分支名>-retry`），与第 1 次同 scope 会撞 "Unable to reserve cache"；scope 带分支名而非写死——`concurrency` 按 ref 串行，同分支不会撞车，跨分支（develop 与 main 并发）各写各的。
+- **构建 job 的时间预算是「两次尝试 + 收尾」**：job 上限 45 分钟，每次尝试（构建 + 推 TCR 是同一步骤）各自封顶 18 分钟，留约 3 分钟给 checkout / buildx 初始化 / 登录与裁定。跨境推 TCR 会卡在 `pushing layers` 长时间无进展（2026-11-08 main 发布实测挂起 28 分钟）：**步骤不给独立上限，job 预算会被挂起吃光、重试步骤根本没机会执行**，整条发布链卡在构建这一环。步骤级上限是重试机制能生效的前提。
 - **发布分发件同批直传**：`artifacts` job 打包学员端与教员生产端两个插件，回写 `content/releases.json` 的校验值，随发布资产一起送到服务器的 `content/` 与 `dist/downloads/`。清单与制品成对下发——清单里的 sha256 只对得上同一次打包的 tarball。`deploy.sh` 预检会核对清单点名的制品齐不齐，缺则中止发布。
 
 - **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
