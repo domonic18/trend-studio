@@ -64,6 +64,21 @@ merge main ──► Environment: production（人工审批）──► deploy-p
 
 镜像 tag 不可变（`<branch>-<sha7>`），回滚目标稳定；`latest` 不推。
 
+### 3.0 GitHub 侧配置项（维护方式与 ai-invest 统一）
+
+仓库为 public，真实值一律不入代码与 workflow YAML。**变量放非密配置，secret 放凭据**：
+
+| 位置 | 名称 | 说明 |
+|---|---|---|
+| 仓库变量 | `DEPLOY_HOST` | 目标机（`user@host`） |
+| 仓库变量 | `DEPLOY_PATH` | 部署目录（compose 与 `.env.prod` 所在） |
+| 仓库 secret | `TCR_USERNAME` / `TCR_PASSWORD` | 推 TCR 用；服务器侧另存 `/root/.docker/config.json`，CI 不向服务器传密码 |
+| 仓库 secret | `TCR_NAMESPACE` | 镜像命名空间；缺失则流水线明确失败 |
+| 仓库 secret | `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` | 发布用免密私钥与主机指纹（开启 host key 校验） |
+| Environment | `production` | 发布人工闸门，required reviewer |
+
+流水线启动即校验以上配置，缺任何一项都在动服务器之前明确失败。
+
 ### 3.1 服务器基线（一次性）
 
 ```bash
