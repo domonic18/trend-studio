@@ -78,7 +78,7 @@ fi
 
 command -v node >/dev/null 2>&1 || die "没找到 node。请先装 Node.js 22 或更高版本。"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$NODE_MAJOR" -ge 22 ] || die "Node.js 版本过低（当前 $NODE_MAJOR），生产端需要 22 或更高。"
+[ "$NODE_MAJOR" -ge 22 ] || die "Node.js 版本过低（当前 ${NODE_MAJOR}），生产端需要 22 或更高。"
 
 command -v curl >/dev/null 2>&1 || die "没找到 curl。"
 command -v tar >/dev/null 2>&1 || die "没找到 tar。"
@@ -130,7 +130,7 @@ if [ -n "${SHA256:-}" ]; then
   if [ -z "$ACTUAL_SHA" ]; then
     echo "⚠ 没有 sha256 工具，跳过校验。"
   elif [ "$(printf '%s' "$ACTUAL_SHA" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$SHA256" | tr 'A-Z' 'a-z')" ]; then
-    die "校验值对不上：期望 $SHA256，实际 $ACTUAL_SHA。安装包可能损坏或被篡改，已中止。"
+    die "校验值对不上：期望 ${SHA256}，实际 ${ACTUAL_SHA}。安装包可能损坏或被篡改，已中止。"
   else
     echo "▸ 校验通过：$ACTUAL_SHA"
   fi
