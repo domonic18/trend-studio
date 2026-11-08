@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * 发布生产端插件到官网下载区，并把版本与校验写回发布清单。
+ * 发布插件到官网下载区，并把版本与校验写回发布清单。
  *
- *   node scripts/publish-producer-plugin.mjs            # 打包 → 算校验 → 落 downloads → 改清单
- *   node scripts/publish-producer-plugin.mjs --dry-run  # 只算不改
- *   node scripts/publish-producer-plugin.mjs --notes "本次改动说明"
+ *   node scripts/publish-plugin.mjs --plugin coach
+ *   node scripts/publish-plugin.mjs --plugin producer --notes "本次改动说明"
+ *   node scripts/publish-plugin.mjs --plugin coach --dry-run   # 只算不改
  *
- * **只改 producerPlugin**：学员插件（plugin）与 harness 版本一字不动。
+ * 学员插件（coach）与教员生产端插件（producer）是两个制品，发布清单里各占
+ * 一个字段、形状相同。本脚本一次只改自己那一个，另一个一字不动。
+ *
  * 清单是每次请求现读的，改完无需重启服务。
  */
 import { createHash } from 'node:crypto'
@@ -17,15 +19,21 @@ import { fileURLToPath } from 'node:url'
 
 const cloudDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoRoot = path.resolve(cloudDir, '..', '..')
-const producerDir = path.join(repoRoot, 'apps', 'producer')
 const downloadsDir = path.join(cloudDir, 'dist', 'downloads')
 const manifestFile = path.join(cloudDir, 'content', 'releases.json')
 
+/** 制品 → 打包脚本所在包 + 清单字段。 */
+const PLUGINS = {
+  coach: { app: 'coach', key: 'plugin' },
+  producer: { app: 'producer', key: 'producerPlugin' },
+}
+
 function parseArgs(argv) {
-  const options = { dryRun: false, notes: [] }
+  const options = { plugin: '', dryRun: false, notes: [] }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--dry-run') options.dryRun = true
+    if (arg === '--plugin') options.plugin = argv[++i] ?? ''
+    else if (arg === '--dry-run') options.dryRun = true
     // 可重复给；早先的一次不能被后一次悄悄覆盖。
     else if (arg === '--notes') options.notes.unshift(argv[++i] ?? '')
   }
@@ -42,14 +50,19 @@ function run(cmd, args, cwd) {
 }
 
 const options = parseArgs(process.argv.slice(2))
+const target = PLUGINS[options.plugin]
+if (!target) {
+  throw new Error(`未知插件：${options.plugin || '(空)'}（可用：${Object.keys(PLUGINS).join(' / ')}）`)
+}
+const appDir = path.join(repoRoot, 'apps', target.app)
 
 // ① 打包
-run('node', [path.join(producerDir, 'scripts', 'pack.mjs')], repoRoot)
+run('node', [path.join(appDir, 'scripts', 'pack.mjs')], repoRoot)
 
-const producerManifest = JSON.parse(readFileSync(path.join(producerDir, 'package.json'), 'utf8'))
-const version = producerManifest.version
-const fileName = `dsh-plugin-trend-producer-${version}.tgz`
-const tarball = path.join(producerDir, fileName)
+const appManifest = JSON.parse(readFileSync(path.join(appDir, 'package.json'), 'utf8'))
+const version = appManifest.version
+const fileName = `${appManifest.name}-${version}.tgz`
+const tarball = path.join(appDir, fileName)
 if (!existsSync(tarball)) throw new Error(`打包产物不存在：${tarball}`)
 
 // ② 算校验与体积
@@ -62,7 +75,7 @@ if (!options.dryRun) {
   copyFileSync(tarball, path.join(downloadsDir, fileName))
 }
 
-// ④ 改写清单的 producerPlugin
+// ④ 改写清单里自己那一个字段
 const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
 // 发布日期按本地日期写（与运营口径一致；UTC 日期在本地傍晚发布会差一天）。
 const now = new Date()
@@ -72,12 +85,13 @@ const publishedAt = [
   String(now.getDate()).padStart(2, '0'),
 ].join('-')
 // 未给 --notes 时沿用旧说明；给了就前置（新说明在前，最新的排最前）。
+const previous = manifest[target.key]?.notes ?? []
 const notes = (options.notes.length > 0
-  ? [...options.notes, ...(manifest.producerPlugin?.notes ?? [])]
-  : (manifest.producerPlugin?.notes ?? [])).slice(0, 20)
+  ? [...options.notes, ...previous]
+  : previous).slice(0, 20)
 
-manifest.producerPlugin = {
-  name: producerManifest.name,
+manifest[target.key] = {
+  name: appManifest.name,
   version,
   fileName,
   sha256: digest,
@@ -91,15 +105,16 @@ if (!options.dryRun) {
 
 // ⑤ 回执
 const kb = (sizeBytes / 1024).toFixed(1)
+const otherKey = target.key === 'plugin' ? 'producerPlugin' : 'plugin'
 process.stdout.write(
   [
-    options.dryRun ? '（试跑，未落盘）' : '已发布生产端插件',
+    options.dryRun ? '（试跑，未落盘）' : `已发布${target.app}插件`,
     `  版本    ${version}`,
     `  文件    ${fileName}`,
     `  体积    ${kb} kB`,
     `  sha256  ${digest}`,
     `  下载    /downloads/${fileName}`,
-    options.dryRun ? '' : `  清单    ${manifestFile}（producerPlugin 已更新，plugin 未动）`,
+    options.dryRun ? '' : `  清单    ${manifestFile}（${target.key} 已更新，${otherKey} 未动）`,
     options.dryRun ? '' : '  提示    清单每次请求现读，无需重启服务',
     '',
   ].filter(line => line !== '').join('\n'),

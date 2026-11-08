@@ -112,6 +112,8 @@ sudo chown -R 1000:1000 /opt/trend-coach/workspace/pipeline /opt/trend-coach/wor
 
 `.env.prod` 放服务器上（600，属主给运维账号），内容见 §2。CI 只写 `IMAGE_TAG` 与 `TREND_IMAGE_REPO`（镜像 tag 与镜像仓库路径，都必须与本次推送目标一致），其余不动。
 
+`content/` 与 `dist/downloads/` 由 CI 每次发布直传覆盖（清单每次请求现读，制品随发布换新；旧 tarball 没人引用，落地时清掉）。清单与制品**由流水线现打**：`npm pack` 不是逐字节可复现的（同一份源码两次打包 sha256 不同，且插件 bundle 了本次 commit 的 `@trend/contracts` 与 `@trend/widgets`），所以校验值必须跟着这次打包的结果重算，不能沿用仓库里那份。仓库里的 `content/releases.json` 只反映本地最近一次打包，**生产上的才是真相**。
+
 ### 3.2 首次发布
 
 合并到 `main` 后在 GitHub 的 `production` Environment 里审批放行，CI 自动完成发布。发布后核对：
@@ -121,11 +123,17 @@ cd /opt/trend-coach
 cat .deploy-state                     # current_tag / previous_tag / commit / status
 sudo docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl -fsS https://$DOMAIN/health      # {"ok":true}
+# 分发链路也要通：清单有制品、下载区有文件
+curl -fsS https://$DOMAIN/v1/portal/releases   # plugin / producerPlugin 均非 null
+curl -fsS https://$DOMAIN/v1/portal/releases \
+  | grep -oE '[A-Za-z0-9@._-]+\.tgz' | sort -u \
+  | while read -r f; do curl -fsSI "https://$DOMAIN/downloads/$f" | head -1; done
 ```
 
 要点：
 
 - 发布资产（`deploy/deploy.sh`、`deploy/caddy/Caddyfile`、`scripts/backup.sh`、`docker-compose.prod.yml`）由 CI 直传，落地后逐项校验齐全——服务器到 GitHub 链路不稳，不依赖服务器自己拉代码。
+- **发布分发件也走直传**：`content/`（发布清单 + 教员装机脚本）与 `dist/downloads/`（插件 tarball）同批下发。两者是 compose 挂进容器的宿主目录，缺任一份，服务照常跑但教员装不上插件、学员下不到包——产品是残的。`deploy.sh` 预检会核对清单点名的制品是否都在下载区，缺则发布中止。
 - 迁移是独立一步，先于换容器执行（见 §5）；失败即中止，旧版本继续服务。
 - `caddy` 等待 app healthy 后启动；首次签发证书需要域名可解析且 80/443 可达。域名未就绪时 `DOMAIN=localhost` 走 Caddy 本地 CA，访问加 `-k`。
 - staging 可导入种子数据（生产走内容管线，不执行）：
@@ -263,7 +271,8 @@ sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
 流程：预检（docker/compose/磁盘/db 健康）→ 轮转 `.env.prod` 备份并钉 `IMAGE_TAG` 与 `TREND_IMAGE_REPO` → 拉镜像 → 发布前数据库备份 → 迁移 → 换容器 → 健康检查 → 落 `.deploy-state` → 清理旧镜像与备份。
 
 - **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
-- **CI 前置校验**：仓库变量 `TCR_NAMESPACE` 与 secret `DEPLOY_HOST`/`DEPLOY_PATH`/`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
+- **CI 前置校验**：仓库 secret `TCR_NAMESPACE` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` 与仓库变量 `DEPLOY_HOST` / `DEPLOY_PATH` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
+- **发布分发件同批直传**：`artifacts` job 打包学员端与教员生产端两个插件，回写 `content/releases.json` 的校验值，随发布资产一起送到服务器的 `content/` 与 `dist/downloads/`。清单与制品成对下发——清单里的 sha256 只对得上同一次打包的 tarball。`deploy.sh` 预检会核对清单点名的制品齐不齐，缺则中止发布。
 
 - **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
 - 回滚状态与依据都在 `/opt/trend-coach/.deploy-state`（`current_tag`/`previous_tag`/`commit`/`image_repo`/`status`）。

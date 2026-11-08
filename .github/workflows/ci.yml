@@ -151,11 +151,51 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ---------------------------------------------------------------- 发布制品
+  artifacts:
+    name: Artifacts / 打包插件制品
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install / 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 学员端与教员生产端两个插件都要打包：官网下载区与发布清单是同一份真相，
+      # 制品本身不进 git（*.tgz 被忽略），只能由流水线现打。
+      # npm pack 不是逐字节可复现的——同一份源码两次打包 sha256 不同，且插件里
+      # bundle 了 @trend/contracts 与 @trend/widgets（它们随本次 commit 变）。
+      # 所以清单里的校验值必须跟着这次打包的结果重算，不能沿用仓库里那份。
+      - name: Pack / 打包双插件并回写发布清单
+        run: |
+          node apps/cloud/scripts/publish-plugin.mjs --plugin coach
+          node apps/cloud/scripts/publish-plugin.mjs --plugin producer
+
+      # 清单与制品必须成对下发：清单里的 sha256 只对得上同一次打包的 tarball。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            apps/cloud/dist/downloads
+            apps/cloud/content/releases.json
+          if-no-files-found: error
+
   # ---------------------------------------------------------------- 生产发布
   deploy-production:
     name: Deploy Production / 生产环境发布
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, artifacts]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     timeout-minutes: 60
@@ -170,7 +210,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 仓库为 public：主机、路径、密钥一律走 secret，缺任何一项都明确失败，
+      # 插件制品与发布清单由 artifacts job 打包产出；两者必须成对取回——
+      # 清单里的 sha256 只对得上同一次打包的 tarball。
+      - name: Download release artifacts / 取回插件制品与发布清单
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: apps/cloud
+
+      # 主机与路径走仓库变量、密钥走 secret，缺任何一项都明确失败，
       # 不带着半套配置继续发布（否则 ssh 会用空 host 报一堆看不懂的错）
       - name: Preconditions / 前置校验
         env:
@@ -203,7 +251,10 @@ jobs:
 
       - name: Sync deploy assets / 同步部署资产到服务器
         # 生产机到 GitHub 的链路不稳，发布资产一律由 CI 直传（与 git checkout 等价，同一 commit）。
-        # 只送发布必需的资产：部署脚本、compose、Caddy 配置、备份脚本。
+        # 送什么：部署脚本、compose、Caddy 配置、备份脚本——外加**发布分发件**：
+        # content/（发布清单 + 教员装机脚本）与 dist/downloads/（插件 tarball）。
+        # 这两处是 compose 挂进容器的宿主目录，不同步过去，教员装不上、学员下不到插件，
+        # 服务却照常跑——产品是残的。
         # 迁移文件不进资产包——迁移随应用镜像走，线上执行的迁移必然与本次发布的代码同 commit。
         run: |
           set -eu
@@ -212,21 +263,31 @@ jobs:
             deploy/deploy.sh \
             deploy/caddy/Caddyfile \
             scripts/backup.sh \
-            docker-compose.prod.yml
+            docker-compose.prod.yml \
+            content \
+            dist/downloads
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             /tmp/deploy-assets.tar.gz "$DEPLOY_HOST:/tmp/deploy-assets.tar.gz"
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
             sudo bash -s -- "$DEPLOY_PATH" "$GITHUB_SHA" <<'REMOTE'
           set -eu
           cd "$1"
+          # 下载区只留本次发布的制品：清单每次发布被覆盖，旧 tarball 没人引用，
+          # 留着只涨磁盘。先清后解——反了就把自己刚发的也删了。
+          rm -f dist/downloads/*.tgz
           # --no-same-owner：不让归档里的 uid/gid 覆盖服务器属主
           tar --no-same-owner -xzf /tmp/deploy-assets.tar.gz
           rm -f /tmp/deploy-assets.tar.gz
           chmod 755 deploy/deploy.sh scripts/backup.sh
           printf '%s\n' "$2" > .deploy-commit
           # 资产落地完整性校验：缺任何一项都中止，不带着半套资产继续发布
-          for f in deploy/deploy.sh deploy/caddy/Caddyfile scripts/backup.sh docker-compose.prod.yml; do
+          for f in deploy/deploy.sh deploy/caddy/Caddyfile scripts/backup.sh docker-compose.prod.yml \
+                   content/releases.json content/install-producer.sh; do
               [ -f "$f" ] || { echo "ERROR: 资产缺失：$f" >&2; exit 1; }
+          done
+          # 清单点名的制品必须都在下载区：教员/学员下载的是清单里的那个文件名
+          for a in $(grep -oE '[A-Za-z0-9@._-]+\.tgz' content/releases.json | sort -u); do
+              [ -f "dist/downloads/$a" ] || { echo "ERROR: 制品缺失：dist/downloads/$a" >&2; exit 1; }
           done
           # 运行期目录：数据都在 workspace/ 下（compose 挂载点）
           mkdir -p workspace/postgres workspace/pipeline workspace/caddy/data workspace/caddy/config \
