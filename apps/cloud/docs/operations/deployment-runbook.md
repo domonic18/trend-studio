@@ -304,11 +304,14 @@ sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
 
 - **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
 - **CI 前置校验**：仓库 secret `TCR_NAMESPACE` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` 与仓库变量 `DEPLOY_HOST` / `DEPLOY_PATH` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
+- **镜像构建推送的语义在 `build` job 一处**：`provenance: false`（TCR 不认 OCI attestation 附加清单）；首次推送失败自动重试一次（跨境链路偶发超时，gha 缓存让重试几乎不重新构建），成败由 `Conclude build outcome` 步骤裁定——任一次尝试成功即 job 成功，两次皆败才判红；登录失败单独判定（配置问题，重试无意义，且不判的话日志里只会看到「构建失败」，把真错盖住）。重试步骤的 gha 缓存导出用独立 scope（`<分支名>-retry`），与第 1 次同 scope 会撞 "Unable to reserve cache"；scope 带分支名而非写死——`concurrency` 按 ref 串行，同分支不会撞车，跨分支（develop 与 main 并发）各写各的。
 - **发布分发件同批直传**：`artifacts` job 打包学员端与教员生产端两个插件，回写 `content/releases.json` 的校验值，随发布资产一起送到服务器的 `content/` 与 `dist/downloads/`。清单与制品成对下发——清单里的 sha256 只对得上同一次打包的 tarball。`deploy.sh` 预检会核对清单点名的制品齐不齐，缺则中止发布。
 
 - **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
 - 回滚状态与依据都在 `/opt/trend-coach/.deploy-state`（`current_tag`/`previous_tag`/`commit`/`image_repo`/`status`）。
-- 镜像保留最新 3 个 `main-<sha>`（当前 + 2 个回滚目标），只清悬空层，**不用 `docker image prune -a`**（会连回滚目标一起删）。
+- 镜像保留最新 3 个 `main-<sha>`（当前 + 2 个回滚目标），只清悬空层，**不用 `docker image prune -a`**（会连回滚目标一起删）。只认 `main-` 前缀：生产脚本只跑 `main-<sha>`，放行 `develop-` 会让无关 tag 挤占保留额度、挤掉回滚目标。清理的仓库路径取 `.env.prod` 里已钉的 `TREND_IMAGE_REPO`（与 compose 实际拉的同一个），不重新从 compose 推导——推导命中的是 compose 里的默认路径，与 CI 推送目标可能不一致；未钉住时的兜底推导只认 compose 里唯一的三段式自有镜像，出现多个候选就报警而不猜（猜错会把清理打到别人的仓库上）。
+- **清理范围含回滚目标仓库**：namespace 变更过时新旧镜像不在同一个仓库，清理范围 = 本次目标仓库 + 回滚目标仓库。范围在改 `.env.prod` **之前**算好——回滚后配置指回旧仓库，只照配置清会漏掉本次刚拉下来的镜像。
+- **清理由退出兜底保证**：无论成功、失败还是中途退出都跑一次（原先只挂在成功路径末尾，「磁盘余量不足 → 预检失败 → 不清理 → 磁盘永远不足」是个闭环）。清理报告**实际删除的张数与字节数**；过滤落空（本地无该仓库镜像）一律 **WARN**——空结果不是「无需清理」的证据，多半是仓库路径写错（`docker images` 按完整仓库名 `registry/namespace/repo` 匹配，只给短前缀匹配不到且静默返回空）。
 - 发布前：`check` 与 `test` 全绿、`scripts/restore-drill.sh` 验证备份可导入。
 - 发布后：`/health`、一次设备授权/刷新、一次检索、一次播放会话、打开 `/admin/` 完成一次登录与内容读写，检查 5xx 与 P95。
 - 迁移已改变数据时，仅回滚镜像可能不兼容；优先前滚修复，否则按 §6 恢复。
