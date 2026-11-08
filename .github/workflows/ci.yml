@@ -132,7 +132,9 @@ jobs:
           echo "image=$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME:$tag" >> "$GITHUB_OUTPUT"
 
       # 只有 push 才推 TCR：PR 构建只验证 Dockerfile 可构建，不污染仓库
+      # id 供重试条件用：登录失败属配置错误，不进重试（避免白建镜像且盖住真错）
       - name: Login TCR / 登录镜像仓库
+        id: login
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
@@ -140,16 +142,61 @@ jobs:
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
 
-      - name: Build / 构建并推送
+      # provenance: false——TCR 不认 OCI attestation 附加清单
+      # continue-on-error: 首推失败不染红 job，成败由后面的裁定步骤说了算
+      # （重试条件须用 outcome 而非 failure()，continue-on-error 会把 failure() 归 false）
+      - name: Build / 构建并推送（第 1 次尝试）
+        id: build1
+        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/cloud/Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
+          provenance: false
           tags: ${{ steps.vars.outputs.image }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}
+
+      # 跨境链路偶发超时：buildx 的 gha 缓存让重试几乎不重新构建
+      # cache-to 的 scope 必须与第 1 次不同：同 job 内两个 gha 导出用同一 scope
+      # 会撞 "Unable to reserve cache"，第二个导出直接失败
+      # scope 带分支名而非写死：concurrency 按 ref 串行，同分支不会撞车；
+      # 跨分支（develop 与 main 并发）各写各的，避免共用默认 scope 抢预留
+      - name: Build / 构建并推送（重试）
+        id: build-retry
+        if: steps.build1.outcome == 'failure' && (steps.login.conclusion == 'success' || github.event_name != 'push')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/cloud/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          provenance: false
+          tags: ${{ steps.vars.outputs.image }}
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-retry
+
+      - name: Conclude build outcome / 构建推送结论裁定
+        if: always()
+        # 任一次尝试成功即 job 成功；两次皆败才判红（首推超时→重试成功，
+        # job 仍红会误导发布判断）。登录失败单独判定：配置问题，重试无意义，
+        # 且会让构建步骤被跳过——不单独判，日志里只会看到「构建失败」，把真错盖住
+        # 镜像地址经 env 传入：直接插值含 namespace secret，日志里会被 GitHub 掩成 ***
+        env:
+          IMAGE: ${{ steps.vars.outputs.image }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ steps.login.outcome }}" != "success" ]; then
+            echo "[FAIL] 镜像仓库登录失败（配置问题，重试无意义）" >&2
+            exit 1
+          fi
+          if [ "${{ steps.build1.outcome }}" = "success" ] || [ "${{ steps.build-retry.outcome }}" = "success" ]; then
+            echo "[OK] 镜像构建推送成功：$IMAGE"
+          else
+            echo "[FAIL] 镜像构建推送失败（两次尝试皆败）" >&2
+            exit 1
+          fi
 
   # ---------------------------------------------------------------- 发布制品
   artifacts:
