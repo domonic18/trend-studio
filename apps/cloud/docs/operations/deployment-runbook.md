@@ -221,6 +221,38 @@ DRILL_KEEP=1 scripts/restore-drill.sh workspace/backups/trend-coach-20261031T031
 
 生产不在业务进程代理媒体：`MEDIA_BASE_URL` 指向 CDN 根，播放地址为 `MEDIA_BASE_URL + hlsPath?token=...`。
 
+### 7.0 生产媒体走对象存储（`MEDIA_STORAGE=cos`）
+
+生产默认把 HLS 与图示放在对象存储（腾讯云 COS，S3 兼容），应用只签发短时预签名地址，
+**视频带宽不再经过应用机**：
+
+- `.env.prod`：`MEDIA_STORAGE=cos`，并填 `COS_REGION`/`COS_BUCKET`/`COS_SECRET_ID`/`COS_SECRET_KEY`
+  （`COS_ENDPOINT` 默认 `cos.${COS_REGION}.myqcloud.com`，`COS_VIRTUAL_HOST=true`、`COS_SECURE=true`）。
+- `MEDIA_STORAGE=cos` 时**不得**设置 `MEDIA_LOCAL_DIR`（两个真相源），**不得**启用 `PIPELINE_ENABLED`
+  （配置校验直接拒绝启动）。
+- 播放链路：应用仍校验播放令牌与 `playback_sessions` 会话，返回的播放列表里分片与密钥被改写成
+  **对象存储预签名绝对地址**（有效期与 `PLAYBACK_SESSION_TTL_SECONDS` 对齐），播放器直连对象存储取分片；
+  分片若仍打到应用，应用从对象存储透传（支持 Range）。
+- 客户端协议不变：`MEDIA_BASE_URL` 仍是站点地址，`POST /v1/playback/sessions` 返回的形状不变。
+- 桶保持**私有读**，靠预签名 URL 访问。**桶必须配 CORS**：允许来源 `https://$DOMAIN`、
+  方法 `GET`/`HEAD`、允许请求头 `Range`——没有 CORS 浏览器会拒掉分片请求。
+- 对象键与 `media_assets.hls_path` 一一对应（`hls/<assetId>/index.m3u8`、`hls/<assetId>/seg_xxx.ts`），
+  图示候选在 `figures/<figureId>/<candidateId>.<ext>`。
+
+本地内容同步到对象存储（一次性或增量，幂等）：
+
+```bash
+cd apps/cloud
+# 需要本地 DATABASE_URL 与 COS_* 凭据；先看清单再真传
+npm run sync:media -- --courses TC-101,TC-ZONGLUN --dry-run
+npm run sync:media -- --courses TC-101,TC-ZONGLUN
+```
+
+同步前会校验播放列表完整性（`#EXT-X-ENDLIST` + 分片齐备），不完整的素材跳过并报告；
+已存在且大小一致的对象跳过，可重复执行。
+
+### 7.1 CDN 模式（`MEDIA_STORAGE=local`）
+
 管线产出的 HLS 写入 `PIPELINE_HLS_DIR/hls/<assetId>/`，CDN 需把 `MEDIA_BASE_URL` 根映射到 `PIPELINE_HLS_DIR`（或同步该目录到对象存储）。`media_assets.hls_path` 形如 `hls/<assetId>/index.m3u8`，签名只覆盖该素材目录；源视频位于 `PIPELINE_STORAGE_DIR/sources/`，不得对 CDN 暴露。
 
 CDN/对象存储必须满足：
@@ -392,3 +424,46 @@ curl -fsS -H "Authorization: Bearer $SESSION_TOKEN" \
 - `PIPELINE_MAX_CONCURRENT_JOBS` 默认 1；提高前先评估 CPU 与内存，转码阻塞会影响 API 延迟。
 - 管线数据默认落在 `workspace/pipeline/`，compose 将其整体挂到 `/data`（`storage/` 与 `hls/` 同挂载点，HLS 才能原子 rename）。镜像预建 `/data/storage`、`/data/hls` 并归属 `node`（uid 1000）；bind mount 不会继承该属主，Linux 上需先 `chown -R 1000:1000 workspace/pipeline`。
 - `workspace/postgres` 与 `workspace/caddy` 同样以 bind mount 持久化；不要把手写文件放进 `workspace/`，该目录整体不入库。
+
+## 12. 本地内容与模型配置导入生产
+
+本地做的课程内容要落到生产，走「导出 bundle → 生产单事务导入」这一条路，不做自动同步。
+
+**导出（本地执行）**
+
+```bash
+cd apps/cloud
+npm run export:content -- --courses TC-101,TC-ZONGLUN
+# 产物：workspace/export-bundle/{content-bundle.sql, model-config.sql, bundle-manifest.json}
+```
+
+- `content-bundle.sql`：内容（章节/知识点/片段/节/课件 spec/图示/概念/语料/向量），
+  全部是 `INSERT ... ON CONFLICT DO UPDATE`，可重复执行；文件首尾自带 `BEGIN/COMMIT`。
+- `model-config.sql`：模型配置的**非密字段**（`api_key_encrypted` 一律 NULL，测试痕迹清空）。
+- `bundle-manifest.json`：逐表行数与两个文件的 sha256，用于导入后核对。
+- 不导出：账号/令牌/会话/播放会话/学习进度/事件/AI 运行/管线任务（运行态）；
+  `content_approvals` 也不导出（`approved_by` 指向本地用户），生产的审批由管理员重新签署。
+
+**导入（生产执行）**
+
+```bash
+cd /opt/trend-coach
+sudo bash scripts/backup.sh                      # 先备份，这是回滚路径
+scp content-bundle.sql model-config.sql ubuntu@<生产机>:/tmp/
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < /tmp/content-bundle.sql
+```
+
+- 任一行失败即整体回滚（`ON_ERROR_STOP=1` + 文件内单事务），旧数据不受影响。
+- 导入后按 `bundle-manifest.json` 的逐表行数核对，并确认向量维度为 1024：
+  `SELECT count(*) FROM source_units WHERE embedding IS NOT NULL AND vector_dims(embedding) = 1024;`
+- `source_units` 的向量随 bundle 原样拷贝（同一把 embedding 模型，生产可直接检索）；
+  `segments` 的片段向量需在生产补齐：模型密钥录入后调 `POST /v1/admin/content/reindex`。
+
+**模型密钥（人工步骤）**
+
+在生产后台「模型配置」页录入内容 LLM、embedding、ASR 三个密钥并点「测试连接」，保存即生效。
+密钥不进 bundle、不进代码、不进文档。
+
+**回滚**：单事务失败即整体回滚；已导入且需撤销时，用导入前的 `scripts/backup.sh` 备份恢复
+（见 §6），不要手写逆向 SQL。

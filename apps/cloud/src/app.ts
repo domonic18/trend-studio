@@ -37,6 +37,7 @@ import { ModelConfigService } from './model-config/service.js'
 import { registerModelConfigRoutes } from './model-config/routes.js'
 import { registerKbRoutes } from './kb/routes.js'
 import { signFigureUrl } from './media/figure-sign.js'
+import { createCosStore } from './media/cos-store.js'
 import { registerMediaRoutes } from './media/routes.js'
 import { PlaybackService } from './playback/service.js'
 import { registerPlaybackRoutes } from './playback/routes.js'
@@ -218,6 +219,9 @@ export async function buildApp({
     ...(injectedQuotes === undefined ? {} : { quotes: injectedQuotes }),
   })
 
+  // 对象存储后端（生产媒体走 COS）：只建一次，播放与图示共用
+  const cos = config.cos === undefined ? undefined : createCosStore(config.cos)
+
   registerAuthRoutes(app, { auth, accounts, config, limiter })
   registerAccountRoutes(app, { accounts, config, limiter })
   registerPortalRoutes(app, { accounts, config, limiter, pool })
@@ -256,8 +260,10 @@ export async function buildApp({
     ...(config.figureLocalDir === undefined ? {} : { figureStore: createFigureStore(config.figureLocalDir) }),
   })
   registerProductionRoutes(app, { service: production, accounts, config, limiter, playback, pool })
-  await registerPipelineRoutes(app, { api: pipeline.api, accounts, config, limiter })
-  if (config.mediaLocalDir !== undefined) registerMediaRoutes(app, { config, pool })
+  await registerPipelineRoutes(app, { api: pipeline.api, accounts, config, limiter, ...(cos === undefined ? {} : { cos }) })
+  if (config.mediaLocalDir !== undefined || cos !== undefined) {
+    registerMediaRoutes(app, { config, pool, ...(cos === undefined ? {} : { cos }) })
+  }
 
   app.addHook('onClose', async () => pipeline.stop())
   if (startPipeline) await pipeline.start()

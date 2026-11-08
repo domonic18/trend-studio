@@ -5,7 +5,8 @@ import { parseContentId, titleField } from '../content/service.js'
 import { badRequest, HttpError, notFound, tooManyRequests, forbidden } from '../errors.js'
 import { requireSession } from '../http/principal.js'
 import { asObject, optionalStringField } from '../http/validation.js'
-import { readFigureImageBytes } from '../media/figure-image.js'
+import { figureMimeOf, readFigureImageBytes } from '../media/figure-image.js'
+import type { CosStore } from '../media/cos-store.js'
 import { signUploadTicket, verifyUploadTicket } from '../media/upload-sign.js'
 import { RateLimiter } from '../rate-limit.js'
 import type { ApprovalGate } from '@trend/contracts'
@@ -28,6 +29,8 @@ export interface PipelineRouteDeps {
   accounts: AccountService
   config: AppConfig
   limiter: RateLimiter
+  /** 对象存储后端；存在时图示候选字节从对象存储取。 */
+  cos?: CosStore
 }
 
 /** 直传的授权方式：会话直通，或签名凭据绑定「素材 + 字节数 + 摘要」。 */
@@ -328,6 +331,12 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps: Pipelin
     await guard(request)
     const { candidateId } = request.params as { candidateId: string }
     const { relPath } = await api.candidateFile(parseCandidateId(candidateId))
+    if (deps.cos !== undefined) {
+      const bytes = await deps.cos.getBuffer(`figures/${relPath}`)
+      if (bytes === undefined) throw notFound('candidate image not found')
+      reply.header('cache-control', 'private, max-age=300')
+      return reply.type(figureMimeOf(relPath)).send(bytes)
+    }
     const root = config.figureLocalDir
     if (root === undefined) throw new HttpError(503, 'figure storage not configured')
     const image = await readFigureImageBytes(root, relPath)

@@ -15,6 +15,11 @@ function mimeOf(relPath: string): string {
   return 'image/jpeg'
 }
 
+/** 图示候选的 MIME（对象存储分支复用同一口径）。 */
+export function figureMimeOf(relPath: string): string {
+  return mimeOf(relPath)
+}
+
 /**
  * 读图示候选字节：路径越界一律拒绝（不回显磁盘结构），文件缺失返回 undefined。
  */

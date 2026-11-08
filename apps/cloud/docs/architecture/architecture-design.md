@@ -1,6 +1,7 @@
-# 趋势课程云端服务 · 架构设计（v0.35）
+# 趋势课程云端服务 · 架构设计（v0.36）
 
-版本：v0.35（2026-11-08；**发布分发流水线化**（§6.5.16）——`content/releases.json`（发布清单）与 `dist/downloads/`（插件 tarball）是 compose 挂进容器的宿主目录，此前只在本地发布脚本里产出、**从未下发到生产**：线上清单两个插件都是 null、`/install-producer.sh` 404、`/downloads/` 403——教员装不上、学员下不到，而服务照常跑。改为流水线出真相：`artifacts` job 打包 coach 与 producer 两个插件并回写清单校验值，随发布资产直传到服务器的 `content/` 与 `dist/downloads/`；`deploy.sh` 预检核对清单点名的制品齐不齐，缺则中止发布。发布脚本统一为 `publish-plugin.mjs --plugin coach|producer`（原先只有 producer 一份，coach 无打包管线）。零新增端点、零新增表、零契约字段变更。）
+版本：v0.36（2026-11-08；**生产媒体改走对象存储**（§4.1/§6.4/§8）——原先生产 HLS 落在应用机自托管目录，2C2G 机器同时扛应用与视频带宽。`MediaStore` 由「纯本地文件系统」扩为**双后端**：新增 `MEDIA_STORAGE`（`local` / `cos`），`cos` 模式走 S3 兼容 + virtual-host 寻址 + region + SigV4 预签名（`src/media/cos-store.ts`）。**播放协议零变更**——`MEDIA_BASE_URL` 仍指向应用，`POST /v1/playback/sessions` 响应结构不变；变的是应用在返回 m3u8 时把 key URI 与分片地址改写为**预签名绝对地址**，客户端直连对象存储取分片，视频带宽不再经过业务进程（§8）。对象键与 `media_assets.hls_path` 一一对应（`hls/<assetId>/index.m3u8`），图示键为 `figures/<rel_path>`，桶保持私有读。**单一真相源由配置层强制**：`MEDIA_STORAGE=cos` 与 `MEDIA_LOCAL_DIR` / 视频管线互斥，配置校验直接拒绝启动，避免媒体位置出现两个真相源。配套两个一次性工具：`export:content`（本地内容 → 幂等 SQL bundle）与 `sync:media`（本地媒体 → 对象存储，上传前校验播放列表完整性、已存在同尺寸则跳过）。零新增端点、零新增表、零契约字段变更）
+v0.35（2026-11-08；**发布分发流水线化**（§6.5.16）——`content/releases.json`（发布清单）与 `dist/downloads/`（插件 tarball）是 compose 挂进容器的宿主目录，此前只在本地发布脚本里产出、**从未下发到生产**：线上清单两个插件都是 null、`/install-producer.sh` 404、`/downloads/` 403——教员装不上、学员下不到，而服务照常跑。改为流水线出真相：`artifacts` job 打包 coach 与 producer 两个插件并回写清单校验值，随发布资产直传到服务器的 `content/` 与 `dist/downloads/`；`deploy.sh` 预检核对清单点名的制品齐不齐，缺则中止发布。发布脚本统一为 `publish-plugin.mjs --plugin coach|producer`（原先只有 producer 一份，coach 无打包管线）。零新增端点、零新增表、零契约字段变更。）
 v0.34（2026-11-07；**教员一键安装脚本**（§6.5.16）——门户原先给的是「自己下 tgz → 算 sha256 → 解包 → cd → 跑脚本」，每一步都可能错。改为云端托管安装脚本：本体在 `content/install-producer.sh`（compose 挂宿主目录，改完即时生效），响应时把 `__BASE_URL__` 替成 `config.publicBaseUrl`，教员一条命令就能装；**脚本自己就是校验器**（读发布清单取 `fileName`/`sha256`/`dshVersion` → 下载 → 现场算 sha256 比对 → 解包 → 跑包内装机脚本）；管道执行时 stdin 不是 tty，脚本先探 `/dev/tty` 再重定向，探不到就报错不做无声降级。**不进 OpenAPI**（脚本不是 API，与 `/downloads/*` 同理），**不进门户静态目录**（放 `public/` 会被 `@fastify/static` 再注册一次导致启动崩），故由 Fastify 显式路由托管。站点地址三处兜底：服务端注入 → 构建期 `VITE_SITE_ORIGIN` → 运行期 `window.location.origin`。门户教员页收敛为一条命令 + 复制按钮，手动步骤折叠。另记本机运行口径：`MEDIA_LOCAL_DIR` 必设（须与 `PIPELINE_HLS_DIR` 相同），否则不注册 `/media/*` 路由，生产端拿到的关键帧签名 URL 全部 404。零新增表、零新增契约字段）
 v0.33（2026-11-07；**教员装机分发对外化**（§6.5.16）——生产插件从「克隆 monorepo 跑 `pnpm setup`」改为**官网下载 tgz + 独立装机脚本**：tarball 自带九个工艺包（`skills/`）、装机脚本与 bundle 依赖（`@trend/contracts`、`yaml`）——**工艺包必须随包分发**，否则 `cordis.patch.yml` 的 `customSkillDirs` 指向的目录不存在，装完会静默丢掉全部工艺包；`GET /v1/portal/releases` 顶层**新增 `producerPlugin`**（与 `plugin` 同形、可空），清单校验由手写改为契约包里的 zod schema（`packages/contracts/src/releases.ts`），**学员侧 `plugin` / `dshVersion` / `webAppPackage` 一字不变**、新字段不进 OpenAPI `required`；新增发布脚本 `apps/cloud/scripts/publish-producer-plugin.mjs`（打包 → sha256/size → 复制进 `/downloads/` → 只改写 `producerPlugin`）；门户新增公开页 `/teacher`（教员完整装机与使用流程）+ `/downloads` 加教员插件卡，管理台新增 `/admin/producer/setup`（回填本站地址、账号、模型要求与三条命令）。零新增端点、零新增表、契约仅加字段）
 v0.32（2026-11-07；**发布交接线落地（管理台 + 回归）**（§6.5.15）——就绪度与内容编辑两端都上线：云端端点见 v0.31，**管理台落地**课程编辑页「发布就绪度」卡片（五道门禁逐条 + 当前/签批指纹 + 待办清单；签批与发布按钮按就绪度给禁用理由，producer 仍看不到这两个按钮——分权不变）与节 / 案例股 / 术语三个编辑抽屉（编辑落 draft 并提示需重签批；失败文案按机器可读错误码给中文指引）；配套两处云端收口——**节编辑落 `status='draft'`**（此前改了仍留已发布态，与正文/课件/图示的落草稿口径不一致）、**术语定义支持传 `null` 清空**（契约允许可空，此前路由层把 `null` 当非法字符串挡掉，等于没有清空通道）；B4 回归：根 `pnpm check` 8/8、根 `pnpm test` 12/12 通过（云端 226 例：225 通过 / 1 跳过 / 0 失败，新增两例覆盖节编辑落草稿改指纹与术语定义清空）。零新增表、零新增端点、零契约字段变更）
@@ -43,7 +44,7 @@ v0.8（2026-11-05；补充 M10 教材呈现层与个股实盘对照目标架构 
 | 鉴权指标事件接收（M2） | 第三方分析 SDK |
 | 语音转写（M4.2，MiniMax ASR，仅语音→文字） | 学员侧生成式推理 |
 | 后台账号、内容管理与索引重建（M3） | 召回评估看板、插件版本与灰度 |
-| 视频→课程管线（M1/M8，遗留）：单素材流式上传、单码率 HLS、长音频转写、章节教材与图示草稿、人工发布（M9 上线后作为单素材兜底路径保留） | 多码率 ABR、对象存储、断点续传、自动发布 |
+| 视频→课程管线（M1/M8，遗留）：单素材流式上传、单码率 HLS、长音频转写、章节教材与图示草稿、人工发布（M9 上线后作为单素材兜底路径保留） | 多码率 ABR、断点续传、自动发布 |
 | **语料级课程生产（M9）**：多素材（约 69 集/10 卷/35h）→ 多模态理解产物 source units 存储/检索、概念图谱与术语表、节级教材/图示/课件草稿、生产溯源账本 | Agent 循环内嵌云端（生产大脑在 dsh 生产插件）；自动发布 |
 | **交互课件（M9）**：白名单组件 spec 的服务端复检、断言证明记录、管理台渲染预览 | LLM 生成可执行代码；学员侧交互课件生成 |
 | **教材呈现层与实盘底座（M10）**：富文本 DSL 的安全校验与组件渲染契约、节级媒体引用（关键帧配图、HLS 时间窗片段）的解析与回溯校验、案例股清单与课程侧行情缓存的存储与供给、SVG 模板图示确定性渲染、老师标注结构化详情与逐根回放判断练习（v2 批次） | 学员端渲染落地（管理台先行，学员端随 `contractVersion=3`）；案例股清单外标的的行情查询；实时行情（仅缓存日线）；学员作答采集（回放判断只做本地反馈）；与 `ai-invest` 的任何数据耦合 |
@@ -75,7 +76,7 @@ flowchart LR
   subgraph Local["学员电脑 · dsh 0.2.1"]
     A[dsh Agent Loop] -->|tool call| H[插件 Host]
     U[Browser UI] -->|Remote| H
-    P[右栏播放器] -->|签名 HLS| M
+    P[右栏播放器] -->|播放会话 + 签名 HLS| API
   end
 
   subgraph Cloud["云端 · 独立部署"]
@@ -86,14 +87,13 @@ flowchart LR
     DB[(PostgreSQL<br/>halfvec + pg_trgm + 任务队列)]
     EV[事件接收<br/>字段白名单]
     PIPE[视频管线 worker<br/>ffmpeg / 长音频 ASR / 内容 LLM]
-    STORE[(本地源文件与 HLS)]
+    STORE[(管线工作区与源文件)]
     PORTAL[门户与账号<br/>预渲染静态页 + /v1/portal]
     AIOPS[AI 路由<br/>用量账本 / 任务绑定 / 自动切换]
   end
 
   subgraph Media["媒体域"]
-    CDN[CDN / 云点播<br/>CORS + Range]
-    OBJ[(HLS 源站)]
+    OBJ[(对象存储<br/>私有桶 + CORS + Range)]
   end
 
   subgraph Ops["内容运营"]
@@ -111,8 +111,8 @@ flowchart LR
   API --> EV
   API -->|admin 会话| PIPE
   KB --> DB
-  PB --> CDN
-  CDN --> OBJ
+  PB -->|签发预签名地址| OBJ
+  P -->|预签名分片直连| OBJ
   PIPE --> DB
   PIPE --> STORE
   STORE --> OBJ
@@ -136,7 +136,7 @@ flowchart LR
 | 播放会话服务 | 片段到媒体路径映射、签名 URL、并发与设备绑定 | 视频转码 |
 | 事件接收 | 白名单校验、同意检查、幂等写入 | 第三方 SDK |
 | 视频管线（M1） | 上传落盘、ffprobe/ffmpeg、长音频转写、切分草稿、任务编排、人工发布与索引 | 学员侧读写、自动发布 |
-| 本地媒体存储 | 源文件、工作区、HLS 的原子发布与清理 | 对外暴露路径或直链 |
+| 媒体存储 | 源文件、工作区、HLS 的原子发布与清理（本地文件或对象存储） | 对外暴露桶地址或未签名直链 |
 | 门户与账号（M7） | 预渲染公开页、注册/登录、个人资料、改密、设备解绑、发布清单与统计 | 内容 CMS、邮件/短信、客服 |
 | AI 路由（M7） | 任务模型解析、用量记账、运行链路、健康冷却与单跳降级 | 学员侧推理、模型密钥分发 |
 | dsh 生产插件（M9，外部仓库） | 生产 Agent 循环（理解摘要/课程综合/逐节写作/主编评审）、Skill 工艺包、交互课件 spec 起草、生产卡点审批、按产物上报溯源 | 云端媒体处理与索引、服务端 spec 复检、发布门禁（均在云端）；持有云端密钥、自动发布 |
@@ -159,12 +159,12 @@ API Gateway ── 鉴权（Bearer + x-device-id）── 限流 ── 请求�
    └── events : GET/PUT /v1/events/consent + POST /v1/events（白名单）
    │
 PostgreSQL ── 课程 / 章节 / 节 / 知识点 / 片段 / 章节教材 / 节教材 / 图示 / 课件 spec / source units / 概念图谱 / 向量 / 用户 / 设备 / 令牌 / 事件 / 会话 / 管线任务与转写 / AI 用量与运行
-本地存储（MediaStore）── 源视频 / 工作区 / HLS；生产 HLS 由 CDN 或对象存储承接
+媒体存储（MediaStore）── 源视频 / 工作区 / HLS；MEDIA_STORAGE=local 走应用自托管文件，=cos 走对象存储（应用只签发预签名地址，客户端直连取流）
 构建产物 ── dist/server（服务端）、dist/admin（后台 SPA）、dist/portal（预渲染门户）、dist/downloads（插件包）
 ```
 
 - 单仓库、单服务进程起步（模块化单体），按接口前缀拆模块；M3 再按负载拆服务。
-- 检索与播放在同一进程内共享鉴权与限流；媒体流量经 CDN，不经业务进程。
+- 检索与播放在同一进程内共享鉴权与限流；媒体流量不经过业务进程（对象存储模式下播放列表由应用改写为预签名绝对地址，客户端直连对象存储取分片）。
 - 视频管线 worker 与 API 同进程、默认并发 1，用 PostgreSQL `pipeline_jobs` + `FOR UPDATE SKIP LOCKED` 认领；不引入 Redis/Celery。多实例时认领仍正确，资源竞争后置。
 - **生产 Agent 循环不在云端进程内（M9）**：dsh 生产插件运行于教员本机 dsh（web/headless profile），经 admin API 写入草稿；云端 worker 只保留 ingest（转码/抽帧/转写）与确定性校验。云 DB 为生产断点恢复的唯一真相源（原则 10）。
 - OpenAPI 3 为唯一契约源，生成请求/响应校验与契约测试夹具。
@@ -174,12 +174,13 @@ PostgreSQL ── 课程 / 章节 / 节 / 知识点 / 片段 / 章节教材 / �
 | 环境 | 用途 | 要求 |
 |---|---|---|
 | staging | 契约测试、插件联调、索引试跑、管线演练 | 独立数据库与媒体目录；可用测试账号；ffmpeg 可用 |
-| production | 学员使用 | 有效 TLS；备份与告警；管线存储卷与容量监控 |
+| production | 学员使用 | 有效 TLS；备份与告警；对象存储桶与 CORS 就绪；管线存储卷与容量监控 |
 | local | 开发与 mock 对齐 | Docker Compose：PostgreSQL + 服务；ffmpeg 可选 |
 
-- 两个环境严格隔离数据库、媒体存储、令牌密钥与 CDN 配置。
-- 签名密钥、数据库口令、CDN 密钥通过环境变量/密钥管理注入，不入库、不入镜像；ASR/LLM/embedding 密钥存数据库（后台录入、加密落库），环境只提供 `CREDENTIAL_ENCRYPTION_KEY`。
+- 两个环境严格隔离数据库、媒体存储、令牌密钥与对象存储配置。
+- 签名密钥、数据库口令、对象存储密钥通过环境变量/密钥管理注入，不入库、不入镜像；ASR/LLM/embedding 密钥存数据库（后台录入、加密落库），环境只提供 `CREDENTIAL_ENCRYPTION_KEY`。
 - 镜像内置 ffmpeg/ffprobe；`PIPELINE_STORAGE_DIR`（源文件与工作区）与 `PIPELINE_HLS_DIR`（对外 HLS）位于同一挂载点（宿主 `workspace/pipeline` 挂到 `/data`），保证 HLS 原子 rename。所有运行期持久化数据按 ai-invest 约定放在仓库根 `workspace/`，整体 gitignore。
+- 媒体后端由 `MEDIA_STORAGE` 决定：`local`（应用自托管文件，用于本地 staging 与管线验证）或 `cos`（对象存储，生产口径）。`cos` 模式下不得设置 `MEDIA_LOCAL_DIR`、不得启用视频管线（配置校验直接拒绝），媒体位置只有一个真相源。
 - 构建同时产出 `dist/server`、`dist/admin`、`dist/portal` 与 `dist/downloads`：门户先 Vite 客户端构建，再程序化 SSR 构建逐路由预渲染，生成 `routes.json`、`sitemap.xml`、`robots.txt`。`PUBLIC_BASE_URL` 决定 canonical/sitemap 的绝对地址，默认 `http://127.0.0.1:3939`。
 - 门户静态注册使用 `prefix: '/'`、`wildcard: false`、`decorateReply: false`、`index: false`，只挂载构建产物中的精确文件；未知 HTML GET 由 `setNotFoundHandler` 回落预渲染页或 SPA 壳（`no-store`），`/v1/*` 未命中保持 JSON `404`。
 
@@ -347,11 +348,12 @@ workspace/pipeline/            # 容器内挂载为 /data
     <figureId>/<candidateId>.jpg
 ```
 
-- `MediaStore` 接口负责创建目录、流式写、SHA-256、原子 rename、清理与 HLS 校验；当前实现为本地文件系统，预留 S3/MinIO。
+- `MediaStore` 接口负责创建目录、流式写、SHA-256、原子 rename、清理与 HLS 校验；实现分两种：本地文件系统（`MEDIA_STORAGE=local`）与对象存储（`MEDIA_STORAGE=cos`，S3 兼容 + virtual-host 寻址 + region + SigV4 预签名）。
 - 设置 `MEDIA_LOCAL_DIR` 时要求 `PIPELINE_HLS_DIR` 与其解析后相等，否则启动失败；源目录不得位于媒体根下。
 - 存储目录与 HLS 目录必须同卷，HLS 从 `work/<assetId>/hls` 原子 rename 到 `PIPELINE_HLS_DIR/hls/<assetId>`；跨卷时启动或运行失败，不做复制降级。
 - `media_assets.hls_path = 'hls/<assetId>/index.m3u8'`；播放签名前缀自然限定到该目录，源文件永不进入签名范围。
 - 图示文件存 `figures/<figureId>/<candidateId>.jpg`，独立于课程媒体目录；签名按单文件签发，不能通过换 figureId 越权读取。
+- 对象存储模式下对象键与 `media_assets.hls_path` 一一对应（`hls/<assetId>/index.m3u8`、`hls/<assetId>/seg_*.ts`），图示键为 `figures/<rel_path>`；桶保持私有读，只有应用签发的预签名地址可访问。
 
 #### 上传与媒体校验
 
@@ -1207,10 +1209,14 @@ PRODUCER_TASKS = vision.describe | content.chunk_summary | content.concept_map
 - `POST /v1/playback/sessions` 校验片段可播与用户配额后，返回短时效签名 `playlistUrl`（绑定设备与会话）。
 - 播放只选择该课程 `status='ready' AND hls_path IS NOT NULL` 的最新素材；`awaiting_upload/uploaded/processing/failed/archived` 均不可播。签名前缀限定到该素材的 HLS 目录，源文件不在签名范围。
 - m3u8 内 **key URI 与所有分片地址携带同一 token**；浏览器直接向媒体域取流，不携带 Bearer。
+- 媒体承载分两种模式，播放地址形状不变（`MEDIA_BASE_URL` 仍指向应用，`POST /v1/playback/sessions` 响应结构不变）：
+  - `MEDIA_STORAGE=local`：应用 `/media/*` 校验令牌与会话后直接返回文件，支持 Range；
+  - `MEDIA_STORAGE=cos`：应用只负责播放列表——把 key URI 与分片地址改写为对象存储预签名绝对地址（TTL 与播放会话同量级），客户端直连对象存储取流，视频带宽不经过业务进程。
 - 媒体域必须：
   - 允许 CORS（至少 `GET/OPTIONS`、`Range`、`Content-Type`）；
   - 支持 HTTP Range（206）；
   - 拒绝过期/无效 token，返回 `403` 且为可被播放器识别的响应。
+- 对象存储桶保持私有读，桶侧必须配置 CORS：来源为应用公开域名，方法 `GET/HEAD`，允许 `Range` 请求头；否则浏览器拒绝分片请求。
 - `expiresAt` ≥ 单片段播放窗口 60s，推荐 5–10 分钟；过期后由插件重新换取会话。
 - 并发按用户/设备限制；超限拒绝并提示。
 - `watermark.label` 仅含非敏感用户标识；客户端渲染动态覆盖层（插件侧 A11）。
@@ -1228,7 +1234,7 @@ PRODUCER_TASKS = vision.describe | content.chunk_summary | content.concept_map
 | 面 | 措施 |
 |---|---|
 | 传输 | 全站 HTTPS；媒体域同样 TLS |
-| 凭据 | 设备令牌与会话令牌只存哈希；密码只存带盐 scrypt；签名密钥与 CDN 密钥走密钥管理；不在日志、响应、镜像中出现 |
+| 凭据 | 设备令牌与会话令牌只存哈希；密码只存带盐 scrypt；签名密钥与对象存储密钥走密钥管理；不在日志、响应、镜像中出现 |
 | 账号 | 后台账号由管理员创建、学员可自助注册；角色最小权限；门户会话 `scope=portal` 与后台隔离；禁用/改密吊销会话，禁用即时拒绝设备令牌 |
 | 门户 | 预渲染 HTML `no-store`；未知路径壳 `noindex`；公开接口只返回发布清单与聚合计数；下载强制 `attachment` |
 | 内容 | 只下发 Top-K；播放地址与图示地址短时效、设备绑定（播放）或按文件限定（图示）；不提供下载直链 |
@@ -1273,7 +1279,7 @@ PRODUCER_TASKS = vision.describe | content.chunk_summary | content.concept_map
 |---|---|
 | 检索 | QPS、P50/P95/P99、空召回率、`relatedKnowledgePoints` 命中、响应体积 |
 | 授权 | 设备码发起/批准/过期、刷新成功/失败、401/403 分桶 |
-| 播放 | 会话签发量、签名失败率、并发、CDN 命中率、起播耗时（端上报） |
+| 播放 | 会话签发量、签名失败率、并发、对象存储命中率、起播耗时（端上报） |
 | 系统 | 错误率按 `400/401/403/404/429/5xx` 分桶、限流命中、DB 连接/慢查询、索引任务耗时与失败 |
 | 事件 | 接收量、白名单拒绝量、同意/撤回状态 |
 | 语音 | 转写请求量、耗时 P50/P95、错误分桶（400/413/422/429/502/503）、上游错误类别、音频时长分布（仅聚合桶，不记内容） |
@@ -1287,9 +1293,9 @@ PRODUCER_TASKS = vision.describe | content.chunk_summary | content.concept_map
 ## 11. 性能与容量
 
 - 检索 P95 ≤300ms（云端侧，不含网络与模型推理）。
-- 视频起播 ≤2s（CDN）；HLS 分片支持 Range 与 seek。
+- 视频起播 ≤2s；HLS 分片支持 Range 与 seek。
 - 可用性 ≥99.5%；staging/production 分离。
-- 容量按并发检索与视频并发分别评估；CDN 承担媒体带宽，业务进程不代理媒体流。
+- 容量按并发检索与视频并发分别评估；对象存储承担媒体带宽，业务进程不代理媒体流。
 - 数据库连接池与索引（`halfvec` ANN、`pg_trgm` GIN）随数据量调优；NFR 以压测结论为准。
 
 ## 12. 测试与验收
@@ -1310,7 +1316,7 @@ PRODUCER_TASKS = vision.describe | content.chunk_summary | content.concept_map
 | 门户 | 注册/登录/限流、会话 scope 越权、资料与设备解绑、发布清单缺失、预渲染深链与 `/v1` 404 语义、静态缓存头 |
 | AI 运营 | 用量记账、run/steps 一致性、绑定校验、主备切换与冷却、成本缺失返回 `null`、operator 只读与 admin 写 |
 | 安全 | 越权/设备不匹配/过期令牌、门户令牌访问后台、日志脱敏抽查、限流 |
-| 压测 | 检索 P95 与并发目标；播放会话签发与 CDN 并发 |
+| 压测 | 检索 P95 与并发目标；播放会话签发与对象存储并发 |
 
 CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 compose）、OpenAPI 与实现一致性校验。
 
@@ -1339,7 +1345,7 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 - **M6 已落地加固项**：限流补齐设备轮询、刷新、体系/片段读取与后台内容接口，`429` 带 `Retry-After`，内存键数设上限；新增零依赖压测脚本 `scripts/load-test.mjs`（P95/错误率阈值）、非破坏性恢复演练 `scripts/restore-drill.sh` 与合规清单 `docs/operations/compliance.md`。账号注销/数据删除、指标与播放会话定期清理、源视频保留期仍未实现，见合规清单 §9。
 - **M7 已落地**：`web/portal` 门户（首页、体系、功能、向导、下载、FAQ、**教员安装**、登录/注册/个人中心）与构建期预渲染（`routes.json`/`sitemap.xml`/`robots.txt`）；`/v1/portal/*` 注册/登录/资料/改密/设备解绑/发布清单/统计；迁移 007 的会话 `scope`、`ai_usage_events`/`ai_runs`/`ai_run_steps`/`llm_task_bindings`/`llm_config_health` 与价格字段；LLM/embedding/ASR 接入用量记账、任务级主备绑定、单跳降级与 60s 冷却；后台「AI 用量」「AI 运行」页与模型页「任务绑定」「健康状态」Tab。客服/联系入口、邮件验证与找回密码未实现。
 - **M8 已落地**：章节教材（按章 map-reduce、事实锚定、1500–3000 字/≤20000 字符）、图示（关键帧 + Seedream 文生图，每图 2 候选、每章 ≤3 张、全课 ≤24 张）、`illustrate` 任务与 `figure_plan/figure_render` 阶段、短时签名图片 URL、`contractVersion=2` 体系契约、发布前 `figure_unresolved` 闸门、图片预算（¥10/课、¥300/月，超限 `409 image_budget_exceeded`）、后台教材编辑/图示管理/图片单价。`pipeline-e2e` 覆盖发布闸门、签名篡改与过期、重拉换签、预算硬停与发布后学员读取；插件侧通过 S12。未覆盖：真实 Ark 出图与管理端浏览器操作（待图片模型 Key）。
-- **其他**：TTL 与并发上限仍为临时默认值；生产媒体走 CDN 尚未接入，本地 staging 由 `src/media/routes.ts`、生产管线由 `PIPELINE_HLS_DIR` 提供签名文件服务。
+- **其他**：TTL 与并发上限仍为临时默认值；生产媒体走对象存储（`MEDIA_STORAGE=cos`，应用签发预签名地址、客户端直连取流），本地 staging 由 `src/media/routes.ts`、生产管线由 `PIPELINE_HLS_DIR` 提供签名文件服务。
 
 ### 13.1 视频 → 课程能力现状
 
@@ -1368,11 +1374,11 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 | C3 | 只读业务接口 + Top-K | 降低内容外流与越权面 | 离线不可用；功能受限 |
 | C4 | 设备码授权 + 双令牌轮换 | 无浏览器回调依赖，适配桌面插件；缩短令牌暴露窗口 | 多一个授权页与轮换状态机 |
 | C5 | 播放地址由业务接口签发，浏览器不持 Bearer | 凭据留在 Host；签名 URL 可绑定设备、并发、时效 | 会话 TTL 与重换取逻辑 |
-| C6 | 媒体走 CDN，不经业务进程 | 带宽与成本可控；业务面保持轻量 | 需 CDN 签名/CORS/Range 配置一致性 |
+| C6 | 媒体走对象存储，不经业务进程 | 带宽与成本可控；业务面保持轻量 | 需桶侧 CORS/Range 配置一致性；客户端需支持预签名直连 |
 | C7 | 事件白名单 + 同意可撤回 | 隐私合规；避免第三方 SDK 与原始 query 外流 | 指标体系受限，需要同意管理 |
 | C8 | 模块化单体起步 | M1/M2 以交付速度优先；接口前缀已分层 | M3 后需按负载拆分服务 |
 | C9 | ASR 用 MiniMax，音频在云端转发，不落盘 | 上游不支持 webm，插件已在浏览器内编码 WAV；云端只做语音→文字，密钥仅存环境变量；不自动重试避免重复计费 | 依赖上游可用性；2.56MB base64 需路由级 bodyLimit |
-| C10 | 本地文件系统 + `MediaStore` 抽象 | 现有服务已有本地媒体代理；一期不引入对象存储与额外服务 | 单机容量与备份；跨卷 rename 受限 |
+| C10 | `MediaStore` 抽象，双后端（本地文件系统 / 对象存储） | 本地 staging 与管线验证不依赖对象存储；生产用对象存储承接媒体流量；两者共用键空间与接口 | 本地后端受单机容量与跨卷 rename 限制；对象存储后端不支持视频管线 |
 | C11 | PostgreSQL 任务队列 + 进程内 worker（`SKIP LOCKED`） | 模块化单体；不引入 Redis/Celery；崩溃可恢复 | 多实例资源竞争后置 |
 | C12 | 单码率 H.264/AAC HLS，6s 分片 | 最小可用、转码成本低；现有 hls.js 可直接播放 | 弱网自适应缺失，多码率后置 |
 | C13 | 生成结果单表 `payload jsonb` + 显式 apply/publish | 保留“先审后发、可丢弃”，避免 5 张 staging 表；生成绝不自动发布 | 预览不支持细粒度编辑，后续再拆表 |
@@ -1407,14 +1413,14 @@ CI 必跑：类型检查、单元测试、契约测试（对 staging 或本地 c
 4. 视频加密方案：云点播私有加密 vs AES-128，需与 hls.js 解密配置对齐。
 5. 相邻知识点阈值：空召回或最高分低于阈值的具体数值待评估集定标。
 6. 引用 host：`trend-coach.local` 是否长期保留；真实域名需插件同步支持。
-7. 部署区域与 CDN 供应商：影响签名算法、CORS 配置与延迟预算。
+7. 部署区域与对象存储选型：影响签名算法、CORS 配置与延迟预算。
 8. 真实 MiniMax ASR 已完成链路验证（2026-11-01，本地 33 分钟中文样片：5 块、49 段、时间戳单调），密钥由后台「模型配置」录入；假 provider 仍用于自动测试。
 9. 多供应商 ASR 切换本期不做；provider 接口保留。
 10. 内容 LLM 已用 `MiniMax-M3.1-Flash`（anthropic 协议）跑通生成→审核→apply→发布。`m1-v2` 改为全局大纲后，同一 33 分钟样片由 21 章（含 1 个空章，文章中位数 202 字）收敛为 8 章、无空章、文章中位数 511 字；同一 30s 转写分组内的不同知识点仍会共享播放区间（受 30s 分组粒度限制），后续若需要更细定位可将转写分组改到句级。**该结论由 M8 章节教材取代**：知识点文章不再下发，8 章结构仍作为大纲基线。
 11. MiniMax `verbose_json` 真实时间戳字段已确认可用；解析器仍兼容多种键，无时间戳时退化为整块。
 12. 真实 embedding 已验收（2026-11-01，智谱 `embedding-3` + `dimensions: 1024`）：测试连通正常，已有课程重发布 `indexed=true`、`embedded=30`，检索为词法 + 向量混合召回。
 13. 源视频与转写留存期限、版权授权与归档策略待运营确认；未冻结前不自动清理。
-14. 多码率 ABR、对象存储与断点续传后置；`MediaStore` 接口已预留。
+14. 多码率 ABR 与断点续传后置；对象存储已接入（S3 兼容 + 预签名），多副本上传未做。
 15. 门户内容维护走仓库 Markdown 与重新构建；CMS 与在线编辑未列入本期。
 16. 门户会话只存 `sessionStorage`、无刷新令牌；新标签页需重新登录，后续可评估短时刷新机制。
 17. 客服/联系入口（原需求 5）本期不做，后续单独立项。
