@@ -125,7 +125,7 @@ monorepo（`~/Code/trend-studio`）的云端应用：提供课程知识检索、
 | [项目规范](docs/conventions/project-conventions.md) | API、安全、测试、文档与提交约定 |
 | [文档总览](docs/ai-context/docs-overview.md) | 阅读顺序与文档索引 |
 | [项目结构](docs/ai-context/project-structure.md) | 现状与目标目录、放置规则 |
-| [部署 Runbook](docs/operations/deployment-runbook.md) | Compose、TLS、迁移、备份恢复、媒体 CDN |
+| [部署 Runbook](docs/operations/deployment-runbook.md) | Compose、TLS、迁移、备份恢复、媒体对象存储 |
 | [监控与告警](docs/operations/monitoring.md) | 指标接口、外部 Prometheus 接入、压测、排障 |
 | [合规与公测检查清单](docs/operations/compliance.md) | 数据清单、保留与删除、访问控制、已知缺口 |
 
@@ -168,7 +168,7 @@ curl -s -X POST http://127.0.0.1:3939/v1/auth/session \
 npm test                       # 单元 + 契约测试（自动重置测试库；需设 TEST_DATABASE_URL，守卫拦与 DATABASE_URL 同库）
 ```
 
-本地媒体需在 `.env` 设置 `MEDIA_LOCAL_DIR` 指向含 `hls/index.m3u8` 的目录；生产媒体走 CDN，不设该项。配置项与默认值见 `.env.example`。
+本地媒体需在 `.env` 设置 `MEDIA_LOCAL_DIR` 指向含 `hls/index.m3u8` 的目录；生产用对象存储（`MEDIA_STORAGE=cos` + `COS_*`），此时不设 `MEDIA_LOCAL_DIR`、不开视频管线，应用只签发预签名地址、客户端直连对象存储取流。配置项与默认值见 `.env.example` 与 `.env.prod.example`。
 
 运行期持久化数据（数据库、管线、证书、媒体、备份）统一放在仓库根 `workspace/`，该目录已 gitignore，可整体迁移或备份。
 
@@ -184,7 +184,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 scripts/backup.sh                # 备份（可配 cron）
 ```
 
-完整步骤、TLS、迁移、备份恢复、媒体 CDN 的 CORS/Range 要求与本地 staging 验证见 [部署 Runbook](docs/operations/deployment-runbook.md)。`/metrics` 保留供外部监控接入，默认不内置 Prometheus/Grafana 服务；接入方式见 [监控与告警](docs/operations/monitoring.md)。
+完整步骤、TLS、迁移、备份恢复、媒体对象存储的 CORS/Range 要求与本地 staging 验证见 [部署 Runbook](docs/operations/deployment-runbook.md)。`/metrics` 保留供外部监控接入，默认不内置 Prometheus/Grafana 服务；接入方式见 [监控与告警](docs/operations/monitoring.md)。
+
+一次性导入工具（本地跑，不在生产执行）：
+
+```bash
+npm run export:content -- --courses TC-101,TC-ZONGLUN   # 导出幂等 SQL bundle 到 workspace/export-bundle/
+npm run sync:media -- --courses TC-101,TC-ZONGLUN --dry-run  # 预览本地媒体 → 对象存储的待传对象
+```
 
 ## 目录
 
@@ -200,7 +207,7 @@ test/           # 单元、契约、管线 E2E、门户静态与 AI 计量测试
 docs/           # 需求、架构、规范、部署与监控
 docker/         # 本地数据库初始化
 deploy/         # Caddy 与可选监控模板（不随 Compose 启动）
-scripts/        # migrate/seed、预渲染、压测与备份恢复入口
+scripts/        # migrate/seed、内容导出与媒体同步、预渲染、压测与备份恢复入口
 ```
 
 当前为 M10 实现阶段：M2 业务接口、设备码授权、签名 HLS、事件接收已落地；M3.1 账号与后台登录、M3.2 内容管理 API 与 React 控制台、M3.3 体系与进度接口已落地；M4.2 语音转写已落地（真实 MiniMax 已验收）；M4.3 模型配置页已落地（LLM/ASR 条目、密钥加密、连通性测试）；M1 视频→课程管线已落地（上传、单码率 HLS、长音频转写、切分、文章草稿、人工发布；真实 ASR/LLM/embedding 已验收）；M7 公开门户与自助账号、AI 用量账本、运行链路、任务级主备绑定与自动切换已落地；M9 语料级生产底座（帧轨道、source units、概念图谱、节与课件 spec 复检、溯源账本）已落地；M10 呈现层 R1（DSL 校验、节级图示与 SVG 模板、资产播放会话、发布门禁扩展、管理台渲染组件包）已落地，R2 实盘层与 R3 质量收敛待落地。渲染组件包已外迁至 monorepo `packages/widgets`（`@trend/widgets`），管理台与学员端共用同一构建产物。多码率 HLS、召回评估、客服入口后置。
