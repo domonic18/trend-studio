@@ -56,13 +56,18 @@ openssl rand -hex 32   # CREDENTIAL_ENCRYPTION_KEY
 发布只有一条路径：**CI 构建镜像 → 推 TCR → SSH 调用服务器上的 `deploy/deploy.sh`**。服务器只 pull 不构建；发布逻辑只有 `deploy/deploy.sh` 一份（可评审、可回溯），CI 不内联长命令。
 
 ```
-PR ──► check（类型检查）──► test（单测+契约，pgvector 服务容器）
-                            └──► build（构建镜像，推 TCR：<branch>-<sha7>，不推 latest）
+PR ──► check（类型检查）──► test（单测+契约，pgvector 服务容器）──► artifacts（插件制品）
+merge develop/main ──► build（境内自托管 runner 构建镜像，推 TCR：<branch>-<sha7>，不推 latest）
 merge main ──► Environment: production（人工审批）──► deploy-production
                                                  └─► 直传发布资产 ─► deploy.sh ─► 健康检查 ─► 落状态
 ```
 
 镜像 tag 不可变（`<branch>-<sha7>`），回滚目标稳定；`latest` 不推。
+
+**镜像构建不在 PR 上跑，只在主干 push 上跑**（`workflow_dispatch` 手动触发除外，
+那是发布前的演练入口，只有有写权限的人能触发）。仓库是 public，PR（含 fork）的代码
+不得在自托管机上执行——自托管 runner 持有 docker 与部署目录权限，等于把构建机开放
+给外部。develop 的 push 同样会构建，Dockerfile 写坏了在进 main 之前就会暴露。
 
 ### 3.0 GitHub 侧配置项（维护方式与 ai-invest 统一）
 
@@ -304,8 +309,11 @@ sudo bash deploy/deploy.sh --env prod --tag main-<sha7> \
 
 - **`--image-repo` 与 CI 推送目标同源**：CI 传 `--image-repo "$TCR_REGISTRY/$TCR_NAMESPACE/$IMAGE_NAME"`，脚本把它钉进 `.env.prod` 的 `TREND_IMAGE_REPO`（compose 的 image 引用据此拼接）。这样「CI 推的仓库」与「服务器拉的仓库」只有一个真相源，namespace 变更不会推 A 仓拉 B 仓。人工发布时必须带上该参数，否则沿用 `.env.prod` 里已钉的值。
 - **CI 前置校验**：仓库 secret `TCR_NAMESPACE` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` 与仓库变量 `DEPLOY_HOST` / `DEPLOY_PATH` 任一缺失，流水线在动服务器之前就明确失败，不带着半套配置继续发布。YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
-- **镜像构建推送的语义在 `build` job 一处**：`provenance: false`（TCR 不认 OCI attestation 附加清单）；首次推送失败自动重试一次（跨境链路偶发超时，gha 缓存让重试几乎不重新构建），成败由 `Conclude build outcome` 步骤裁定——任一次尝试成功即 job 成功，两次皆败才判红；登录失败单独判定（配置问题，重试无意义，且不判的话日志里只会看到「构建失败」，把真错盖住）。重试步骤的 gha 缓存导出用独立 scope（`<分支名>-retry`），与第 1 次同 scope 会撞 "Unable to reserve cache"；scope 带分支名而非写死——`concurrency` 按 ref 串行，同分支不会撞车，跨分支（develop 与 main 并发）各写各的。
-- **构建 job 的时间预算是「两次尝试 + 收尾」**：job 上限 45 分钟，每次尝试（构建 + 推 TCR 是同一步骤）各自封顶 18 分钟，留约 3 分钟给 checkout / buildx 初始化 / 登录与裁定。跨境推 TCR 会卡在 `pushing layers` 长时间无进展（2026-11-08 main 发布实测挂起 28 分钟）：**步骤不给独立上限，job 预算会被挂起吃光、重试步骤根本没机会执行**，整条发布链卡在构建这一环。步骤级上限是重试机制能生效的前提。
+- **镜像构建推送在境内自托管 runner 上跑，不在 `ubuntu-latest` 上跑**。跨境推送链路是边缘可用：2026-11-08 实测两次 `pushing layers` 无进展、各撞 18 分钟步骤上限（另一次挂起 28 分钟），成功的一次也要 948 秒——生产发布完全押在这条链路上，一半失败不可接受。同机自托管 runner 推 TCR 实测 35 秒~5 分 51 秒。构建与推送因此拆成两步：构建 `--load` 进本地 docker（buildx 缓存留在构建机上，失败重跑秒级复用），推送是独立的 `docker push` 步骤，挂死时只需重推、不必重建。
+- **每次推送自带看门狗**：`docker push` 走跨境链路，卡住时不会自己返回，也不认超时参数；runner 是 macOS（BSD userland），没有 GNU coreutils 的 `timeout`，故用「后台进程 + 轮询 `ps` 状态」实现单次尝试的 600 秒上限：超时就杀掉本次、进入下一次重试，最多重试 3 次。**没有这个上限，重试就是摆设**——单次挂死即吃光整轮预算，第 2、3 次尝试根本没机会执行。
+- **构建 job 的时间预算**：job 上限 60 分钟 = 构建 20 + 推送 35 + 收尾。步骤级上限是重试机制能生效的前提（job 级上限只覆盖整轮时，一次挂死即把预算吃光）。
+- **构建成败由 `Conclude build outcome` 步骤裁定**，顺序为登录 → 构建 → 推送：前一步失败时后一步的 outcome 是 skipped，不按顺序判就会把「登录失败」报成「构建失败」，把真错盖住。登录失败是配置问题，不重试。
+- **常驻 buildx 构建器 `ci-builder`**：buildkitd 配了国内 docker.io 镜像源（Docker Hub 直连拉不到 `node:22-alpine`），构建缓存跨 job 持久。workflow 里不用 `setup-buildx-action`——它会另建临时 builder 顶掉选择，临时 builder 没有镜像源配置，基础镜像直接拉不动。
 - **发布分发件同批直传**：`artifacts` job 打包学员端与教员生产端两个插件，回写 `content/releases.json` 的校验值，随发布资产一起送到服务器的 `content/` 与 `dist/downloads/`。清单与制品成对下发——清单里的 sha256 只对得上同一次打包的 tarball。`deploy.sh` 预检会核对清单点名的制品齐不齐，缺则中止发布。
 
 - **失败自动回滚**：换容器或健康检查失败 → 自动退回 `previous_tag` 重新拉起并复查，状态记 `FAILED_ROLLED_BACK`，现场保留（日志不删）。迁移失败则在换容器之前中止，旧版本继续服务。
