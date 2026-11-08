@@ -192,7 +192,7 @@ scripts/backup.sh                # 备份（可配 cron）
 src/            # Fastify 服务：accounts/auth/content/kb/playback/events/media/asr/pipeline/model-config/ai/portal/http/production
 web/admin/      # React + Vite 管理端源码（构建产物 dist/admin）
 web/portal/     # React + Vite 门户源码与 Markdown 内容（预渲染产物 dist/portal）
-content/        # 发布清单 content/releases.json（下载文件放 dist/downloads）
+content/        # 发布清单 content/releases.json（下载文件放 dist/downloads；两者由 CI 打包并随发布直传）
 migrations/     # SQL 迁移（启动时自动执行；004 管线、005/006 模型配置、007 门户与 AI 运营、008–011 M8、012 M9、013 M10）
 data/seed.json  # 本地种子数据（与插件 mock 对齐）
 openapi/        # OpenAPI 3.1 契约
