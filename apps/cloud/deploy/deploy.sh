@@ -16,6 +16,11 @@
 #   - 失败自动回滚到上一个 tag，回滚保留现场（日志不删）
 #   - 镜像按仓库保留最新 N 个（当前 + N-1 个回滚目标）；
 #     只清悬空层，绝不用 docker image prune -a（会删掉回滚目标）
+#   - 镜像清理由退出兜底保证：无论成功、失败还是中途退出都跑一次。原先只挂在
+#     成功路径末尾，「磁盘余量不足 → 预检失败 → 不清理 → 磁盘永远不足」是个闭环
+#   - 清理的仓库路径以 .env.prod 里已钉的 TREND_IMAGE_REPO 为准（与 compose 拉的是同一个），
+#     不重新从 compose 推导——推导命中的是 compose 里的默认路径，与 CI 推送目标可能不一致；
+#     清理范围含「本次目标仓库 + 回滚目标仓库」，在改 .env.prod 之前算好
 #
 # 依赖：docker + docker compose v2；生产机需 root（docker 组权限不足）
 # ============================================================
@@ -34,6 +39,16 @@ ENV_FILE=".env.prod"
 STATE_FILE="$APP_ROOT/.deploy-state"
 COMMIT_FILE="$APP_ROOT/.deploy-commit"
 LOG_DIR="$APP_ROOT/.deploy"
+# 镜像清理的豁免版本列表（当前运行版本 + 回滚目标）：退出兜底的清理要用，
+# 部署中途中断时按它们豁免删除
+PROTECT_TAGS=""
+# 清理涉及的镜像仓库路径列表（本次发布的目标仓库 + 回滚目标仓库，可能不止一个）。
+# 必须在改 .env.prod 之前算出来：回滚后 .env.prod 指回旧仓库，退出兜底若照
+# .env.prod 推导，只会清旧仓库，刚拉下来的新仓库镜像永远留在盘上
+CLEANUP_REPOS=""
+CLEANUP_DONE=0
+# 退出兜底是否可用：豁免版本名单算出来之前不装 trap（否则清理会误删回滚目标）
+TRAP_READY=0
 # 应用镜像服务（app 与 migrate 共用一个镜像，pull 一次即可）
 APP_SERVICES="app migrate"
 # 基础镜像服务：版本固定、服务器上长期存在，拉取失败可容忍（本地已有副本）
@@ -131,6 +146,25 @@ restore_owner() {
     chown "$owner" "$ENV_FILE" .env.prod.bak .env.prod.bak.1 .env.prod.bak.2 2>/dev/null || true
 }
 
+# 判断某个词是否在以空白分隔的列表里
+in_list() {
+    local needle="$1" list="$2" item
+    for item in $list; do
+        [ "$item" = "$needle" ] && return 0
+    done
+    return 1
+}
+
+# 往清理范围里追加一个仓库路径（去重；空值忽略）
+append_repo() {
+    local r="$1" existing
+    [ -n "$r" ] || return 0
+    for existing in $CLEANUP_REPOS; do
+        [ "$existing" = "$r" ] && return 0
+    done
+    CLEANUP_REPOS="$CLEANUP_REPOS $r"
+}
+
 restore_prev_tag() {
     # 失败发生在换容器之前：把 IMAGE_TAG（与镜像仓库路径）退回上一个版本，
     # 保持配置与实际运行版本一致
@@ -151,7 +185,7 @@ preflight() {
     docker info >/dev/null 2>&1 || fail "无权访问 docker daemon（生产机请用 sudo 执行本脚本）"
 
     [ -f docker-compose.prod.yml ] || fail "缺少 compose 文件：docker-compose.prod.yml"
-    [ -f "$ENV_FILE" ] || fail "缺少 $ENV_FILE（部署前须先准备）"
+    [ -f "$ENV_FILE" ] || fail "缺少 ${ENV_FILE}（部署前须先准备）"
 
     # 发布分发件：官网下载区与发布清单由 CI 直传到宿主目录（compose 挂进容器，
     # 清单每次请求现读）。缺了服务照常跑，但教员装不上插件、学员下不到包——
@@ -223,16 +257,33 @@ run_migrations() {
 
 # ---------------------------------------------------------------- 镜像拉取
 
-# 镜像仓库路径（registry/namespace/repo）从 compose 推导，
-# 避免脚本里再写一份镜像地址。
+# 镜像仓库路径（registry/namespace/repo）。
+# 权威来源是 .env.prod 里已钉的 TREND_IMAGE_REPO：compose 的 image 引用就是
+# `${TREND_IMAGE_REPO:-默认}` 拼出来的，钉住的值与 compose 实际拉的是同一个仓库。
+# compose 推导只作兜底（未钉时的默认值），且推导结果可能与 CI 推送目标不一致
+# ——namespace 变更时会出现「推 A 仓、拉 B 仓」。
 # 注意：config --images 的输出顺序是散列序，不能取第一行——第一行可能是
 #       caddy:2-alpine 这类三方镜像，推出来的前缀就错了。
 #       只认「registry/namespace/repo」三段式，本项目自有镜像才符合。
 #       仓库名（第三段）必须保留：去掉它会把 repo 误认成 namespace，
 #       于是「本地已有镜像可继续」与「按仓库保留最新 N 个」两条都失效。
 image_repo_path() {
-    { docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml config --images 2>/dev/null \
-        | grep -E '^[^/]+/[^/]+/[^/]+:' | sed -n '1p' | sed -E 's|:[^/:]+$||' || true; }
+    local pinned candidates
+    pinned="$(env_get TREND_IMAGE_REPO '')"
+    if [ -n "$pinned" ]; then
+        printf '%s' "$pinned"
+        return 0
+    fi
+    # 未钉住时才从 compose 推导：只认「registry/namespace/repo」三段式自有镜像。
+    # 候选多于一个说明 compose 里混了别家的三段式镜像（docker.io/library/... 之类），
+    # 这时无法判定哪个是自有的——宁可不猜，猜错会把清理打到别人的仓库上
+    candidates="$(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml config --images 2>/dev/null \
+        | grep -E '^[^/]+/[^/]+/[^/]+:' | sed -E 's|:[^/:]+$||' | sort -u || true)"
+    case "$(printf '%s\n' "$candidates" | grep -c . || true)" in
+        1) printf '%s' "$candidates" ;;
+        0) warn "compose 里没有三段式自有镜像，无法推导镜像仓库路径" ;;
+        *) warn "compose 里有多个三段式镜像，无法判定自有镜像仓库：$candidates" ;;
+    esac
 }
 
 pull_images() {
@@ -356,27 +407,51 @@ rollback_to() {
 # ---------------------------------------------------------------- 镜像与备份清理
 
 cleanup_images() {
-    local current_tag="$1" protect_tag="$2" repo_path repo tags i t
-    repo_path="$(image_repo_path)"
-    [ -n "$repo_path" ] || { warn "无法推导镜像仓库路径，跳过镜像清理"; return 0; }
-    repo="${repo_path##*/}"
-
-    tags="$(docker images --format '{{.Tag}}\t{{.CreatedAt}}' "$repo_path" 2>/dev/null \
-        | awk -F'\t' '$1 ~ /^main-[0-9a-f]{7,40}$/' \
-        | sort -k2 -r | cut -f1)"
-    [ -n "$tags" ] || return 0
-    i=0
-    for t in $tags; do
-        i=$((i + 1))
-        # 当前版本与上一个版本（回滚目标）永不删除
-        if [ "$i" -gt "$KEEP_IMAGES" ] && [ "$t" != "$current_tag" ] && [ "$t" != "$protect_tag" ]; then
-            docker image rm "$repo_path:$t" >/dev/null 2>&1 \
-                || warn "镜像删除失败（可能被容器引用）：$repo_path:$t"
+    # cleanup_images <豁免版本列表>
+    # 列表里的 tag 永不删除（当前运行版本 + 回滚目标）；其余按仓库保留最新 N 个。
+    # 仓库取 $CLEANUP_REPOS（本次目标仓库 + 回滚目标仓库），不取 .env.prod 里的当前值——
+    # 回滚后那里指的是旧仓库，照它清理会漏掉本次刚拉下来的镜像。
+    local protect="$1" repo_path repo tags i t size images removed=0 freed=0
+    if [ -z "$CLEANUP_REPOS" ]; then
+        warn "未确定镜像仓库路径，跳过镜像清理"
+        return 0
+    fi
+    for repo_path in $CLEANUP_REPOS; do
+        repo="${repo_path##*/}"
+        # 一次 docker images 同时服务「该仓库是否存在」与「tag 提取」：
+        # 过滤按完整仓库名匹配，短前缀匹配不到且静默返回空
+        images="$(docker images --format '{{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}' "$repo_path" 2>/dev/null || true)"
+        if [ -z "$images" ]; then
+            # 空结果不是「无需清理」的证据——多半是仓库路径不对，旧镜像会一直堆着
+            warn "镜像清理过滤未命中（本地无该仓库镜像）：$repo_path"
+            continue
         fi
+        # 只认 main- 前缀的 sha tag：生产脚本只跑 main-<sha>，
+        # 放行 develop- 会让无关 tag 挤占「保留最新 N 个」的额度，挤掉回滚目标
+        tags="$(printf '%s\n' "$images" \
+            | awk -F'\t' '$2 ~ /^main-[0-9a-f]{7,40}$/' \
+            | sort -k3 -r | cut -f2)"
+        if [ -z "$tags" ]; then
+            log "  ${repo}：本地无 main- 版本镜像，跳过"
+            continue
+        fi
+        i=0
+        for t in $tags; do
+            i=$((i + 1))
+            if [ "$i" -gt "$KEEP_IMAGES" ] && ! in_list "$t" "$protect"; then
+                size="$(docker image inspect --format '{{.Size}}' "$repo_path:$t" 2>/dev/null || echo 0)"
+                if docker image rm "$repo_path:$t" >/dev/null 2>&1; then
+                    removed=$((removed + 1))
+                    freed=$((freed + size))
+                else
+                    warn "镜像删除失败（可能被容器引用）：$repo_path:$t"
+                fi
+            fi
+        done
     done
     # 只清悬空层：docker image prune -a 会连回滚目标一起删掉
     docker image prune -f >/dev/null 2>&1 || true
-    log "镜像清理完成（保留最新 $KEEP_IMAGES 个）"
+    log "镜像清理完成：删除 $removed 个镜像，镜像体积合计约 $((freed / 1024 / 1024)) MB（每个仓库保留最新 $KEEP_IMAGES 个）"
 }
 
 prune_backups() {
@@ -397,32 +472,64 @@ prune_backups() {
     fi
 }
 
+# ---------------------------------------------------------------- 退出兜底
+
+# 镜像清理由退出兜底保证：无论成功、失败还是中途退出都跑一次。
+# 原先清理只挂在成功路径末尾——预检失败（磁盘不足）就不跑，
+# 「磁盘余量不足 → 预检失败 → 不清理 → 磁盘永远不足」是个闭环。
+on_exit() {
+    local rc=$?
+    trap - EXIT
+    if [ "$CLEANUP_DONE" -eq 1 ] || [ "$TRAP_READY" -eq 0 ]; then
+        exit $rc
+    fi
+    cleanup_images "$PROTECT_TAGS" || true
+    exit $rc
+}
+
 # ---------------------------------------------------------------- 主流程
 
 main() {
     parse_args "$@"
     validate
-    preflight
 
     local owner previous commit prev_commit previous_repo current_repo
-    owner="$(stat_owner "$ENV_FILE")"
-    ENV_OWNER="$owner"
     # 上一个版本 = 当前配置里的 IMAGE_TAG（改之前）；空则退到备份与状态文件
     previous="$(env_get IMAGE_TAG '')"
     [ -n "$previous" ] || previous="$(grep -E '^IMAGE_TAG=' .env.prod.bak 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
-    [ -n "$previous" ] || previous="$(read_state_field previous_tag)"
-    # 上一个版本的 commit = 旧状态文件里的 commit（本次发布覆盖前先取出来）
-    prev_commit="$(read_state_field commit)"
+    # 状态文件兜底取 current_tag（正在跑的版本）：previous_tag 是回滚目标，
+    # 当作「上一个版本」会把回滚链指向两代之前
+    [ -n "$previous" ] || previous="$(read_state_field current_tag)"
     # 上一个版本的镜像仓库路径：namespace 变更过时回滚必须退到旧仓库
     previous_repo="$(read_state_field image_repo)"
     [ -n "$previous_repo" ] || previous_repo="$(env_get TREND_IMAGE_REPO '')"
+
+    # 本次发布的目标仓库路径（CI 传入优先，否则取 .env.prod 里已钉的值）：
+    # 改 .env.prod 之前算出来，清理时不必再从配置反推
+    current_repo="$IMAGE_REPO"
+    [ -n "$current_repo" ] || current_repo="$(env_get TREND_IMAGE_REPO '')"
+    # 清理范围 = 本次目标仓库 + 回滚目标仓库（namespace 变更过时两者不同，
+    # 只清一个会漏——刚拉下来的新仓库镜像永远留着）
+    append_repo "$current_repo"
+    append_repo "$previous_repo"
+    append_repo "$(image_repo_path)"
+
+    # 豁免名单先算出来：退出兜底要靠它保护「当前运行版本」与「回滚目标」。
+    # 必须在 preflight 之前——预检失败正是最需要清理的路径。
+    PROTECT_TAGS="$previous $IMAGE_TAG"
+    TRAP_READY=1
+    trap on_exit EXIT
+
+    preflight
+
+    owner="$(stat_owner "$ENV_FILE")"
+    ENV_OWNER="$owner"
+    # 上一个版本的 commit = 旧状态文件里的 commit（本次发布覆盖前先取出来）
+    prev_commit="$(read_state_field commit)"
     commit="$(resolve_commit "$IMAGE_TAG")"
 
     rotate_env_backup
     set_env_var IMAGE_TAG "$IMAGE_TAG"
-    # 镜像仓库路径由 CI 传入（与本次推送目标严格一致）；未传则沿用已钉的值
-    current_repo="$IMAGE_REPO"
-    [ -n "$current_repo" ] || current_repo="$(env_get TREND_IMAGE_REPO '')"
     if [ -n "$current_repo" ]; then
         set_env_var TREND_IMAGE_REPO "$current_repo"
     fi
@@ -466,7 +573,10 @@ main() {
     write_state OK "$IMAGE_TAG" "$previous" "$commit" "$current_repo" "$previous_repo"
     log "部署成功：${IMAGE_TAG}（commit ${commit}）"
 
-    cleanup_images "$IMAGE_TAG" "$previous"
+    # 当前运行版本已是新版本，豁免名单保持「新版本 + 回滚目标」
+    #（PROTECT_TAGS 早已是这两个，退出兜底也复用同一份）
+    cleanup_images "$PROTECT_TAGS" || true
+    CLEANUP_DONE=1
     prune_backups
     log "完成"
 }
