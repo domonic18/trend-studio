@@ -14,8 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # 仓库为 public：镜像仓库路径、主机、路径一律走仓库变量 / secret，
+  # YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
   TCR_REGISTRY: ccr.ccs.tencentyun.com
-  TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE || 'domonic18' }}
+  TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE }}
   IMAGE_NAME: trend-cloud
 
 jobs:
@@ -107,6 +109,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # 镜像仓库路径由仓库变量拼装；变量缺失就明确失败，
+      # 不推到一个写死在 YAML 里的命名空间（推错仓库等于把坏镜像发到线上）
+      - name: Preconditions / 前置校验
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库变量 TCR_NAMESPACE" >&2; exit 1; }
+          echo "镜像目标：${{ env.TCR_REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}"
+
       - name: Resolve tag / 解析镜像标签（<branch>-<sha7>，不可变）
         id: vars
         run: |
@@ -156,6 +167,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # 仓库为 public：主机、路径、密钥一律走 secret，缺任何一项都明确失败，
+      # 不带着半套配置继续发布（否则 ssh 会用空 host 报一堆看不懂的错）
+      - name: Preconditions / 前置校验
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          [ -n "$DEPLOY_HOST" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_HOST" >&2; exit 1; }
+          [ -n "$DEPLOY_PATH" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_PATH" >&2; exit 1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_SSH_KEY" >&2; exit 1; }
+          [ -n "$DEPLOY_KNOWN_HOSTS" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_KNOWN_HOSTS" >&2; exit 1; }
+          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库变量 TCR_NAMESPACE" >&2; exit 1; }
 
       - name: Setup SSH key / 配置免密密钥与主机指纹
         run: |
@@ -210,9 +235,11 @@ jobs:
           REMOTE
 
       - name: Deploy / 发布（备份 → 迁移先行 → 换容器 → 健康检查 → 失败自动回滚）
+        # --image-repo 与 build job 的推送目标同源（同一组 env），
+        # 服务器拉的仓库与 CI 推的仓库严格一致，不会因 namespace 变更而拉空
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && sudo bash deploy/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}'"
+            "cd '$DEPLOY_PATH' && sudo bash deploy/deploy.sh --env prod --tag 'main-${{ steps.vars.outputs.sha_short }}' --image-repo '${{ env.TCR_REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}'"
 
       - name: Verify / 核对发布结果
         run: |
