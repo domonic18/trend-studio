@@ -14,10 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 仓库为 public：镜像仓库路径、主机、路径一律走仓库变量 / secret，
-  # YAML 里只留公有常量（registry 域名、镜像仓库名），不留个人命名空间兜底。
+  # 仓库为 public：主机、部署路径走仓库变量，密钥与仓库命名空间走 secret，
+  # YAML 里只留公有常量（registry 域名、镜像仓库名）。
+  # 维护方式与 ai-invest 一致：变量=非密配置，secret=凭据。
   TCR_REGISTRY: ccr.ccs.tencentyun.com
-  TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE }}
+  TCR_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
   IMAGE_NAME: trend-cloud
 
 jobs:
@@ -115,7 +116,7 @@ jobs:
       - name: Preconditions / 前置校验
         run: |
           set -eu
-          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库变量 TCR_NAMESPACE" >&2; exit 1; }
+          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库 secret TCR_NAMESPACE" >&2; exit 1; }
           echo "镜像目标：${{ env.TCR_REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.IMAGE_NAME }}"
 
       - name: Resolve tag / 解析镜像标签（<branch>-<sha7>，不可变）
@@ -162,8 +163,9 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      # 主机与部署目录走仓库变量（非密配置，与 ai-invest 同一维护方式）
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
 
     steps:
       - uses: actions/checkout@v4
@@ -176,11 +178,11 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -eu
-          [ -n "$DEPLOY_HOST" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_HOST" >&2; exit 1; }
-          [ -n "$DEPLOY_PATH" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_PATH" >&2; exit 1; }
+          [ -n "$DEPLOY_HOST" ] || { echo "ERROR: 未配置仓库变量 DEPLOY_HOST" >&2; exit 1; }
+          [ -n "$DEPLOY_PATH" ] || { echo "ERROR: 未配置仓库变量 DEPLOY_PATH" >&2; exit 1; }
           [ -n "$DEPLOY_SSH_KEY" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_SSH_KEY" >&2; exit 1; }
           [ -n "$DEPLOY_KNOWN_HOSTS" ] || { echo "ERROR: 未配置仓库 secret DEPLOY_KNOWN_HOSTS" >&2; exit 1; }
-          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库变量 TCR_NAMESPACE" >&2; exit 1; }
+          [ -n "${{ env.TCR_NAMESPACE }}" ] || { echo "ERROR: 未配置仓库 secret TCR_NAMESPACE" >&2; exit 1; }
 
       - name: Setup SSH key / 配置免密密钥与主机指纹
         run: |
