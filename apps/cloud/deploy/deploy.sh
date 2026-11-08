@@ -152,6 +152,18 @@ preflight() {
 
     [ -f docker-compose.prod.yml ] || fail "缺少 compose 文件：docker-compose.prod.yml"
     [ -f "$ENV_FILE" ] || fail "缺少 $ENV_FILE（部署前须先准备）"
+
+    # 发布分发件：官网下载区与发布清单由 CI 直传到宿主目录（compose 挂进容器，
+    # 清单每次请求现读）。缺了服务照常跑，但教员装不上插件、学员下不到包——
+    # 产品是残的，宁可在动服务器之前就失败。
+    [ -f content/releases.json ] || fail "缺少 content/releases.json（发布清单）"
+    [ -f content/install-producer.sh ] || fail "缺少 content/install-producer.sh（教员装机脚本）"
+    local artifacts artifact
+    artifacts="$(grep -oE '[A-Za-z0-9@._-]+\.tgz' content/releases.json | sort -u || true)"
+    [ -n "$artifacts" ] || fail "发布清单里没有任何制品"
+    for artifact in $artifacts; do
+        [ -f "dist/downloads/$artifact" ] || fail "下载区缺少制品：dist/downloads/$artifact"
+    done
     # 迁移服务必须存在：没有它就没有独立的迁移步骤
     # grep 不带 -q：-q 命中即退出会让上游吃 SIGPIPE，pipefail 下误判为失败
     compose --profile migrate config --services 2>/dev/null | grep -x migrate >/dev/null \
