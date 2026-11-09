@@ -141,7 +141,7 @@ node "$WORK_DIR/package/scripts/setup.mjs" "$@" < /dev/null
 
 echo ""
 echo "装好了。接下来三步（都在 dsh 里）："
-echo "  1. 启动 dsh：dsh --profile $PROFILE（没预装就用 npx --yes @deepseek-ai/dsh@${DSH_VERSION:-0.2.1-rc.5} --profile $PROFILE）"
+echo "  1. 启动 dsh：dsh --profile ${PROFILE}（没预装就用 npx --yes @deepseek-ai/dsh@${DSH_VERSION:-0.2.1-rc.5} --profile ${PROFILE}）"
 echo "  2. 浏览器界面的右侧栏「趋势生产」面板 → 点「登录」——浏览器自动打开云端授权页，用教员账号登录"
 echo "  3. dsh 设置 → 模型，粘贴 MiniMax API Key"
 echo ""

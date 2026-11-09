@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "turbo run check",
+    "check": "turbo run check && node scripts/check-shell-vars.mjs",
     "test": "turbo run test",
     "build": "turbo run build"
   },
