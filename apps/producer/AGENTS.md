@@ -1,6 +1,6 @@
 # AGENTS.md
 
-趋势交易课程**生产插件**（monorepo `apps/producer`，dsh 0.2.1-rc.5）：驱动"语料级视频 → 图文课程 + 交互课件"的生产 Agent 编排，运行于教员本机 dsh（web/headless profile）。
+趋势交易课程**生产插件**（monorepo `apps/producer`，dsh 0.2.1-rc.5）：驱动"语料级视频 → 图文课程 + 交互课件"的生产 Agent 编排，运行于教员本机 dsh（web 应用面 profile；生产面板挂在右侧栏「趋势生产」tab）。
 
 契约真相源分层（冲突时以此顺序裁决）：
 
@@ -72,6 +72,8 @@ pnpm --filter dsh-plugin-trend-producer run pack
 
 ```
 src/                 Host 入口与工具集（host/config、host/cloud-client、host/tools/*、host/orchestrator、host/review）
+src/client/          浏览器半（右侧栏「趋势生产」面板；esbuild 打成 lib/client.js）
+src/shared/          宿主与浏览器共用的契约（panel-contract.ts）
 skills/              Skill 工艺包（SKILL.md 格式，见 skills/README.md）
 docs/                需求、架构、规范
 cordis.patch.yml     bundle patch（config 走 schema 默认值/环境变量）
@@ -81,6 +83,7 @@ cordis.patch.yml     bundle patch（config 走 schema 默认值/环境变量）
 
 - 工具/产物字段变化：先改云端需求 v0.9 C13/C14、清单 §3.13/§3.14 与 `packages/contracts`，再改本仓库实现。
 - 新增注册一律放进 `ctx.effect(...)` 并返回清理函数。
+- 右侧栏 tab 是**两段式注册**：tab 类型（`sidebarRightTabs`）与正文槽（`sidebar.right.pane.tab`）的 key 必须是**同一个 id**——key 写错就派发不到，tab 静默不出现。浏览器半只读宿主脱敏后的结论，登录动作也只发给宿主。
 - 工具入参与云端响应在 Host 边界校验；非法数据报错，不静默丢弃。
 - 注释只写"为什么"；不写多段注释。
 - 日志不记 token、完整 query、完整设备 ID、模型密钥与产物正文全文。

@@ -101,7 +101,7 @@ schema 错」而不是缺字段提示。`cloud_source_units_read` 漏声明云�
 
 ## 6. Skill 工艺包
 
-九个包（格式见 skills/README.md）：`transcript-understanding`、`curriculum-synthesis`、`trend-pedagogy`、`chapter-authoring`、`section-production`、`courseware-design`、`diagram-authoring`、`glossary-trend`、`quality-rubric`。skill 为数据不是代码：版本随 provenance 上报（`skillVersions`），质量回归以 rubric 评估集把关（每卷 2–3 节金标准）。
+九个包（格式见 skills/README.md）：`transcript-understanding`、`curriculum-synthesis`、`material-ingest`、`chapter-authoring`、`section-production`、`courseware-design`、`diagram-authoring`、`glossary-trend`、`quality-rubric`。skill 为数据不是代码：版本随 provenance 上报（`skillVersions`），质量回归以 rubric 评估集把关（每卷 2–3 节金标准）。
 
 M10 扩充（随 R1–R3 迭代）：
 
@@ -133,16 +133,18 @@ M10 扩充（随 R1–R3 迭代）：
 | 步 | 人做什么 | 系统做什么 |
 |---|---|---|
 | ① install | 无（参数走命令行开关 > 既有 profile > 默认值） | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 |
-| ② doctor | 看结果 | 八项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / **登录态**（console 凭据记录优先、legacy ref 兜底；角色须是 operator / admin / producer）。未登录与未粘密钥报 **待办**（○）而非失败——后置两步没做完是装机时刻的预期状态 |
-| ③ 登录 | 在 dsh 会话框输入 `/trend login`，浏览器授权页用教员账号登录并批准 | 设备码流（`scope=console`）→ 令牌落凭据**记录**（`trend-producer/console`），热生效 |
+| ② doctor | 看结果 | 九项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / **应用面**（web 应用面，不是 headless）/ 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / **登录态**（console 凭据记录优先、legacy ref 兜底；角色须是 operator / admin / producer）。未登录与未粘密钥报 **待办**（○）而非失败——后置两步没做完是装机时刻的预期状态 |
+| ③ 登录 | 打开 dsh → 右侧栏「趋势生产」面板 → 点「登录」，浏览器授权页用教员账号登录并批准 | 设备码流（`scope=console`）→ 令牌落凭据**记录**（`trend-producer/console`），热生效 |
 | ④ 模型密钥 | dsh 设置 → 模型，粘贴 API Key | 写 ref `TREND_PRODUCER_MODEL_KEY`，热生效 |
 
 落点与不变量：
 
-- **profile**：`~/.dsh/profiles/trend-producer/`，装 `base + headless + 本插件` 三个 bundle；
+- **profile**：`~/.dsh/profiles/trend-producer/`，装 `base + web-app + 本插件` 三个 bundle；
   bundle 取**并集**（装机只补齐缺的，不丢已有）。
-  **不装 `dsh-web-app`**：它在宿主层把 `skill-filesystem` / `tool-skill` 整行禁用（改由 agent preset
-  各自挂载），而本 profile 的工艺包走的是宿主层 `customSkillDirs`——装上等于静默废掉九个技能包。
+  **用 web 应用面而不是 headless**：headless 是一次性任务执行器——没有命令分发（教员触发不了
+  登录），也没有任何操作界面。web 应用面提供浏览器界面与右侧栏，生产面板就挂在右侧栏（见 §11）。
+  `dsh-web-app` 在宿主层把 `skill-filesystem` / `tool-skill` 整行禁用，patch 因此**显式把
+  `skill-filesystem` 置回 `disabled: false`**——否则九个工艺包会静默不加载。
 - **配置层**：`cordis.patch.yml` 五个托管条目每次重写，**用户手加的条目原样保留**，旧文件备份 `.bak`。
 - **机密层**：`~/.dsh/.credentials.yaml`——`records`（console 登录记录 `trend-producer/console`，设备码流签发）
   + `refs`（模型密钥 `TREND_PRODUCER_MODEL_KEY`；老装机向导写的控制台令牌 ref 仍作兜底），profile 里只有引用名。
@@ -197,3 +199,46 @@ M10 扩充（随 R1–R3 迭代）：
 ### 10.4 dsh 解析
 
 `scripts/setup/dsh.mjs`：`dshCommand()` —— PATH 上有 `dsh` 就用它，否则 `npx --yes @deepseek-ai/dsh@<engines.dsh 版本>` 兜底。依赖安装（`dsh plugin --profile … install`）与 doctor 的 `--dump-config` 都走它——**教员机不必预装 harness**。
+
+## 11. 生产面板（浏览器半，v0.2.2）
+
+教员装完要能**看见并操作**，不是只会敲命令。生产面板挂在 dsh 网页面的**右侧栏**，
+tab 名「趋势生产」，四张卡片：**登录** / **模型密钥** / **云端** / **生产看板**。
+
+### 11.1 两段式注册
+
+右侧栏的 tab 分两段注册，缺一段就没有这个 tab：
+
+1. **tab 类型**：`ctx.sidebarRightTabs.register({id, kind, priority, title, guide})`——
+   声明「这一类 tab 是什么」；`kind` 是 `openTab` 用的类型名，`id` 是这个实现的身份。
+2. **tab 正文**：`ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({name, key}, Body))`——
+   按**同一个 id** 作为 key 登记正文。右侧栏按 `definition.id` 派发（`entryKey: definition?.id ?? tab.kind`），
+   key 写成别的就派发不到。
+
+两段都在 `ctx.effect(...)` 里注册，effect 的返回值是清理函数——插件卸载时注册随之撤销。
+
+### 11.2 宿主 ↔ 浏览器通道
+
+浏览器半不碰令牌与模型密钥：它只读宿主**脱敏后的结论**，登录动作也只发给宿主。
+
+| 路由 | 方法 | 载荷 |
+|---|---|---|
+| `/api/trend-producer/status` | GET | 登录态（`none` / `active` / `expired` + 用户名 + 到期）、模型密钥是否配置、云端可达性 |
+| `/api/trend-producer/courses` | GET | 课程清单（`courseId` / 标题 / 状态 / 章节数） |
+| `/api/trend-producer/board` | GET | 生产看板（按 `courseId`）：分节步骤、步骤状态标签、文章版本、课件/图示/案例股计数、评审结论 |
+| `/api/trend-producer/login` | POST | 立刻回执 `started: true`；授权在后台跑（浏览器自动开授权页） |
+
+路由挂在 `ctx.inject(['connection'], …)` 之下——`connection` 服务没加载时跳过注册，
+**headless 启动不因此失败**。路径与载荷形状的真相源是 `src/shared/panel-contract.ts`
+（宿主与浏览器共用的零运行时依赖模块），改动它对不上面板就是契约破坏。
+
+### 11.3 打包形态
+
+浏览器半由 `scripts/build-client.mjs` 用 esbuild 打成 `lib/client.js`：产物不是普通模块，
+而是一段「向 `window.__ModuleLoader__.load({id, factory})` 登记 factory」的脚本——
+模块体连同样式注入都在 factory 闭包里，宿主侧 client-modules 按包清单扫描本文件，
+缺失即启动失败。外部依赖只留平台基座（react 系与 dsh 客户端基座包），运行时从模块表取。
+
+宿主侧 NodeNext 构建不含客户端源码（`tsconfig.json` 排除 `src/client`），
+客户端另有一份 `tsconfig.client.json` 做类型检查。
+
