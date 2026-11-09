@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from './setup/args.mjs'
-import { buildManagedEntries, mergePatchEntries, readManagedConfig, readPatch, writePatch, writeProfilePackage } from './setup/profile.mjs'
+import { buildManagedEntries, environmentFor, mergePatchEntries, readManagedConfig, readPatch, writePatch, writeProfilePackage } from './setup/profile.mjs'
 import { credentialsFile, dshHome, profileDir, producerDir } from './setup/paths.mjs'
 import { resolveInstallContext } from './setup/context.mjs'
 import { installSkills } from './setup/skills.mjs'
@@ -71,7 +71,7 @@ function planSlots(options, patchFile) {
   const current = existsSync(patchFile) ? readManagedConfig(patchFile) : null
   const fallback = {
     cloudBaseUrl: current?.cloud.baseUrl !== '' && current?.cloud.baseUrl !== undefined ? current.cloud.baseUrl : DEFAULT_CLOUD,
-    environment: current?.cloud.environment !== '' && current?.cloud.environment !== undefined ? current.cloud.environment : 'local',
+    environment: current?.cloud.environment !== '' && current?.cloud.environment !== undefined ? current.cloud.environment : '',
     provider: current?.model?.provider ?? 'trend',
     modelId: current?.model?.id ?? 'MiniMax-M3.1-Flash',
     modelName: current?.model?.id ?? 'MiniMax M3.1 Flash',
@@ -84,9 +84,11 @@ function planSlots(options, patchFile) {
     const value = options[flag]
     return typeof value === 'string' && value !== '' ? value : fallback[key]
   }
+  const cloudBaseUrl = pick('cloud', 'cloudBaseUrl')
+  const environment = pick('environment', 'environment') || environmentFor(cloudBaseUrl)
   return {
-    cloudBaseUrl: pick('cloud', 'cloudBaseUrl'),
-    environment: pick('environment', 'environment'),
+    cloudBaseUrl,
+    environment,
     provider: pick('model-provider', 'provider'),
     modelId: pick('model-id', 'modelId'),
     modelName: pick('model-name', 'modelName'),
