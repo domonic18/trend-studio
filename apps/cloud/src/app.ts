@@ -159,9 +159,9 @@ export async function buildApp({
   app.get('/health', async (_request, reply) => {
     try {
       await pool.query('SELECT 1')
-      return { ok: true }
+      return { ok: true, commit: config.gitSha, buildTime: config.buildTime }
     } catch {
-      return reply.code(503).send({ ok: false })
+      return reply.code(503).send({ ok: false, commit: config.gitSha, buildTime: config.buildTime })
     }
   })
 

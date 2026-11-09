@@ -1,10 +1,11 @@
 import { Drawer, Grid, Layout } from 'antd'
 import { Suspense, useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { BuildInfo } from '../components/BuildInfo'
 import { AdminHeader } from './Header'
 import { Sidebar } from './Sidebar'
 
-const { Sider, Content } = Layout
+const { Sider, Content, Footer } = Layout
 
 export function AdminLayout() {
   const screens = Grid.useBreakpoint()
@@ -45,6 +46,9 @@ export function AdminLayout() {
             <Outlet />
           </Suspense>
         </Content>
+        <Footer style={{ textAlign: 'center', padding: '6px 0' }}>
+          <BuildInfo />
+        </Footer>
       </Layout>
     </Layout>
   )

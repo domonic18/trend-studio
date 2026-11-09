@@ -170,6 +170,8 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build --builder ci-builder --platform linux/amd64 \
+            --build-arg GIT_SHA="$GITHUB_SHA" \
+            --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --file apps/cloud/Dockerfile --load --provenance=false \
             --tag "$IMAGE" .
 
