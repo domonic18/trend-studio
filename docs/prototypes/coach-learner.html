@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>学员端原型 · dsh + trend-coach</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --surface-3: #e8ebf0;
+  --text: #1a1d24; --text-2: #5b6473; --text-3: #8b94a3; --line: #e3e7ee;
+  --brand: #2f5bd7; --brand-soft: #eaf0ff;
+  --up: #d9483f; --down: #17a06e;
+  --warn: #c47a12; --warn-soft: #fff6e5;
+  --danger: #c4382f; --danger-soft: #fff0ee;
+  --ok: #177a55; --ok-soft: #e9f7f0;
+  --info-soft: #eef4ff;
+  --shadow: 0 1px 2px rgba(20,28,45,.04), 0 8px 28px rgba(20,28,45,.06);
+  --radius: 16px; --radius-sm: 10px;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+
+/* ===== 原型页头：屏幕切换器 ===== */
+.proto-head { position: sticky; top: 0; z-index: 50; background: #1a1f28; color: #eef1f6; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.proto-head h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.proto-head .sub { font-size: 12px; color: #9aa4b5; }
+.switches { display: flex; gap: 6px; flex-wrap: wrap; }
+.switches button { border: 1px solid #3a4250; background: transparent; color: #c7cfdd; font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.switches button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+main { max-width: 1240px; margin: 0 auto; padding: 20px; }
+.screen { display: none; }
+.screen.on { display: block; }
+.screen-title { font-size: 16px; font-weight: 600; margin: 4px 0 4px; }
+.screen-desc { color: var(--text-2); font-size: 13px; margin-bottom: 14px; }
+
+/* 状态条 */
+.status-bar { margin-top: 14px; border-top: 1px dashed var(--line); padding: 10px 2px 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.st { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; }
+.st.ok { background: var(--ok-soft); color: var(--ok); }
+.st.enh { background: var(--info-soft); color: var(--brand); }
+.st.gap { background: var(--danger-soft); color: var(--danger); }
+.st.future { background: var(--surface-2); color: var(--text-2); }
+
+/* ===== dsh 应用骨架 ===== */
+.dsh { display: grid; grid-template-columns: 400px 1fr; gap: 14px; height: 760px; }
+.dsh-left, .dsh-right { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; }
+.app-label { font-size: 11px; color: var(--text-3); text-align: center; margin-bottom: 6px; letter-spacing: .5px; }
+
+/* 左：会话 */
+.chat-head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.chat-head .name { font-weight: 600; font-size: 13px; }
+.chat-head .who { font-size: 11px; color: var(--text-3); }
+.chat-body { flex: 1; overflow: hidden; padding: 14px; display: flex; flex-direction: column; gap: 12px; background: #fafbfc; }
+.msg { display: flex; gap: 8px; }
+.msg .avatar { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; }
+.msg.user .avatar { background: #6b7686; }
+.msg.bot .avatar { background: var(--brand); }
+.msg .bubble { border-radius: 12px; padding: 9px 12px; font-size: 13px; max-width: 92%; }
+.msg.user .bubble { background: var(--surface-3); }
+.msg.bot .bubble { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.bubble b { color: var(--brand); }
+.cite { display: inline-flex; align-items: center; gap: 4px; background: var(--brand-soft); color: var(--brand); border-radius: 6px; padding: 1px 7px; font-size: 12px; margin: 0 2px; cursor: pointer; }
+.cite.seg { background: #fff3e8; color: #b05c0a; }
+.cite:hover { outline: 2px solid var(--brand); }
+.qcard { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface); }
+.qcard .t { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.qcard .opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.qcard .opts span { border: 1px solid var(--brand); color: var(--brand); background: #fff; border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer; }
+.tool-call { border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-2); background: var(--surface-2); }
+.composer { border-top: 1px solid var(--line); padding: 10px 12px; background: var(--surface); }
+.context-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-soft); color: var(--brand); font-size: 12px; border-radius: 999px; padding: 3px 10px; margin-bottom: 8px; }
+.context-chip .x { cursor: pointer; opacity: .7; }
+.input-row { display: flex; gap: 8px; align-items: center; }
+.input-row .box { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--text-3); font-size: 13px; background: var(--surface-2); }
+.icon-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; }
+.icon-btn.mic { background: var(--brand); color: #fff; border-color: var(--brand); }
+.send { background: var(--brand); color: #fff; border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+
+/* 右：侧栏 tabs */
+.tab-strip { display: flex; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tab-strip .tab { padding: 10px 14px; font-size: 13px; color: var(--text-2); border-bottom: 2px solid transparent; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.tab-strip .tab.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+.tab-strip .tab.dis { color: var(--text-3); opacity: .5; cursor: not-allowed; }
+.tab-strip .guide { margin-left: auto; align-self: center; margin-right: 12px; font-size: 12px; color: var(--text-3); }
+.pane { flex: 1; overflow: hidden; padding: 16px; background: #fafbfc; }
+.pane-scroll { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+
+/* 通用组件 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; box-shadow: var(--shadow); }
+.card h4 { font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.card h4 .tag { font-size: 10px; font-weight: 500; padding: 1px 8px; border-radius: 999px; }
+.muted { color: var(--text-2); font-size: 12px; }
+.tiny { color: var(--text-3); font-size: 11px; }
+.btn { display: inline-block; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+.btn.pri { background: var(--brand); color: #fff; }
+.btn.ghost { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.btn.sm { padding: 3px 10px; font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: 11px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.doing { background: var(--info-soft); color: var(--brand); }
+.pill.todo { background: var(--surface-2); color: var(--text-3); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+
+/* 登录卡 */
+.device-code { font-size: 30px; letter-spacing: 8px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 12px; text-align: center; padding: 14px; margin: 10px 0; font-family: "SF Mono", Menlo, monospace; }
+.poll { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 课程树 */
+.course-card { display: flex; gap: 12px; align-items: center; }
+.course-cover { width: 76px; height: 56px; border-radius: 8px; background: linear-gradient(135deg,#2f5bd7,#7ea1f5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+.progress-line { height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.progress-line i { display: block; height: 100%; background: var(--brand); }
+.tree .row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.tree .row:hover { background: var(--surface-2); }
+.tree .row .ic { width: 18px; text-align: center; font-size: 13px; color: var(--text-3); }
+.tree .row .ic.done { color: var(--ok); }
+.tree .row .ic.doing { color: var(--brand); }
+.tree .kp { margin-left: 22px; font-size: 12.5px; color: var(--text-2); }
+.ring { width: 30px; height: 30px; flex: none; }
+
+/* 课程页目录条 */
+.dir-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+.dir-chips span { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12px; color: var(--text-2); background: var(--surface); cursor: pointer; }
+.dir-chips span.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+.section-item { display: flex; align-items: center; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--line); }
+.section-item:last-child { border-bottom: none; }
+.section-item .no { font-family: Menlo, monospace; color: var(--text-3); font-size: 12px; width: 34px; }
+.section-item .ti { flex: 1; }
+.section-item .ti b { font-size: 13px; font-weight: 600; display: block; }
+
+/* 节视图 DSL 块 */
+.lesson-head h3 { font-size: 17px; }
+.bignum-row { display: flex; gap: 10px; }
+.bignum { flex: 1; text-align: center; padding: 10px; background: var(--surface-2); border-radius: 10px; }
+.bignum .v { font-size: 20px; font-weight: 700; color: var(--brand); }
+.bignum .k { font-size: 11px; color: var(--text-3); }
+.think { border: 1px dashed var(--brand); background: var(--brand-soft); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 13px; }
+.think .lbl { font-size: 11px; color: var(--brand); font-weight: 600; margin-bottom: 4px; }
+.warn-block { border-left: 4px solid var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.warn-block.def { border-left-color: var(--brand); background: var(--info-soft); }
+.warn-block.misuse { border-left-color: var(--danger); background: var(--danger-soft); }
+.warn-block .lbl { font-weight: 700; font-size: 11px; margin-bottom: 3px; }
+.par { font-size: 13.5px; }
+.sidenote { display: flex; gap: 8px; align-items: flex-start; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--text-2); margin: 6px 0 6px 24px; }
+.sidenote .ic { color: var(--brand); }
+.anno { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--surface); }
+.anno .k { flex: none; }
+.anno .quote { font-size: 12px; color: var(--text-2); font-style: italic; border-left: 3px solid var(--line); padding-left: 8px; margin-top: 6px; }
+.cards3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.cards3 .c { border: 1px solid var(--line); border-radius: 10px; padding: 9px; font-size: 12px; background: var(--surface); }
+.cards3 .c b { display: block; font-size: 12.5px; margin-bottom: 4px; }
+.clip-card { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #101623; color: #fff; }
+.clip-card .play { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; font-size: 16px; flex: none; }
+.kv { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+.mcq { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.mcq .opt { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.mcq .opt:hover { background: var(--surface-2); }
+.mcq .opt.sel { background: var(--brand-soft); color: var(--brand); }
+.mcq .opt.right { background: var(--ok-soft); color: var(--ok); }
+.foot-nav { display: flex; justify-content: space-between; gap: 8px; }
+.figure-wrap { text-align: center; }
+.figure-wrap svg { max-width: 100%; }
+.figure-wrap .cap { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+.replay-panel { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.replay-panel .kp-bar { background: #101623; padding: 10px; color: #cbd5e4; }
+.replay-panel .ask { padding: 10px; background: var(--surface); }
+.replay-panel .ask .row2 { display: flex; gap: 8px; margin-top: 8px; }
+.unit-pill { display: inline-block; font-size: 10.5px; font-family: Menlo, monospace; color: var(--text-3); background: var(--surface-2); border-radius: 4px; padding: 0 5px; margin: 0 1px; }
+
+/* 播放器 */
+.player { background: #0e131d; border-radius: var(--radius-sm); padding: 12px; color: #dfe6f2; }
+.player video-ph { display: block; height: 200px; border-radius: 8px; background: linear-gradient(160deg,#182136,#0b0f18); position: relative; margin-bottom: 10px; }
+.player .t-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.player .bigplay { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.player .seekbar { height: 4px; background: rgba(255,255,255,.18); border-radius: 999px; position: relative; margin: 10px 2px; }
+.player .seekbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--brand); border-radius: 999px; }
+.player .seekbar .mark { position: absolute; top: -4px; width: 3px; height: 12px; background: #f0a44b; border-radius: 2px; }
+.transcript { margin-top: 8px; max-height: 210px; overflow: auto; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.transcript .ln { padding: 4px 8px; border-radius: 6px; color: #b9c3d4; cursor: pointer; }
+.transcript .ln.now { background: rgba(47,91,215,.28); color: #fff; }
+
+/* 互动课堂 */
+.lesson-ctrl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lesson-ctrl .seg-no { font-family: Menlo, monospace; font-size: 12px; color: var(--text-2); }
+.script { font-size: 13.5px; }
+.script .p { padding: 8px 10px; border-radius: 8px; border-left: 3px solid transparent; color: var(--text-2); }
+.script .p.now { background: var(--brand-soft); border-left-color: var(--brand); color: var(--text); }
+.script .p b { color: var(--text); }
+.quiz-row { display: flex; flex-direction: column; gap: 6px; }
+.review-list .item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+.disclaimer { font-size: 11px; color: var(--text-3); text-align: center; padding: 8px 0 2px; }
+.legend { margin-top: 18px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--line); padding-top: 10px; }
+kbd { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+.callout { border: 1px solid var(--brand); background: var(--brand-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--brand); }
+.note-arrow { font-size: 11px; color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<header class="proto-head">
+  <h1>学员端 · trend-coach</h1>
+  <nav class="switches" id="switches">
+    <button data-s="s1" class="on">1 首启登录</button>
+    <button data-s="s2">2 课程树</button>
+    <button data-s="s3">3 课程页</button>
+    <button data-s="s4">4 节视图</button>
+    <button data-s="s5">5 问答联动</button>
+    <button data-s="s6">6 互动课堂</button>
+  </nav>
+  <span class="sub">布局＝dsh 左会话 + 右侧栏五 tab（目录/播放器/节/课程/互动课堂）</span>
+</header>
+
+<main>
+
+<!-- ═══════════ 屏1 首启：未登录 ═══════════ -->
+<section class="screen on" id="s1">
+  <div class="screen-title">屏 1 · 首次打开：设备码登录</div>
+  <div class="screen-desc">学员装好插件第一次打开 dsh：目录 tab 主动引导登录；账号由管理员铸发，学员无密码自注册。点击「打开授权页」由宿主拉起浏览器，批准后令牌落凭据库，面板即时刷新。</div>
+  <div class="app-label">— dsh web 应用（profile：trend-coach 学员端） —</div>
+  <div class="dsh">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">trend-coach 插件会话</span></div>
+      <div class="chat-body">
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">你好，我是趋势伴学助教。先在<b>右侧「目录」面板</b>完成登录，然后就可以选课程开始学习。学习过程中随时在这里提问，我会带着课程里的依据回答你。</div></div>
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">好的</div></div>
+      </div>
+      <div class="composer">
+        <div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div>
+        <div class="tiny" style="margin-top:6px">🎤 语音提问：录音转文字后插入输入框，不自动发送</div>
+      </div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab on">📚 目录</div>
+        <div class="tab dis">▶ 播放器</div>
+        <div class="tab dis">📄 节</div>
+        <div class="tab dis">🗺 课程</div>
+        <div class="tab dis">🎓 互动课堂</div>
+        <span class="guide">登录后解锁其余 tab</span>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="card">
+          <h4>登录趋势课程 <span class="pill warn">未登录</span></h4>
+          <div class="muted">账号由管理员发放（用户名密码或一次性邀请码）。点击下方按钮在浏览器里完成授权，批准后这里会自动刷新。</div>
+          <div class="device-code">K7QM-4F2X</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn pri">打开授权页</button>
+            <button class="btn ghost sm">重新生成</button>
+            <span class="poll"><span class="spinner"></span>等待批准…（有效期 10 分钟）</span>
+          </div>
+          <div class="tiny" style="margin-top:8px">授权页：trend.17aitech.com/device · 输入上述代码 → 登录学员账号 → 批准</div>
+        </div>
+        <div class="card">
+          <h4>还没有账号？</h4>
+          <div class="muted">到门户 <b>trend.17aitech.com</b> 注册页提交申请，管理员开通后即可登录学习。安装与登录指引见门户「安装向导」。</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现（coach 0.1.0 设备码流 + 目录 tab 引导）</span>
+    <span class="st ok">✅ composer 语音按钮 / 图片附件已实现</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏2 课程树 ═══════════ -->
+<section class="screen" id="s2">
+  <div class="screen-title">屏 2 · 目录 tab：课程树与进度</div>
+  <div class="screen-desc">登录后目录 tab 即学员首页：课程卡（继续学习）+ 章/知识点两级树，进度实时上报。「▶ 播放器 / 📄 节 / 🗺 课程 / 🎓 互动课堂」四个 tab 解锁。章节标题右侧的 📖 打开章教材。</div>
+  <div class="app-label">— dsh web 应用 —</div>
+  <div class="dsh">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">已登录 · student_2049</span></div>
+      <div class="chat-body">
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">欢迎回来。你上次学到<b>总论卷 · 第一章 阻尼运动</b>的第 3 节「趋势的自衰减」，进度 40%。可以从右侧目录继续，也可以直接问我问题。</div></div>
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">第一章还剩多少？</div></div>
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">还剩 3 节：均线粘合的识别、假突破的量能特征、本章自检。其中<b>假突破的量能特征</b>与你上次答错的测验题直接相关，建议优先。<span class="cite">知识点 · 假突破</span></div></div>
+      </div>
+      <div class="composer"><div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div></div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab on">📚 目录</div><div class="tab">▶ 播放器</div><div class="tab">📄 节</div><div class="tab">🗺 课程</div><div class="tab">🎓 互动课堂</div>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="card course-card">
+          <div class="course-cover">📈</div>
+          <div style="flex:1">
+            <b style="font-size:14px">趋势交易体系 · 总论卷</b>
+            <div class="muted">TC-ZONGLUN · 6 章 · 已发布</div>
+            <div class="progress-line"><i style="width:40%"></i></div>
+            <div class="tiny" style="margin-top:4px">40% · 已学 12/30 知识点</div>
+          </div>
+          <button class="btn pri sm">继续学习</button>
+        </div>
+        <div class="card">
+          <h4>第一章 · 阻尼运动 <span class="pill ok">2/6</span><span class="btn ghost sm" style="margin-left:auto">📖 章教材</span></h4>
+          <div class="tree">
+            <div class="row"><span class="ic done">✔</span><b style="font-size:13px">趋势的自衰减</b><span class="pill ok" style="margin-left:auto">已学</span></div>
+            <div class="row"><span class="ic done">✔</span><b style="font-size:13px">均线粘合的识别</b><span class="pill ok" style="margin-left:auto">已学</span></div>
+            <div class="row"><span class="ic doing">▶</span><b style="font-size:13px">假突破的量能特征</b><span class="pill doing" style="margin-left:auto">学习中</span></div>
+            <div class="row"><span class="ic">○</span><span class="kp">量能萎缩 · 假突破三特征 · 回抽确认</span></div>
+            <div class="row"><span class="ic">○</span><b style="font-size:13px">本章自检</b><span class="pill todo" style="margin-left:auto">未开始</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h4>第二章 · 均线系统 <span class="pill todo">0/5</span></h4>
+          <div class="tree">
+            <div class="row"><span class="ic">○</span><span class="kp" style="margin-left:0">多空排列 · 蛇形缠绕 · 助推动作</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h4>趋势交易体系 · 入门（TC-101）<span class="pill ok" style="margin-left:auto">已完成</span></h4>
+          <div class="muted">3 章 · 6 知识点 · 结业测验通过</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现（课程树/进度/章教材入口 · coach 0.1.0）</span>
+    <span class="st ok">✅ 会话欢迎语携带学习上下文</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏3 课程页 ═══════════ -->
+<section class="screen" id="s3">
+  <div class="screen-title">屏 3 · 课程 tab：章/节导航</div>
+  <div class="screen-desc">从目录点课程卡进入课程 tab：学习目标板书（:::board）+ 目录条（章切换）+ 节卡列表。每节卡显示知识点数/预计时长/学习状态；「开始学习」切到节 tab。</div>
+  <div class="app-label">— dsh web 应用 · 课程 tab —</div>
+  <div class="dsh">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">已登录</span></div>
+      <div class="chat-body">
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">你在课程页选中的任何内容，提问时会自动带上位置上下文，不用重复说明在哪一节。</div></div>
+      </div>
+      <div class="composer"><div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div></div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab">📚 目录</div><div class="tab">▶ 播放器</div><div class="tab">📄 节</div><div class="tab on">🗺 课程</div><div class="tab">🎓 互动课堂</div>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="card">
+          <h4>趋势交易体系 · 总论卷 <span class="pill ok" style="margin-left:auto">已发布</span></h4>
+          <div class="bignum-row" style="margin:8px 0">
+            <div class="bignum"><div class="v">6</div><div class="k">章</div></div>
+            <div class="bignum"><div class="v">30</div><div class="k">知识点</div></div>
+            <div class="bignum"><div class="v">40%</div><div class="k">总进度</div></div>
+            <div class="bignum"><div class="v">4.5h</div><div class="k">视频总长</div></div>
+          </div>
+          <div class="think" style="margin-top:6px"><div class="lbl">:::board · 本章目标</div>理解趋势的力学隐喻：推动—阻尼—反转；能用均线粘合与量能特征识别趋势衰竭，不预测、只应对。</div>
+        </div>
+        <div class="card">
+          <div class="dir-chips">
+            <span class="on">第一章 阻尼运动</span><span>第二章 均线系统</span><span>第三章 形态</span><span>第四章 量价</span><span>第五章 纪律</span><span>第六章 总复习</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-item">
+            <span class="no">1-1</span>
+            <div class="ti"><b>趋势的自衰减</b><span class="tiny">2 知识点 · 14 分钟 · 含回放课件</span></div>
+            <span class="pill ok">已学</span>
+          </div>
+          <div class="section-item">
+            <span class="no">1-2</span>
+            <div class="ti"><b>均线粘合的识别</b><span class="tiny">2 知识点 · 18 分钟 · 含结构化图示</span></div>
+            <span class="pill ok">已学</span>
+          </div>
+          <div class="section-item" style="background:var(--brand-soft);border-radius:8px">
+            <span class="no">1-3</span>
+            <div class="ti"><b>假突破的量能特征</b><span class="tiny">3 知识点 · 22 分钟 · 含逐根回放判断</span></div>
+            <span class="pill doing">学习中</span>
+            <button class="btn pri sm">继续</button>
+          </div>
+          <div class="section-item">
+            <span class="no">1-4</span>
+            <div class="ti"><b>回抽确认与二次介入</b><span class="tiny">2 知识点 · 16 分钟</span></div>
+            <span class="pill todo">未开始</span>
+            <button class="btn ghost sm">开始学习</button>
+          </div>
+          <div class="section-item">
+            <span class="no">1-5</span>
+            <div class="ti"><b>本章自检</b><span class="tiny">测验 8 题 · 通过线 6</span></div>
+            <span class="pill todo">未开始</span>
+            <button class="btn ghost sm">开始学习</button>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现（课程 tab 与 @trend/widgets 装配一致）</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏4 节视图（核心屏） ═══════════ -->
+<section class="screen" id="s4">
+  <div class="screen-title">屏 4 · 节 tab：DSL v3 块装配（学员侧核心屏）</div>
+  <div class="screen-desc">节内正文由 DSL v3 容器块顺序装配，全部经 <kbd>@trend/widgets</kbd> 渲染——与管理台预览、教员端所见同一套组件。本屏自上而下示范全部块型；正文段落的 <span class="unit-pill">[[unit:…]]</span> 是证据锚（点击可溯源到转写片段）。</div>
+  <div class="app-label">— dsh web 应用 · 节 tab —</div>
+  <div class="dsh" style="grid-template-columns: 320px 1fr">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">上下文：1-3 假突破的量能特征</span></div>
+      <div class="chat-body">
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">你在节视图里<b>选中</b>的句子会出现在输入框上方作为提问上下文——试试选中「回抽不补量」再问我。</div></div>
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">回抽不补量为什么要立刻减仓？</div></div>
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">因为缩量回抽说明主动买盘没有跟随，前高大概率构成真压力。课程原片里老师在 <span class="cite seg">12:40 案例段</span> 讲了这个判断，点引用直接跳过去看。<span class="cite">知识点 · 假突破三特征</span></div></div>
+      </div>
+      <div class="composer">
+        <div class="context-chip">📎 引用节视图选中：「回抽不补量」 <span class="x">✕</span></div>
+        <div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div>
+      </div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab">📚 目录</div><div class="tab">▶ 播放器</div><div class="tab on">📄 节</div><div class="tab">🗺 课程</div><div class="tab">🎓 互动课堂</div>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="lesson-head">
+          <div class="tiny">第一章 阻尼运动 · 第 3 节</div>
+          <h3>假突破的量能特征</h3>
+        </div>
+        <div class="bignum-row">
+          <div class="bignum"><div class="v">3</div><div class="k">知识点</div></div>
+          <div class="bignum"><div class="v">22</div><div class="k">分钟</div></div>
+          <div class="bignum"><div class="v">1</div><div class="k">回放课件</div></div>
+          <div class="bignum"><div class="v">2</div><div class="k">图示</div></div>
+        </div>
+
+        <div class="think"><div class="lbl">:::think · 先想一想（点击展开）</div>突破前高但没放量，你会加仓还是观望？记住你的答案，看完回放再回来对。</div>
+
+        <div class="card figure-wrap">
+          <svg viewBox="0 0 560 170" width="560">
+            <line x1="40" y1="20" x2="40" y2="150" stroke="#c9d2e0"/><line x1="40" y1="150" x2="540" y2="150" stroke="#c9d2e0"/>
+            <path d="M60 130 C 120 128, 150 60, 210 55 S 300 120, 360 118 S 430 60, 500 55" fill="none" stroke="#2f5bd7" stroke-width="2.5"/>
+            <line x1="210" y1="30" x2="210" y2="150" stroke="#8b94a3" stroke-dasharray="4 4"/>
+            <line x1="500" y1="30" x2="500" y2="150" stroke="#d9483f" stroke-dasharray="4 4"/>
+            <text x="215" y="26" font-size="11" fill="#8b94a3">前高压力 9.42</text>
+            <text x="430" y="26" font-size="11" fill="#d9483f">假突破 · 缩量</text>
+            <rect x="360" y="95" width="70" height="14" fill="none" stroke="#c47a12" stroke-dasharray="3 3"/>
+            <text x="360" y="90" font-size="10.5" fill="#c47a12">回抽不补量区</text>
+          </svg>
+          <div class="cap">:::figure · B 类结构化图示「假突破的量能结构」（SVG 模板，云端可复检）</div>
+        </div>
+
+        <div class="par">假突破的第一特征是<b>突破当根量能低于近 20 根均值</b>。<span class="unit-pill">[[unit:su-0142]]</span> 第二特征看回抽：回抽不补量说明主动买盘没有跟随，前高从支撑转为真压力。<span class="unit-pill">[[unit:su-0143]]</span> 判断只看两步，不预测后续方向。</div>
+
+        <div class="sidenote"><span class="ic">▣</span><div><b>术语边注 :::sidenote · 补量</b>：回抽时成交量回升至突破前平台上沿量级（≥1.2 倍 20 根均量）。「不补量」即显著低于该水平。来自术语表 glossary-trend。</div></div>
+
+        <div class="warn-block def"><div class="lbl">:::warn · def 定义</div>假突破＝价格突破关键位但量能未确认，随后跌回突破位下方的动作。定义域：日内有效，不适用于周线以上级别。</div>
+
+        <div class="warn-block misuse"><div class="lbl">:::warn · misuse 常见误用</div>看到突破就追，不看量能——把「突破买进」当无条件规则。课程统计的实盘案例里，这类入场 60% 出现在假突破段。</div>
+
+        <div class="replay-panel">
+          <div class="kp-bar">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <b style="font-size:12.5px">:::replay · bar-replay-decision 逐根回放判断</b>
+              <span class="tiny" style="color:#7e8ba0">案例股 002761 · 2026-03 日线 · 第 6/38 根</span>
+            </div>
+            <svg viewBox="0 0 520 120" width="520">
+              <g font-size="9">
+                <line x1="10" y1="10" x2="10" y2="105" stroke="#3a465c"/><line x1="10" y1="105" x2="510" y2="105" stroke="#3a465c"/>
+                <!-- 红涨绿跌：阴线绿、阳线红 -->
+                <g>
+                  <line x1="40" y1="30" x2="40" y2="88" stroke="#d9483f" stroke-width="1.5"/><rect x="34" y="48" width="12" height="26" fill="#d9483f"/>
+                  <line x1="62" y1="38" x2="62" y2="95" stroke="#17a06e" stroke-width="1.5"/><rect x="56" y="55" width="12" height="28" fill="#17a06e"/>
+                  <line x1="84" y1="26" x2="84" y2="80" stroke="#d9483f" stroke-width="1.5"/><rect x="78" y="40" width="12" height="30" fill="#d9483f"/>
+                  <line x1="106" y1="34" x2="106" y2="90" stroke="#17a06e" stroke-width="1.5"/><rect x="100" y="50" width="12" height="28" fill="#17a06e"/>
+                  <line x1="128" y1="20" x2="128" y2="74" stroke="#d9483f" stroke-width="1.5"/><rect x="122" y="34" width="12" height="30" fill="#d9483f"/>
+                  <line x1="150" y1="30" x2="150" y2="86" stroke="#d9483f" stroke-width="1.5"/><rect x="144" y="44" width="12" height="30" fill="#d9483f"/>
+                  <line x1="172" y1="42" x2="172" y2="98" stroke="#17a06e" stroke-width="1.5"/><rect x="166" y="60" width="12" height="26" fill="#17a06e"/>
+                  <line x1="194" y1="50" x2="194" y2="102" stroke="#17a06e" stroke-width="1.5"/><rect x="188" y="66" width="12" height="26" fill="#17a06e"/>
+                  <!-- 当前判断根 -->
+                  <line x1="216" y1="36" x2="216" y2="92" stroke="#f0a44b" stroke-width="2"/><rect x="210" y="50" width="12" height="28" fill="#f0a44b"/>
+                  <circle cx="216" cy="30" r="9" fill="none" stroke="#f0a44b" stroke-width="2"/>
+                </g>
+                <path d="M28 60 C 80 55, 120 42, 216 52" fill="none" stroke="#6ea0ff" stroke-width="1.6" stroke-dasharray="5 4"/>
+                <text x="440" y="24" fill="#7e8ba0">MA20</text>
+                <path d="M28 78 C 90 74, 150 68, 216 60" fill="none" stroke="#b48cf2" stroke-width="1.4" stroke-dasharray="2 4"/>
+              </g>
+            </svg>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+              <span class="btn sm ghost" style="background:#2a3348;color:#dfe6f2;border:none">⏮ 上一根</span>
+              <span class="btn sm ghost" style="background:#2a3348;color:#dfe6f2;border:none">▶ 下一根</span>
+              <span class="tiny" style="color:#7e8ba0">回放中隐藏后续走势 · 判断后揭示</span>
+            </div>
+          </div>
+          <div class="ask">
+            <b style="font-size:13px">此刻你判断：缩量回抽至 MA20，动作是？</b>
+            <div class="row2">
+              <span class="btn pri sm">A 立即加仓</span>
+              <span class="btn ghost sm">B 持有观察</span>
+              <span class="btn ghost sm">C 减仓一半</span>
+              <span class="btn ghost sm">D 清仓离场</span>
+            </div>
+            <div class="tiny" style="margin-top:8px">判断后显示老师同期真实决策与理由 <span class="unit-pill">[[unit:su-0145]]</span>；你的选择计入本章复习清单。</div>
+          </div>
+        </div>
+
+        <div class="anno">
+          <div class="k">
+            <svg viewBox="0 0 120 74" width="120"><rect x="6" y="8" width="10" height="18" fill="#d9483f"/><line x1="11" y1="4" x2="11" y2="30" stroke="#d9483f"/><line x1="30" y1="14" x2="30" y2="60" stroke="#17a06e"/><rect x="25" y="30" width="10" height="20" fill="#17a06e"/><line x1="50" y1="8" x2="50" y2="52" stroke="#d9483f"/><rect x="45" y="20" width="10" height="22" fill="#d9483f"/><circle cx="50" cy="10" r="7" fill="none" stroke="#f0a44b" stroke-width="2"/><text x="64" y="40" font-size="10" fill="#8b94a3">标注②</text></svg>
+          </div>
+          <div>
+            <b style="font-size:13px">:::annotation · 老师标注②「诱多上影」</b>
+            <div class="quote">「这根上影线打到前高就缩回来了，量比昨天还小——这不是突破，这是给人看的。」<span class="unit-pill">[[unit:su-0144]]</span></div>
+            <div class="tiny">结构化标注数据 + 原话溯源，云端断言可复检</div>
+          </div>
+        </div>
+
+        <div class="cards3">
+          <div class="c"><b>真突破</b>量 ≥ 1.5×均量<br/>回踩不破位<br/>尾盘不回落</div>
+          <div class="c"><b>假突破</b>量 &lt; 均量<br/>回抽不补量<br/>次日低开</div>
+          <div class="c"><b>待观察</b>量能中性行<br/>等回抽确认<br/>不加不减</div>
+        </div>
+        <div class="tiny" style="text-align:center">:::cards · 三卡对照</div>
+
+        <div class="clip-card">
+          <div class="play">▶</div>
+          <div style="flex:1">
+            <b style="font-size:13px">:::clip · 原片段「假突破实盘复盘」</b>
+            <div class="tiny" style="color:#9fb0c8">12:30 – 13:10 · 点击在播放器 tab 打开此时间窗</div>
+          </div>
+          <span class="btn sm" style="background:#2f5bd7;color:#fff">打开片段</span>
+        </div>
+
+        <div class="mcq">
+          <b style="font-size:13px">自检 · mcq-quiz</b>
+          <div style="font-size:13px;margin:6px 0">突破当根量能等于 20 根均量、回抽补量 1.3 倍，属于？</div>
+          <div class="opt sel">A. 真突破特征</div>
+          <div class="opt">B. 假突破特征</div>
+          <div class="opt">C. 待观察，等回抽确认</div>
+          <div class="tiny" style="margin-top:6px;color:var(--ok)">✓ 答对：补量达标但突破根量能中性 → C「待观察」才是课程口径</div>
+        </div>
+
+        <div class="foot-nav">
+          <button class="btn ghost sm">← 上一节 1-2 均线粘合</button>
+          <span class="pill doing">进度已自动上报</span>
+          <button class="btn pri sm">下一节 1-4 回抽确认 →</button>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现：think/sidenote/cards/warn四型/annotation/replay+bar-replay-decision/figure/clip/mcq（DSL v3 + widgets）</span>
+    <span class="st ok">✅ 选中正文→提问上下文、unit 锚点击溯源已实现</span>
+    <span class="st future">◻ 候选未排期：video-sync 画中画转写联动 / scrollytelling 滚动叙事 / concept-illustration A 类文生图</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏5 问答联动 ═══════════ -->
+<section class="screen" id="s5">
+  <div class="screen-title">屏 5 · 问答与溯源联动（左问右看）</div>
+  <div class="screen-desc">学员在左会话提问（自动携带课程/章节/播放位置/选中文字上下文）；回答内嵌两类引用——<span class="cite">知识点</span> 跳目录定位，<span class="cite seg">片段</span> 跳播放器 tab 并 seek 到原视频时刻，转写列表同步高亮。超出课程范围的问题<b>拒答并推荐相近知识点</b>，不编造。</div>
+  <div class="app-label">— dsh web 应用 · 问答 → 播放器联动 —</div>
+  <div class="dsh">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">上下文：1-3 假突破 · 播放位置 12:40</span></div>
+      <div class="chat-body">
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">老师说的「回抽不补量」在 K 线上具体怎么认？<div class="tiny" style="margin-top:4px;color:#8b94a3">📎 已携带：课程 TC-ZONGLUN · 1-3 · 播放 12:40</div></div></div>
+        <div class="tool-call">🔍 trend_coach_search("回抽不补量 K线识别") · 命中 3 个片段 · 2 个知识点</div>
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">
+          看两个量：①回抽区间的量相对突破前平台是否萎缩到 <b>0.8 倍 20 根均量以下</b>；②回抽阳线的量是否<b>连续两根不放大</b>。两条同时成立就是不补量。<br/><br/>
+          老师在原片里用 002761 演过完整过程：<span class="cite seg">片段 · 12:40–13:10</span> <span class="cite seg">片段 · 09:15 概念段</span>；判断口径见 <span class="cite">知识点 · 假突破三特征</span>。
+        </div></div>
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">那我可以用 MACD 背离来确认假突破吗？</div></div>
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">
+          这个超出了本课范围——课程体系里假突破的确认<b>只用价格与量能</b>，不引入 MACD。我不替课程编结论。<br/>
+          相近内容你可以看：<span class="cite">知识点 · 量价背离的两种读法</span><span class="cite">第二章 · 均线系统 2-4</span>
+        </div></div>
+      </div>
+      <div class="composer"><div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div></div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab">📚 目录</div><div class="tab on">▶ 播放器</div><div class="tab">📄 节</div><div class="tab">🗺 课程</div><div class="tab">🎓 互动课堂</div>
+        <span class="guide">由引用「片段 · 12:40」唤起 · seek 完成</span>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="player">
+          <video-ph>
+            <div class="t-center">
+              <div class="bigplay">▶</div>
+              <b style="font-size:13px">第一章 · 阻尼运动（HLS · 签名播放会话）</b>
+              <span class="tiny" style="color:#7e8ba0">已跳转至 12:40 · 片段「假突破实盘复盘」60s 时间窗</span>
+            </div>
+          </video-ph>
+          <div class="seekbar"><i style="width:52%"></i><span class="mark" style="left:52%"></span><span class="mark" style="left:63%;opacity:.5"></span></div>
+          <div style="display:flex;justify-content:space-between" class="tiny"><span style="color:#fff">12:40</span><span style="color:#7e8ba0">24:12 / 已签到播放会话 · 有效期同会话</span></div>
+          <div class="transcript">
+            <div class="ln"><span style="color:#7e8ba0">12:36</span> 大家看这根阳线，冲过前高了……</div>
+            <div class="ln now"><span style="color:#9fc0ff">12:40</span> 但是量呢？比昨天还小——这不是突破，这是给人看的。<br/><span style="color:#8fa2bd;font-size:11.5px">↳ 与标注②「诱多上影」同源 [[unit:su-0144]]</span></div>
+            <div class="ln"><span style="color:#7e8ba0">12:44</span> 接下来回抽，你们重点盯两个数……</div>
+            <div class="ln"><span style="color:#7e8ba0">12:51</span> 第一，回抽区间的量萎缩到八成均量以下……</div>
+          </div>
+        </div>
+        <div class="card">
+          <h4>本片段关联</h4>
+          <div class="kv"><span>所属知识点</span><b style="color:var(--brand)">假突破三特征</b></div>
+          <div class="kv"><span>节</span><b>1-3 假突破的量能特征</b></div>
+          <div class="kv"><span>含老师标注</span><b>② 诱多上影</b></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn ghost sm">回节视图</button><button class="btn ghost sm">问这一段</button>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现：检索问答带引用 / segmentId 点击 seek / 拒答推荐相近知识点（F1 全闭合）</span>
+    <span class="st ok">✅ 已实现：自动学习上下文、图片提问、语音提问（F3 大部）</span>
+    <span class="st gap">⛔ 缺口：白板标注（在图上圈画提问）、学习小结生成（F3 未闭合部分）</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏6 互动课堂 ═══════════ -->
+<section class="screen" id="s6">
+  <div class="screen-title">屏 6 · 互动课堂 tab：讲解稿 + TTS + 随堂测验</div>
+  <div class="screen-desc">按章节生成讲解稿（本地 Web Speech TTS 朗读，不动云端模型）；分段播放、当前段高亮；随堂测验即时判分；答错自动进复习清单。「让我重讲这段」把当前段落送回会话换个说法。</div>
+  <div class="app-label">— dsh web 应用 · 互动课堂 tab —</div>
+  <div class="dsh">
+    <div class="dsh-left">
+      <div class="chat-head"><span class="name">趋势伴学</span><span class="who">互动课堂 · 1-3 节</span></div>
+      <div class="chat-body">
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">你刚在随堂测验第 2 题选了「立即加仓」。要我用另一个例子把<b>回抽确认</b>再讲一遍吗？也可以继续听讲解稿。</div></div>
+        <div class="msg user"><div class="avatar">我</div><div class="bubble">换个 002761 之外的例子讲讲</div></div>
+        <div class="msg bot"><div class="avatar">教</div><div class="bubble">好，用课程里的 600519 周线案例重讲：<b>回抽确认三步</b>——先看缩量、再看踩线、最后看尾盘。已加入你的复习清单。<span class="cite">片段 · 21:05 案例段</span></div></div>
+      </div>
+      <div class="composer"><div class="input-row"><div class="box">问点什么…</div><div class="icon-btn">📎</div><div class="icon-btn mic">🎤</div><button class="send">发送</button></div></div>
+    </div>
+    <div class="dsh-right">
+      <div class="tab-strip">
+        <div class="tab">📚 目录</div><div class="tab">▶ 播放器</div><div class="tab">📄 节</div><div class="tab">🗺 课程</div><div class="tab on">🎓 互动课堂</div>
+      </div>
+      <div class="pane"><div class="pane-scroll">
+        <div class="card">
+          <h4>讲解稿 · 1-3 假突破的量能特征 <span class="pill ok" style="margin-left:auto">12 段 · 约 9 分钟</span></h4>
+          <div class="muted" style="margin-bottom:8px">由章节教材生成 · 本地语音合成（Web Speech），不上传云端</div>
+          <div class="lesson-ctrl">
+            <button class="btn pri">⏸ 暂停</button>
+            <button class="btn ghost sm">⏮ 上一段</button>
+            <button class="btn ghost sm">下一段 ⏭</button>
+            <span class="seg-no">第 3/12 段</span>
+            <span style="display:flex;align-items:center;gap:4px" class="tiny">语速
+              <select style="font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 6px"><option>0.8×</option><option selected>1.0×</option><option>1.25×</option><option>1.5×</option></select>
+            </span>
+            <button class="btn ghost sm" style="margin-left:auto">↺ 让我重讲这段</button>
+          </div>
+          <div class="script" style="margin-top:10px">
+            <div class="p">上一段我们说了假突破的<b>定义域</b>——只看日线级别。这一段进入正题：怎么在盘面上第一眼认出它。</div>
+            <div class="p now">记住两个量就够了。<b>第一个</b>是突破当根的量，跟近 20 根均量比，低于它就是「无量突破」；<b>第二个</b>是回抽时的量，连续两根不放大，就是「不补量」。（▶ 正在朗读）</div>
+            <div class="p">下一段用 002761 的实盘走一遍这两个数的读法……</div>
+          </div>
+        </div>
+        <div class="card">
+          <h4>随堂测验 <span class="pill doing" style="margin-left:auto">2/3 已答</span></h4>
+          <div style="font-size:13px;margin:4px 0">① 突破当根量能 0.7×均量，回抽两根不放大 → ？</div>
+          <div class="quiz-row">
+            <div class="opt right">✔ 假突破特征（答对）</div>
+          </div>
+          <div style="font-size:13px;margin:10px 0 4px">② 缩量回抽踩住 MA20、尾盘回升 → ？</div>
+          <div class="quiz-row">
+            <div class="opt" style="color:var(--danger);background:var(--danger-soft)">✗ 立即加仓（你的答案）</div>
+            <div class="opt right">✔ 持有观察，等补量确认</div>
+          </div>
+          <div class="tiny" style="margin-top:8px">即时判分依据章节测验配置（cloud 章节数据）；错题自动进复习清单</div>
+        </div>
+        <div class="card review-list">
+          <h4>复习清单 <span class="pill warn" style="margin-left:auto">待复习 2</span></h4>
+          <div class="item"><span>② 缩量回抽踩 MA20 的正确动作（1-3）</span><button class="btn ghost sm">重讲</button></div>
+          <div class="item"><span>回抽确认三步（1-4 · 昨日错题）</span><button class="btn ghost sm">重讲</button></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn pri sm">生成复习小测</button>
+            <button class="btn ghost sm">清空已掌握</button>
+          </div>
+        </div>
+        <div class="disclaimer">课程内容仅供学习，不构成投资建议。</div>
+      </div></div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span class="st ok">✅ 已实现：讲解稿分段播放 / Web Speech TTS / 语速与翻段 / 随堂测验即时判分（F4 大部）</span>
+    <span class="st enh">🔶 增强：复习清单闭环（错题→清单→生成复习小测→掌握销项）</span>
+    <span class="st gap">⛔ 缺口：白板标注讲解（在图上圈画配合朗读）</span>
+  </div>
+</section>
+
+</main>
+<div class="legend">图例：<span class="st ok">✅ 已实现</span> <span class="st enh">🔶 增强（已有基础，待排期）</span> <span class="st gap">⛔ 缺口（需求有实现无）</span> <span class="st future">◻ 候选（未排期）</span> · 红涨绿跌 · 视觉 token 与 apps/producer/prototype/section-preview.html 一致</div>
+
+<script>
+const btns = document.querySelectorAll('#switches button');
+btns.forEach(b => b.addEventListener('click', () => {
+  btns.forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+  window.scrollTo({ top: 0 });
+}));
+</script>
+</body>
+</html>

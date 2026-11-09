@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>教员端原型 · dsh + trend-producer</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --surface-3: #e8ebf0;
+  --text: #1a1d24; --text-2: #5b6473; --text-3: #8b94a3; --line: #e3e7ee;
+  --brand: #2f5bd7; --brand-soft: #eaf0ff;
+  --up: #d9483f; --down: #17a06e;
+  --warn: #c47a12; --warn-soft: #fff6e5;
+  --danger: #c4382f; --danger-soft: #fff0ee;
+  --ok: #177a55; --ok-soft: #e9f7f0;
+  --info-soft: #eef4ff;
+  --shadow: 0 1px 2px rgba(20,28,45,.04), 0 8px 28px rgba(20,28,45,.06);
+  --radius: 16px; --radius-sm: 10px;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+
+/* ===== 原型页头：屏幕切换器 ===== */
+.proto-head { position: sticky; top: 0; z-index: 50; background: #1a1f28; color: #eef1f6; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.proto-head h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.proto-head .sub { font-size: 12px; color: #9aa4b5; }
+.switches { display: flex; gap: 6px; flex-wrap: wrap; }
+.switches button { border: 1px solid #3a4250; background: transparent; color: #c7cfdd; font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.switches button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px; }
+.screen { display: none; }
+.screen.on { display: block; }
+.screen-title { font-size: 16px; font-weight: 600; margin: 4px 0 4px; }
+.screen-desc { color: var(--text-2); font-size: 13px; margin-bottom: 14px; }
+
+/* 状态条 */
+.status-bar { margin-top: 14px; border-top: 1px dashed var(--line); padding: 10px 2px 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.st { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; }
+.st.ok { background: var(--ok-soft); color: var(--ok); }
+.st.enh { background: var(--info-soft); color: var(--brand); }
+.st.gap { background: var(--danger-soft); color: var(--danger); }
+.st.future { background: var(--surface-2); color: var(--text-2); }
+
+/* ===== dsh 应用骨架 ===== */
+.dsh { display: grid; grid-template-columns: 480px 1fr; gap: 14px; height: 820px; }
+.dsh-left, .dsh-right { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; }
+.app-label { font-size: 11px; color: var(--text-3); text-align: center; margin-bottom: 6px; letter-spacing: .5px; }
+
+/* 左：会话 */
+.chat-head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.chat-head .name { font-weight: 600; font-size: 13px; }
+.chat-head .who { font-size: 11px; color: var(--text-3); }
+.chat-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; background: #fafbfc; }
+.msg { display: flex; gap: 8px; }
+.msg .avatar { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; }
+.msg.user .avatar { background: #6b7686; }
+.msg.bot .avatar { background: var(--brand); }
+.msg .bubble { border-radius: 12px; padding: 9px 12px; font-size: 13px; max-width: 94%; }
+.msg.user .bubble { background: var(--surface-3); }
+.msg.bot .bubble { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.bubble b { color: var(--brand); }
+.bubble ul { padding-left: 18px; margin: 4px 0; }
+.bubble .m { font-family: Menlo, monospace; font-size: 11.5px; background: var(--surface-2); border-radius: 4px; padding: 0 4px; }
+.tool-call { border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-2); background: var(--surface-2); max-width: 94%; }
+.tool-call .tn { font-family: Menlo, monospace; color: var(--brand); font-size: 11.5px; }
+.tool-call .tr { color: var(--ok); font-size: 11.5px; }
+.tool-call .tw { color: var(--warn); font-size: 11.5px; }
+/* QuestionCard 门禁卡（dsh 原生） */
+.gate-card { border: 2px solid var(--brand); border-radius: 12px; background: var(--surface); max-width: 94%; overflow: hidden; }
+.gate-card .gh { background: var(--brand); color: #fff; font-size: 12px; padding: 5px 12px; font-weight: 600; letter-spacing: 1px; }
+.gate-card .gb { padding: 10px 12px; font-size: 13px; }
+.gate-card .opts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.gate-card .opts span { border: 1px solid var(--brand); color: var(--brand); background: #fff; border-radius: 8px; padding: 6px 16px; font-size: 13px; cursor: pointer; font-weight: 600; }
+.gate-card .opts span.deny { border-color: var(--text-3); color: var(--text-2); }
+.gate-card .opts span:active { transform: scale(.97); }
+.gate-card.decided .opts { opacity: .45; pointer-events: none; }
+.gate-card .verdict { margin-top: 8px; font-size: 12px; display: none; }
+.gate-card.decided .verdict { display: block; }
+.gate-card .verdict.approve { color: var(--ok); }
+.gate-card .verdict.reject { color: var(--danger); }
+.composer { border-top: 1px solid var(--line); padding: 10px 12px; background: var(--surface); }
+.input-row { display: flex; gap: 8px; align-items: center; }
+.input-row .box { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--text-3); font-size: 13px; background: var(--surface-2); }
+.send { background: var(--brand); color: #fff; border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+
+/* 右：侧栏 tabs */
+.tab-strip { display: flex; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tab-strip .tab { padding: 10px 14px; font-size: 13px; color: var(--text-2); border-bottom: 2px solid transparent; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.tab-strip .tab.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+.tab-strip .guide { margin-left: auto; align-self: center; margin-right: 12px; font-size: 12px; color: var(--text-3); }
+.pane { flex: 1; overflow: hidden; padding: 16px; background: #fafbfc; }
+.pane-scroll { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+
+/* 通用组件 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; box-shadow: var(--shadow); }
+.card h4 { font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.card h4 .tag { font-size: 10px; font-weight: 500; padding: 1px 8px; border-radius: 999px; }
+.muted { color: var(--text-2); font-size: 12px; }
+.tiny { color: var(--text-3); font-size: 11px; }
+.btn { display: inline-block; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+.btn.pri { background: var(--brand); color: #fff; }
+.btn.ghost { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.btn.sm { padding: 3px 10px; font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: 11px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.doing { background: var(--info-soft); color: var(--brand); }
+.pill.todo { background: var(--surface-2); color: var(--text-3); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--danger-soft); color: var(--danger); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+.row .lab { color: var(--text-2); flex: none; }
+.row .val { text-align: right; }
+.hint { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+.notice { font-size: 12px; color: var(--ok); background: var(--ok-soft); border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 面板卡（对齐 tp-card 0.2.4） */
+.tp-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tp-card-head h4 { margin: 0; }
+.tp-select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 12px; background: var(--surface); color: var(--text-2); }
+.env-badge { font-family: Menlo, monospace; font-size: 11px; background: var(--surface-2); padding: 1px 8px; border-radius: 999px; color: var(--text-2); }
+
+/* 看板：九步链 */
+.section-row { border-bottom: 1px dashed var(--line); padding: 10px 0; }
+.section-row:last-child { border-bottom: none; }
+.section-row .st-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.steps { display: flex; gap: 4px; margin: 6px 0 4px; flex-wrap: wrap; }
+.step { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-3); display: inline-flex; align-items: center; gap: 3px; }
+.step.done { background: var(--ok-soft); color: var(--ok); }
+.step.doing { background: var(--info-soft); color: var(--brand); font-weight: 600; }
+.step.bad { background: var(--danger-soft); color: var(--danger); }
+.step.blocked { background: var(--warn-soft); color: var(--warn); }
+.counts { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-3); align-items: center; flex-wrap: wrap; }
+.counts .vd { font-weight: 600; }
+.counts .vd.ap { color: var(--ok); }
+.counts .vd.rj { color: var(--danger); }
+.arrow { color: var(--text-3); font-size: 10px; }
+
+/* 看板矩阵（屏2 增强） */
+.matrix { overflow-x: auto; }
+.matrix table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+.matrix th, .matrix td { border: 1px solid var(--line); padding: 4px 6px; text-align: center; white-space: nowrap; }
+.matrix th { background: var(--surface-2); color: var(--text-2); font-weight: 500; }
+.matrix td.sec { text-align: left; font-weight: 600; }
+.cell { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 10.5px; }
+.cell.d { background: var(--ok-soft); color: var(--ok); }
+.cell.r { background: var(--info-soft); color: var(--brand); }
+.cell.f { background: var(--danger-soft); color: var(--danger); }
+.cell.b { background: var(--warn-soft); color: var(--warn); }
+.cell.p { background: var(--surface-2); color: var(--text-3); }
+.legend-row { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-3); margin-top: 8px; }
+
+/* 素材清单 */
+.mat { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+.mat:last-child { border-bottom: none; }
+.mat .ic { width: 34px; height: 34px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; flex: none; font-size: 15px; }
+.mat .ti { flex: 1; min-width: 0; }
+.mat .ti b { display: block; font-size: 12.5px; }
+.mat .ti span { font-size: 11px; color: var(--text-3); }
+
+/* 证据卡（屏4） */
+.ev { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 10px 12px; }
+.ev .ev-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.ev .uid { font-family: Menlo, monospace; font-size: 11px; color: var(--brand); background: var(--brand-soft); border-radius: 5px; padding: 0 6px; }
+.ev .win { font-size: 11.5px; color: var(--text-3); font-family: Menlo, monospace; }
+.ev .quote { font-size: 12.5px; color: var(--text-2); border-left: 3px solid var(--line); padding-left: 8px; }
+.ev .tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.ev .tags span { font-size: 10.5px; background: var(--surface-2); color: var(--text-2); border-radius: 999px; padding: 1px 8px; }
+.ev .tags span.hit { background: var(--brand-soft); color: var(--brand); }
+.thumb { width: 64px; height: 38px; border-radius: 6px; background: linear-gradient(140deg,#2c3550,#161c2c); color: #8fa3c8; display: flex; align-items: center; justify-content: center; font-size: 10px; flex: none; position: relative; }
+.thumb .tc { position: absolute; bottom: 2px; right: 4px; font-family: Menlo, monospace; font-size: 9px; color: #d7e2f5; }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-chips span { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; color: var(--text-2); cursor: pointer; }
+.filter-chips span.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+/* 评分表（门禁② rubric） */
+.rubric-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rubric-tbl th, .rubric-tbl td { border: 1px solid var(--line); padding: 4px 8px; }
+.rubric-tbl th { background: var(--surface-2); font-weight: 500; color: var(--text-2); }
+.rubric-tbl td.n { text-align: left; }
+.rubric-tbl td.s { text-align: center; font-weight: 700; }
+.rubric-tbl td.s.good { color: var(--ok); }
+.rubric-tbl td.s.bad { color: var(--danger); }
+
+.callout { border: 1px solid var(--brand); background: var(--brand-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--brand); }
+.note-arrow { font-size: 11px; color: var(--text-3); }
+kbd { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header class="proto-head">
+  <h1>教员端 · trend-producer</h1>
+  <nav class="switches" id="switches">
+    <button data-s="s1" class="on">1 趋势生产面板</button>
+    <button data-s="s2">2 看板详情</button>
+    <button data-s="s3">3 会话生产流</button>
+    <button data-s="s4">4 证据浏览</button>
+  </nav>
+  <span class="sub">布局＝dsh 左会话 + 右侧栏「趋势生产」tab；会话交互只有消息/工具卡/QuestionCard 三种</span>
+</header>
+
+<main>
+
+<!-- ═══════════ 屏1 趋势生产面板（装机后首屏） ═══════════ -->
+<section class="screen on" id="s1">
+  <div class="screen-title">屏 1 · 右侧栏「趋势生产」面板：装机后的第一屏</div>
+  <div class="screen-desc">四张卡自上而下回答四件事：我是谁（登录）→ 脑子在不在（模型密钥）→ 连到哪（云端）→ 干到哪了（生产看板）。全部数据经宿主面板 API（<span class="tiny">/api/trend-producer/*</span>）读回，面板不持有凭据。</div>
+
+  <div class="dsh">
+    <div>
+      <div class="app-label">dsh 左栏 · 会话（本屏无会话动作）</div>
+      <div class="dsh-left">
+        <div class="chat-head"><span class="name">trend-producer</span><span class="who">教员工作台 · 生产会话</span></div>
+        <div class="chat-body">
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">面板就绪后，在这个会话里说一句话就能开工——例如<b>「生产总论卷第 3 节」</b>。九步进度、两道门禁都会出现在这里。</div></div>
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">右侧面板是状态面；会话是操作面。两边数据同源（宿主 + 云端），不需要来回切。</div></div>
+        </div>
+        <div class="composer"><div class="input-row"><div class="box">描述要生产的内容…</div><button class="send">发送</button></div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="app-label">dsh 右栏 · 趋势生产 tab（ctx.sidebarRightTabs.register）</div>
+      <div class="dsh-right">
+        <div class="tab-strip"><div class="tab on">趋势生产</div><div class="guide">面板 8 秒轮询</div></div>
+        <div class="pane"><div class="pane-scroll">
+
+          <div class="card">
+            <div class="tp-card-head"><h4>登录</h4><button class="btn pri sm">登录教员账号</button></div>
+            <div class="row"><span class="lab">状态</span><span class="val"><span class="pill doing">已登录：teacher01（producer）</span></span></div>
+            <div class="row"><span class="lab">到期时间</span><span class="val">2026/11/23 14:32</span></div>
+          </div>
+
+          <div class="card">
+            <div class="tp-card-head"><h4>模型密钥</h4><button class="btn ghost sm">刷新</button></div>
+            <div class="row"><span class="lab">密钥位</span><span class="val" style="font-family:Menlo,monospace">TREND_PRODUCER_MODEL_KEY</span></div>
+            <div class="row"><span class="lab">状态</span><span class="val"><span class="pill warn">未配置</span></span></div>
+            <div class="hint">在 dsh 设置 → 模型里粘贴密钥到 TREND_PRODUCER_MODEL_KEY，保存即生效。</div>
+          </div>
+
+          <div class="card">
+            <div class="tp-card-head"><h4>云端</h4><span class="env-badge">production</span></div>
+            <div class="row"><span class="lab">地址</span><span class="val tiny">https://trend.17aitech.com</span></div>
+            <div class="row"><span class="lab">连通</span><span class="val"><span class="pill ok">可达</span></span></div>
+          </div>
+
+          <div class="card">
+            <div class="tp-card-head"><h4>生产看板</h4><select class="tp-select"><option>趋势投资总论</option><option>TC-101 入门</option></select></div>
+            <p class="muted">趋势投资总论</p>
+            <div class="section-row">
+              <div class="st-title">第 1 节 · 趋势的定义与三要素 <span class="pill ok">评审通过</span></div>
+              <div class="steps"><span class="step done">✓案例股</span><span class="arrow">→</span><span class="step done">✓行情同步</span><span class="arrow">→</span><span class="step done">✓行情读回</span><span class="arrow">→</span><span class="step done">✓图示</span><span class="arrow">→</span><span class="step done">✓回放课件</span><span class="arrow">→</span><span class="step done">✓正文</span><span class="arrow">→</span><span class="step done">✓其余课件</span><span class="arrow">→</span><span class="step done">✓评审</span><span class="arrow">→</span><span class="step done">✓溯源</span></div>
+              <div class="counts"><span>文章 v2</span><span>课件 6</span><span>图示 2</span><span>案例股 3</span></div>
+            </div>
+            <div class="section-row">
+              <div class="st-title">第 2 节 · 趋势的级别与嵌套 <span class="pill doing">生产中</span></div>
+              <div class="steps"><span class="step done">✓案例股</span><span class="arrow">→</span><span class="step done">✓行情同步</span><span class="arrow">→</span><span class="step done">✓行情读回</span><span class="arrow">→</span><span class="step doing">◐图示</span><span class="arrow">→</span><span class="step blocked">禁回放课件</span><span class="arrow">→</span><span class="step">正文</span><span class="arrow">→</span><span class="step">其余课件</span><span class="arrow">→</span><span class="step">评审</span><span class="arrow">→</span><span class="step">溯源</span></div>
+              <div class="counts"><span>文章 v0</span><span>课件 0</span><span>图示 0/2</span><span>案例股 4</span></div>
+            </div>
+          </div>
+
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 四卡片＝0.2.4 已实现（登录/模型密钥/云端/看板，8s 轮询）</span>
+    <span class="st ok">✅ 看板行＝九步链 + 产出计数 + 评审结论（stepLabels 宿主下发）</span>
+    <span class="st enh">🔶 登录卡 pending 提示「授权页已打开，请浏览器批准」已实现；本屏画的是已登录稳态</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏2 看板详情 ═══════════ -->
+<section class="screen" id="s2">
+  <div class="screen-title">屏 2 · 看板详情：课程 × 九步矩阵与断点续作</div>
+  <div class="screen-desc">现有看板卡是逐节摘要；本屏画出目标形态——课程级矩阵一眼看全，失败/驳回节点可从面板直接发起续作（落到会话变成一句话指令），追加素材的决策走 QuestionCard。</div>
+
+  <div class="dsh">
+    <div>
+      <div class="app-label">dsh 左栏 · 会话（续作指令从面板跳进来）</div>
+      <div class="dsh-left">
+        <div class="chat-head"><span class="name">trend-producer</span><span class="who">教员工作台 · 生产会话</span></div>
+        <div class="chat-body">
+          <div class="msg user"><div class="avatar">我</div><div class="bubble">第 5 节评审被驳回了，看看为什么，修完重跑评审</div></div>
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">读回第 5 节成品与评分表：<b>「案例锚」4/6 —— 正文两处价格与行情读回不一致</b>（601127 在 2021-05-11 收盘应为 19.82，正文写 19.60）。已按读回数据改写两段并重建 <span class="m">[[unit:su-0187]]</span> 锚，attempt 2/3，重跑评审。</div></div>
+          <div class="tool-call"><span class="tn">cloud_section_preview</span> · 第 5 节 <span class="tr">✓ 3.1s</span></div>
+          <div class="tool-call"><span class="tn">cloud_section_article_write</span> · v3 <span class="tr">✓ 8.4s</span></div>
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">评审 <b>approve（案例锚 6/6）</b>。第 5 节九步闭合，剩第 6 节未开工。</div></div>
+        </div>
+        <div class="composer"><div class="input-row"><div class="box">继续第 6 节…</div><button class="send">发送</button></div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="app-label">dsh 右栏 · 趋势生产 tab（看板卡展开）</div>
+      <div class="dsh-right">
+        <div class="tab-strip"><div class="tab on">趋势生产</div><div class="guide">矩阵视图 · 🔶 目标形态</div></div>
+        <div class="pane"><div class="pane-scroll">
+
+          <div class="card">
+            <div class="tp-card-head"><h4>趋势投资总论 · 九步矩阵</h4><span class="pill todo">6 节</span></div>
+            <div class="matrix">
+              <table>
+                <tr><th style="text-align:left">节</th><th>案例股</th><th>行情同步</th><th>行情读回</th><th>图示</th><th>回放课件</th><th>正文</th><th>其余课件</th><th>评审</th><th>溯源</th><th></th></tr>
+                <tr><td class="sec">1 趋势的定义与三要素</td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td class="tiny">2/2/6/3</td></tr>
+                <tr><td class="sec">2 趋势的级别与嵌套</td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell r">◐</span></td><td><span class="cell b">禁</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td class="tiny">0/0/0/4</td></tr>
+                <tr><td class="sec">3 趋势的生命周期</td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td class="tiny">2/1/5/3</td></tr>
+                <tr><td class="sec">4 趋势的确认信号</td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td class="tiny">2/1/7/5</td></tr>
+                <tr><td class="sec">5 假突破与陷阱识别</td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell d">✓</span></td><td><span class="cell f">✗</span></td><td><span class="cell p">·</span></td><td><button class="btn sm pri">续作</button></td></tr>
+                <tr><td class="sec">6 趋势跟踪与仓位</td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><span class="cell p">·</span></td><td><button class="btn sm ghost">开工</button></td></tr>
+              </table>
+            </div>
+            <div class="legend-row"><span>✓ 完成</span><span>◐ 进行中</span><span>✗ 失败/驳回</span><span>禁 前置未完</span><span>· 待开始</span><span class="tiny">末列＝文章v/课件/图示/案例股</span></div>
+          </div>
+
+          <div class="card">
+            <h4>素材与转写 <span class="pill ok">6 就绪</span></h4>
+            <div class="mat"><div class="ic">🎬</div><div class="ti"><b>总论·开篇与框架（2:41:18）</b><span>231 units · 36 课件 spec · 66 概念</span></div><span class="pill ok">已理解</span></div>
+            <div class="mat"><div class="ic">📊</div><div class="ti"><b>总论·周期与节奏（1:58:02）</b><span>187 units · 转写完成</span></div><span class="pill doing">理解中</span></div>
+            <div class="mat"><div class="ic">📄</div><div class="ti"><b>追加：2026Q3 复盘录音（42:11）</b><span>新素材 · 影响 2 节</span></div><button class="btn sm ghost">决策</button></div>
+          </div>
+
+          <div class="card">
+            <h4>断点恢复 <span class="pill warn">上次中断</span></h4>
+            <div class="row"><span class="lab">位置</span><span class="val">第 5 节 · 评审 attempt 2/3 · reject（案例锚 4/6）</span></div>
+            <div class="row"><span class="lab">原因</span><span class="val">601127 2021-05-11 收盘价 19.82 ≠ 正文 19.60</span></div>
+            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn pri sm">从断点续作</button><button class="btn ghost sm">重跑本节</button></div>
+          </div>
+
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st enh">🔶 本屏为增强目标：现有看板卡已是逐节摘要（0.2.4），矩阵视图/续作按钮/断点卡待排期</span>
+    <span class="st ok">✅ 续作落点＝会话一句话指令 + 九步状态机（production-steps 顺序门禁已实现）</span>
+    <span class="st ok">✅ 追加素材三选（A 补本节/B 重做骨架/C 仅入库）+ 受影响节重置已实现（决策卡形态见屏 3）</span>
+    <span class="st enh">🔶 素材行展示理解进度（units/概念计数）待面板 API 扩展</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏3 会话生产流（两道门禁） ═══════════ -->
+<section class="screen" id="s3">
+  <div class="screen-title">屏 3 · 会话生产流：一句话开工 → 门禁① → 逐节九步 → 门禁② → 交管理台</div>
+  <div class="screen-desc">操作面全在会话里，只有三种元素：普通消息、工具调用卡、QuestionCard 审批卡。门禁①批骨架（批准前禁止写节内容），门禁②是主编 rubric 评审（reject 回灌 ≤3 轮，超限转人工）。<b>右侧栏同步显示看板</b>（同屏 1）。</div>
+
+  <div class="dsh">
+    <div>
+      <div class="app-label">dsh 左栏 · 生产会话（主操作面）</div>
+      <div class="dsh-left">
+        <div class="chat-head"><span class="name">trend-producer</span><span class="who">总论卷 · 阶段 2 → 逐节生产</span></div>
+        <div class="chat-body">
+
+          <div class="msg user"><div class="avatar">我</div><div class="bubble">把《趋势投资总论》的骨架做出来，给我批</div></div>
+          <div class="tool-call"><span class="tn">cloud_transcript</span> · 素材 6/6 分块读取 <span class="tr">✓</span></div>
+          <div class="tool-call"><span class="tn">cloud_concepts_write</span> · 概念 66 条（归一后）<span class="tr">✓</span></div>
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">目录校验通过（与 <span class="m">catalog/总论.yaml</span> 一致，无发明）。骨架：6 章 22 节；概念图谱 66 节点 / 99 边；术语表 66 条。请审批：</div></div>
+
+          <!-- 门禁① QuestionCard -->
+          <div class="gate-card" id="gate1">
+            <div class="gh">门禁① · 课程骨架审批</div>
+            <div class="gb">
+              <ul style="padding-left:16px;font-size:12.5px">
+                <li>骨架：<b>6 章 / 22 节</b>（目录先验校验 ✓）</li>
+                <li>概念归一：<b>66 概念 / 99 边</b>（合并同义 7 组）</li>
+                <li>术语表：<b>66 条</b>（含历史漂移修正 3 条）</li>
+              </ul>
+              <div class="opts">
+                <span class="approve-btn" onclick="decide(this,'approve')">批准骨架，开始逐节生产</span>
+                <span class="deny" onclick="decide(this,'reject')">驳回，我要改</span>
+              </div>
+              <div class="verdict"></div>
+            </div>
+          </div>
+
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">骨架已批准落库。开始第 1 节「趋势的定义与三要素」——九步：案例股 → 行情同步 → 行情读回 → 图示 → 回放课件 → 正文 → 其余课件 → 评审 → 溯源。</div></div>
+          <div class="tool-call"><span class="tn">cloud_case_stocks_write</span> · 600519(1w) / 601127(1d) / 300750(1d) <span class="tr">✓</span></div>
+          <div class="tool-call"><span class="tn">cloud_quotes_sync</span> · 日K 3120 根 / 周K 680 根 <span class="tr">✓</span></div>
+          <div class="tool-call"><span class="tn">cloud_figure_write</span> · diagram×2（假突破量能结构 / 三要素金字塔）<span class="tr">✓</span></div>
+          <div class="tool-call"><span class="tn">cloud_section_article_write</span> · v1（锚 14 处）<span class="tw">⚠ 400 unit_anchor_unknown ×1 → 修正重写</span></div>
+          <div class="tool-call"><span class="tn">cloud_widget_write</span> · 回放判断 ×1 + 断言证明 ×6 <span class="tr">✓</span></div>
+
+          <!-- 门禁② rubric 评审卡 -->
+          <div class="gate-card" id="gate2">
+            <div class="gh" style="background:var(--warn)">门禁② · 主编评审（rubric 0.4）</div>
+            <div class="gb">
+              <table class="rubric-tbl">
+                <tr><th style="text-align:left">维度</th><th>得分</th><th>阈值</th></tr>
+                <tr><td class="n">结构完整（三要素齐备、段落有序）</td><td class="s good">5/5</td><td>≥4</td></tr>
+                <tr><td class="n">案例锚（价格/日期全部 grounding）</td><td class="s good">6/6</td><td>≥5</td></tr>
+                <tr><td class="n">课件断言（回放 + 对比全部证明）</td><td class="s good">6/6</td><td>全过</td></tr>
+                <tr><td class="n">溯源覆盖（正文说法可回放）</td><td class="s good">14/14</td><td>100%</td></tr>
+              </table>
+              <div class="opts">
+                <span class="approve-btn" onclick="decide(this,'approve')">通过，落库进入下一节</span>
+                <span class="deny" onclick="decide(this,'reject')">驳回重写</span>
+              </div>
+              <div class="verdict"></div>
+            </div>
+          </div>
+
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">第 1 节九步闭合（评审 approve，attempt 1）。继续第 2 节…全卷完成后在<b>管理台 → 课程管理 → 签批发布</b>做最终发布（五门禁），本端不发布。</div></div>
+
+        </div>
+        <div class="composer"><div class="input-row"><div class="box">如：第 2 节图示换 K 线叠加成交量…</div><button class="send">发送</button></div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="app-label">dsh 右栏 · 趋势生产 tab（随会话实时刷新）</div>
+      <div class="dsh-right">
+        <div class="tab-strip"><div class="tab on">趋势生产</div><div class="guide">与屏 1 看板同源</div></div>
+        <div class="pane"><div class="pane-scroll">
+          <div class="card">
+            <h4>阶段 <span class="pill doing">逐节生产</span></h4>
+            <div class="row"><span class="lab">门禁①</span><span class="val"><span class="pill ok">2026-11-04 批准</span></span></div>
+            <div class="row"><span class="lab">当前</span><span class="val">第 2 节 · 第 4/9 步（图示）</span></div>
+            <div class="row"><span class="lab">回灌</span><span class="val">本卷累计 reject 2 次（均已过）</span></div>
+          </div>
+          <div class="card">
+            <h4>九步纪律</h4>
+            <div class="tiny">顺序门禁本地判定：前置未完 → 后续步骤 blocked。<br>reject 回灌 ≤3 轮，超限转人工待办，不带病推进。<br>溯源漏报 → 发布门禁不过。</div>
+          </div>
+          <div class="callout">本端只生产不发布。发布出口在云端管理台（签批五门禁）。</div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 九步状态机 + 顺序门禁 + 回灌上限（≤3 转人工）已实现</span>
+    <span class="st ok">✅ 门禁①②走 dsh 原生 QuestionCard（按钮审批），呈报后停止等待</span>
+    <span class="st ok">✅ 工具调用卡＝dsh 原生消息形态；云端 400/409 错误在卡片内可见</span>
+    <span class="st enh">🔶 门禁②评分表当前以结构化文本呈报；可视化评分卡形态待细化</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏4 证据浏览 ═══════════ -->
+<section class="screen" id="s4">
+  <div class="screen-title">屏 4 · 证据浏览：source units 语料级检索</div>
+  <div class="screen-desc">生产「不发明」的底气是证据：每一条教材说法都能回放到素材的时间窗。右栏按节过滤 units，左栏会话里可让教员读证据、核锚点。</div>
+
+  <div class="dsh">
+    <div>
+      <div class="app-label">dsh 左栏 · 会话（证据核对）</div>
+      <div class="dsh-left">
+        <div class="chat-head"><span class="name">trend-producer</span><span class="who">证据核对 · 第 5 节</span></div>
+        <div class="chat-body">
+          <div class="msg user"><div class="avatar">我</div><div class="bubble">「假突破的量能特征是缩量创新高」这句的依据是哪段素材？</div></div>
+          <div class="tool-call"><span class="tn">cloud_source_units</span> · 检索"假突破 缩量" <span class="tr">✓ 3 hits</span></div>
+          <div class="msg bot"><div class="avatar">教</div><div class="bubble">三处依据：
+            <ul>
+              <li><b>总论·开篇 01:42:03–01:44:18</b> ——「…缩量过前高就是假突破的典型量能…」</li>
+              <li><b>总论·开篇 01:51:40–01:52:35</b> ——「量价背离三段式」</li>
+              <li><b>总论·周期 00:38:12–00:39:05</b> —— 反例：放量假突破（突破失败案例）</li>
+            </ul>
+            正文锚落在第 1 段（<span class="m">[[unit:su-0142]]</span>）。第 3 段是反例语境，<b>不适合作为该句锚</b>——要不要我把反例改写进「误区」块？</div></div>
+          <div class="msg user"><div class="avatar">我</div><div class="bubble">改</div></div>
+          <div class="tool-call"><span class="tn">cloud_section_article_write</span> · v4（新增 misuse 块 + 锚 su-0221）<span class="tr">✓</span></div>
+        </div>
+        <div class="composer"><div class="input-row"><div class="box">问证据 / 改锚点…</div><button class="send">发送</button></div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="app-label">dsh 右栏 · 趋势生产 tab（证据面板 🔶 目标形态）</div>
+      <div class="dsh-right">
+        <div class="tab-strip"><div class="tab on">趋势生产</div><div class="guide">231 units · 已全量向量化</div></div>
+        <div class="pane"><div class="pane-scroll">
+
+          <div class="filter-chips"><span class="on">第 5 节 · 假突破（18）</span><span>第 1 节（41）</span><span>第 3 节（37）</span><span>未引用（52）</span></div>
+
+          <div class="ev">
+            <div class="ev-head"><span class="uid">su-0142</span><span class="win">01:42:03 → 01:44:18</span><span class="pill ok">已锚定</span><span class="pill doing">被正文引用 ×2</span></div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div class="thumb">关键帧<span class="tc">01:42:37</span></div>
+              <div class="quote">「……缩量过前高、量价背离，这就是假突破最典型的量能特征。记住：不是所有新高都值得追……」</div>
+            </div>
+            <div class="tags"><span class="hit">假突破</span><span class="hit">量价背离</span><span>缩量</span><span>新高</span><span>概念·假突破</span></div>
+          </div>
+
+          <div class="ev">
+            <div class="ev-head"><span class="uid">su-0158</span><span class="win">01:51:40 → 01:52:35</span><span class="pill todo">已锚定·单处</span></div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div class="thumb">板书<span class="tc">01:51:52</span></div>
+              <div class="quote">「量价背离三段式：缩量新高 → 放量滞涨 → 破位确认。」</div>
+            </div>
+            <div class="tags"><span class="hit">量价背离</span><span>三段式</span><span>破位</span></div>
+          </div>
+
+          <div class="ev">
+            <div class="ev-head"><span class="uid">su-0221</span><span class="win">00:38:12 → 00:39:05</span><span class="pill warn">反例语境</span><span class="pill todo">未引用</span></div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div class="thumb">关键帧<span class="tc">00:38:40</span></div>
+              <div class="quote">「这个案例注意——它是放量突破但失败了，跟缩量假突破是两回事，别混到一起……」</div>
+            </div>
+            <div class="tags"><span class="hit">假突破</span><span>放量</span><span>反例</span><span>候选·误区块</span></div>
+          </div>
+
+          <div class="card">
+            <h4>锚点覆盖 <span class="pill ok">14/14</span></h4>
+            <div class="tiny">第 5 节正文 14 处具体说法全部挂 unit 锚；未引用 units 52 条可作候选补充。向量检索命中已按语义排序（zhipu embedding-3）。</div>
+          </div>
+
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 证据底座已实现：231 source units + 向量化 + [[unit:]] 锚校验（400 unit_anchor_unknown 拦截无依据说法）</span>
+    <span class="st ok">✅ 会话侧证据问答已实现（cloud_source_units / cloud_transcript 读工具）</span>
+    <span class="st enh">🔶 右栏证据面板（按节过滤/关键帧缩略/引用计数）待排期，数据源均已有</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+// 屏幕切换
+const switches = document.querySelectorAll('#switches button')
+const screens = document.querySelectorAll('.screen')
+switches.forEach(btn => {
+  btn.addEventListener('click', () => {
+    switches.forEach(b => b.classList.remove('on'))
+    btn.classList.add('on')
+    screens.forEach(s => s.classList.toggle('on', s.id === btn.dataset.s))
+  })
+})
+
+// 门禁卡演示：点选项后出结论（仅示意 dsh QuestionCard 的选择行为）
+function decide(el, verdict) {
+  const card = el.closest('.gate-card')
+  card.classList.add('decided')
+  const v = card.querySelector('.verdict')
+  v.className = 'verdict ' + verdict
+  if (card.id === 'gate1') {
+    v.textContent = verdict === 'approve'
+      ? '✓ 已批准 —— 骨架/概念/术语表落库生效，进入逐节生产'
+      : '✗ 已驳回 —— 会话继续：说出要改的章/节/概念，改完重新呈报'
+  } else {
+    v.textContent = verdict === 'approve'
+      ? '✓ 评审通过 —— 溯源上报后本节闭合，进入下一节'
+      : '✗ 已驳回 —— reject 回灌重写（attempt +1，≤3 轮，超限转人工待办）'
+  }
+}
+</script>
+</body>
+</html>

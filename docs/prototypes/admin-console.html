@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>管理台原型 · 云端 /admin（SPA，不受 dsh 约束）</title>
+<style>
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --surface-3: #e8ebf0;
+  --text: #1a1d24; --text-2: #5b6473; --text-3: #8b94a3; --line: #e3e7ee;
+  --brand: #2f5bd7; --brand-soft: #eaf0ff;
+  --warn: #c47a12; --warn-soft: #fff6e5;
+  --danger: #c4382f; --danger-soft: #fff0ee;
+  --ok: #177a55; --ok-soft: #e9f7f0;
+  --info-soft: #eef4ff;
+  --shadow: 0 1px 2px rgba(20,28,45,.04), 0 8px 28px rgba(20,28,45,.06);
+  --radius: 12px; --radius-sm: 8px;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+
+/* 原型页头 */
+.proto-head { position: sticky; top: 0; z-index: 50; background: #1a1f28; color: #eef1f6; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.proto-head h1 { font-size: 15px; font-weight: 600; }
+.proto-head .sub { font-size: 12px; color: #9aa4b5; }
+.switches { display: flex; gap: 6px; flex-wrap: wrap; }
+.switches button { border: 1px solid #3a4250; background: transparent; color: #c7cfdd; font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.switches button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px; }
+.screen { display: none; }
+.screen.on { display: block; }
+.screen-title { font-size: 16px; font-weight: 600; margin: 4px 0 4px; }
+.screen-desc { color: var(--text-2); font-size: 13px; margin-bottom: 14px; }
+.status-bar { margin-top: 14px; border-top: 1px dashed var(--line); padding: 10px 2px 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.st { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; }
+.st.ok { background: var(--ok-soft); color: var(--ok); }
+.st.enh { background: var(--info-soft); color: var(--brand); }
+
+/* 管理台骨架：左导航 + 顶栏 + 内容 */
+.console { display: grid; grid-template-columns: 200px 1fr; height: 800px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--surface); }
+.side { background: #171c26; color: #c7cfdd; padding: 12px 0; display: flex; flex-direction: column; }
+.side .brand { padding: 8px 18px 14px; font-weight: 700; font-size: 14px; color: #fff; border-bottom: 1px solid #262e3c; margin-bottom: 8px; }
+.side .grp { font-size: 10.5px; color: #5f6b80; padding: 10px 18px 4px; letter-spacing: 1px; }
+.side a { display: flex; align-items: center; gap: 8px; padding: 7px 18px; font-size: 13px; color: #aeb8cc; cursor: pointer; border-left: 3px solid transparent; }
+.side a:hover { color: #fff; }
+.side a.on { color: #fff; background: rgba(47,91,215,.25); border-left-color: var(--brand); }
+.main { display: flex; flex-direction: column; overflow: hidden; }
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.topbar .crumb { font-size: 13px; color: var(--text-2); }
+.topbar .crumb b { color: var(--text); }
+.topbar .me { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.content { flex: 1; overflow: auto; padding: 18px 20px; background: var(--bg); display: flex; flex-direction: column; gap: 14px; }
+
+/* antd 风组件 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; box-shadow: var(--shadow); }
+.card h4 { font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.muted { color: var(--text-2); font-size: 12.5px; }
+.tiny { color: var(--text-3); font-size: 11px; }
+.btn { display: inline-block; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+.btn.pri { background: var(--brand); color: #fff; }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.ghost { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.btn.sm { padding: 2px 10px; font-size: 12px; }
+.btn[disabled] { opacity: .4; cursor: not-allowed; }
+.tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; padding: 1px 8px; font-size: 11.5px; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.doing { background: var(--info-soft); color: var(--brand); }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
+.tag.bad { background: var(--danger-soft); color: var(--danger); }
+.tag.off { background: var(--surface-2); color: var(--text-3); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+th { font-weight: 500; color: var(--text-2); font-size: 12.5px; background: var(--surface); }
+.fp { font-family: Menlo, monospace; font-size: 11px; color: var(--text-3); }
+
+/* 就绪度卡 */
+.gates { display: flex; flex-direction: column; gap: 8px; }
+.gate { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.gate .ic { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
+.gate.pass .ic { background: var(--ok-soft); color: var(--ok); }
+.gate.fail .ic { background: var(--danger-soft); color: var(--danger); }
+.gate.pending .ic { background: var(--warn-soft); color: var(--warn); }
+.gate .g-label { font-weight: 600; font-size: 13px; flex: none; }
+.gate .g-sum { flex: 1; font-size: 12px; color: var(--text-2); }
+.gate .issue { font-family: Menlo, monospace; font-size: 10.5px; background: var(--danger-soft); color: var(--danger); border-radius: 4px; padding: 0 6px; }
+
+/* 树编辑器 */
+.tree { font-size: 13px; }
+.tree .node { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.tree .node:hover { background: var(--surface-2); }
+.tree .node .ic { color: var(--text-3); width: 16px; text-align: center; }
+.tree .kids { margin-left: 22px; }
+.grid2 { display: grid; grid-template-columns: 300px 1fr; gap: 14px; align-items: start; }
+
+/* 模型配置 */
+.key-state { display: flex; gap: 8px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--danger); }
+.dot.off { background: var(--text-3); }
+.bar-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+.bar { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg,#2f5bd7,#7ea1f5); }
+</style>
+</head>
+<body>
+
+<header class="proto-head">
+  <h1>管理台 · 云端 /admin</h1>
+  <nav class="switches" id="switches">
+    <button data-s="s1" class="on">1 课程内容与就绪度</button>
+    <button data-s="s2">2 签批终审与发布</button>
+    <button data-s="s3">3 系统与 AI 运营</button>
+  </nav>
+  <span class="sub">云端自有 SPA（React + antd 风格），不落 dsh；发布权只在 operator/admin</span>
+</header>
+
+<main>
+
+<!-- ═══════════ 屏1 课程内容与就绪度 ═══════════ -->
+<section class="screen on" id="s1">
+  <div class="screen-title">屏 1 · 课程内容：树编辑 + 发布就绪度卡</div>
+  <div class="screen-desc">producer 可编辑内容（写入恒为 draft）；就绪度卡是<b>只读</b>的——它只把发布会拦的事先说出来，不改发布行为。五道门禁与发布事务同一份判定（readiness.ts）。</div>
+
+  <div class="console">
+    <aside class="side">
+      <div class="brand">趋势云 · 管理台</div>
+      <div class="grp">概览</div>
+      <a>📊 概览</a>
+      <div class="grp">内容运营</div>
+      <a class="on">📖 课程内容</a>
+      <a>📄 片段管理</a>
+      <a>🎬 视频建课</a>
+      <a>📦 生产端安装</a>
+      <div class="grp">AI 运营</div>
+      <a>📈 AI 用量</a>
+      <a>🕘 AI 运行</a>
+      <div class="grp">系统</div>
+      <a>🤖 模型配置</a>
+      <a>👥 账号管理</a>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <span class="crumb">内容运营 / <b>课程内容</b> / 趋势投资总论</span>
+        <span class="me"><span class="tag doing">operator</span><span class="avatar">周</span>周主编</span>
+      </div>
+      <div class="content">
+
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h4 style="margin:0">趋势投资总论 <span class="tag warn">draft</span></h4>
+            <span class="tiny">TC-ZONGLUN · 6 章 / 22 节 · 最近生产 2026-11-09 10:42（producer: teacher01）</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost">课程预览</button>
+            <button class="btn ghost">生产看板</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <h4>内容树 <button class="btn sm ghost" style="margin-left:auto">+ 建章</button></h4>
+            <div class="tree">
+              <div class="node"><span class="ic">▾</span>第一章 趋势的基本认知 <span class="tag ok" style="margin-left:auto">就绪</span></div>
+              <div class="kids">
+                <div class="node"><span class="ic">·</span>第 1 节 趋势的定义与三要素 <span class="tag ok" style="margin-left:auto">5 课件</span></div>
+                <div class="node"><span class="ic">·</span>第 2 节 趋势的级别与嵌套 <span class="tag warn" style="margin-left:auto">生产中</span></div>
+                <div class="node"><span class="ic">·</span>第 3 节 趋势的生命周期 <span class="tag ok" style="margin-left:auto">3 课件</span></div>
+              </div>
+              <div class="node"><span class="ic">▸</span>第二章 假突破与陷阱 <span class="tag doing" style="margin-left:auto">编辑中</span></div>
+              <div class="node"><span class="ic">▸</span>第三章 周期与节奏 <span class="tag off" style="margin-left:auto">骨架</span></div>
+            </div>
+            <p class="tiny" style="margin-top:8px">抽屉编辑：章/节、教材（Markdown+DSL）、课件 spec、图示、概念、案例股。producer 的写入恒为 draft。</p>
+          </div>
+
+          <div class="card">
+            <h4>发布就绪度 <span class="tag bad">不可发布 · 2 项拦截</span></h4>
+            <div class="gates">
+              <div class="gate pass"><span class="ic">✓</span><span class="g-label">图示</span><span class="g-sum">22 个引用全部解析（diagram 12 / keyframe 10）</span></div>
+              <div class="gate fail"><span class="ic">✗</span><span class="g-label">课件断言</span><span class="g-sum">第 2 节 1 份课件断言未证明：放量滞涨段的均线斜率断言</span><span class="issue">widget_unproven</span></div>
+              <div class="gate pass"><span class="ic">✓</span><span class="g-label">片段窗</span><span class="g-sum">36 处 [[unit:]] 全部落在素材时间窗内</span></div>
+              <div class="gate fail"><span class="ic">✗</span><span class="g-label">标注与回放</span><span class="g-sum">第 4 节 2 处标注日期非交易日（视频口径与缓存窗口错位）</span><span class="issue">annotation_unresolved</span></div>
+              <div class="gate pending"><span class="ic">…</span><span class="g-label">终审签批</span><span class="g-sum">尚未签批——前四道全绿后才可签（签批记录内容指纹）</span><span class="issue" style="background:var(--warn-soft)">approval_required</span></div>
+            </div>
+            <p class="tiny" style="margin-top:10px">判定一份实现、两个消费者：本卡片与 POST …/publish 读同一批检查结果——不会出现「卡片全绿、点发布 409」。错误码与发布载荷逐字一致。</p>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn pri" disabled>发布课程</button>
+              <button class="btn ghost">复制待办给教员</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 全屏已实现：课程树/抽屉编辑（教材/课件/图示/概念/案例股）+ 就绪度卡（只读，producer 也可看）</span>
+    <span class="st ok">✅ 五门禁＝图示/课件断言/片段窗/标注与回放/终审签批；门禁①属生产侧不在此列</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏2 签批终审与发布 ═══════════ -->
+<section class="screen" id="s2">
+  <div class="screen-title">屏 2 · 签批终审与发布：指纹防篡改的最后一道闸</div>
+  <div class="screen-desc">签批记录<b>内容指纹</b>；签批后再改内容 → 指纹失效（approval_stale），必须重签。发布事务按固定顺序取第一个失败门禁，错误码与就绪度卡逐字一致。</div>
+
+  <div class="console">
+    <aside class="side">
+      <div class="brand">趋势云 · 管理台</div>
+      <div class="grp">概览</div>
+      <a>📊 概览</a>
+      <div class="grp">内容运营</div>
+      <a class="on">📖 课程内容</a>
+      <a>📄 片段管理</a>
+      <a>🎬 视频建课</a>
+      <a>📦 生产端安装</a>
+      <div class="grp">AI 运营</div>
+      <a>📈 AI 用量</a>
+      <a>🕘 AI 运行</a>
+      <div class="grp">系统</div>
+      <a>🤖 模型配置</a>
+      <a>👥 账号管理</a>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <span class="crumb">内容运营 / <b>课程内容</b> / 趋势投资总论 / 发布</span>
+        <span class="me"><span class="tag doing">operator</span><span class="avatar">周</span>周主编</span>
+      </div>
+      <div class="content">
+
+        <div class="card">
+          <h4>终审签批 <span class="tag warn">已签批 · 指纹失效</span></h4>
+          <div class="card" style="background:var(--danger-soft);border-color:#f2c6c1;box-shadow:none;margin-bottom:12px">
+            <b style="color:var(--danger);font-size:13px">⚠ 内容在签批后被修改过</b>
+            <p class="muted" style="margin-top:4px">第 5 节教材 v4 → v5（producer teacher01 修正案例锚）。签批指纹对应 v4，<span class="fp">approval_stale</span> ——需要重新签批才能发布。</p>
+          </div>
+          <table>
+            <tr><th>签批</th><th>签批人</th><th>内容指纹</th><th>当前指纹</th><th>状态</th></tr>
+            <tr>
+              <td>2026-11-09 11:02</td><td>周主编（operator）</td>
+              <td class="fp">a3f9…c21e</td><td class="fp">7d04…9b6a</td>
+              <td><span class="tag bad">失效</span></td>
+            </tr>
+          </table>
+          <p class="tiny" style="margin:8px 0 10px">签批动作＝operator/admin 复核就绪度全绿后记下当时整卷内容指纹；发布时校验指纹一致才放行。前四道门禁当前状态：</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <span class="tag ok">✓ 图示</span><span class="tag ok">✓ 课件断言</span><span class="tag ok">✓ 片段窗</span><span class="tag ok">✓ 标注与回放</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn pri">重新签批（记录新指纹）</button>
+            <button class="btn ghost">查看改动 diff</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>发布 <span class="tag off">等签批</span></h4>
+          <p class="muted">发布把 draft → published：学员端目录即时可见，播放走签名会话。发布事务顺序：图示 → 课件断言 → 片段窗 → 标注与回放 → 终审签批，第一个失败项即中止（409 + 对应错误码）。</p>
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+            <button class="btn danger" disabled>发布课程</button>
+            <span class="tiny">签批刷新指纹后自动解锁</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>发布历史</h4>
+          <table>
+            <tr><th>时间</th><th>课程</th><th>操作</th><th>操作人</th><th>结果</th></tr>
+            <tr><td>2026-10-28 16:40</td><td>TC-101 趋势投资入门</td><td>publish</td><td>周主编</td><td><span class="tag ok">成功</span></td></tr>
+            <tr><td>2026-11-09 11:05</td><td>TC-ZONGLUN 总论</td><td>publish</td><td>—</td><td><span class="tag bad">409 approval_stale</span></td></tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 签批/指纹/发布/409 错误码已实现（approval_required / approval_stale 等）</span>
+    <span class="st ok">✅ 分权已实现：签批与发布仅 operator/admin；producer 编辑恒为 draft</span>
+    <span class="st enh">🔶 「查看改动 diff」为候选增强，未排期</span>
+  </div>
+</section>
+
+<!-- ═══════════ 屏3 系统与 AI 运营 ═══════════ -->
+<section class="screen" id="s3">
+  <div class="screen-title">屏 3 · 系统设置与 AI 运营：模型 / 账号 / 用量</div>
+  <div class="screen-desc">模型配置页是 BYOK 的云端落点——密钥只存加密库，页面只显示「已配置」不回显；测试连接按 purpose 分流（content 走补全、embedding 走向量化、asr 走音频）。</div>
+
+  <div class="console">
+    <aside class="side">
+      <div class="brand">趋势云 · 管理台</div>
+      <div class="grp">概览</div>
+      <a>📊 概览</a>
+      <div class="grp">内容运营</div>
+      <a>📖 课程内容</a>
+      <a>📄 片段管理</a>
+      <a>🎬 视频建课</a>
+      <a>📦 生产端安装</a>
+      <div class="grp">AI 运营</div>
+      <a style="display:none"></a>
+      <a>📈 AI 用量</a>
+      <a>🕘 AI 运行</a>
+      <div class="grp">系统</div>
+      <a class="on">🤖 模型配置</a>
+      <a>👥 账号管理</a>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <span class="crumb">系统 / <b>模型配置</b></span>
+        <span class="me"><span class="tag bad">admin</span><span class="avatar">管</span>admin01</span>
+      </div>
+      <div class="content">
+
+        <div class="card">
+          <h4>LLM / Embedding / ASR 配置 <button class="btn sm ghost" style="margin-left:auto">+ 新增配置</button></h4>
+          <table>
+            <tr><th>名称</th><th>用途</th><th>协议 / 模型</th><th>密钥</th><th>默认</th><th>状态</th><th></th></tr>
+            <tr>
+              <td>MiniMax M3.1 Flash</td><td><span class="tag doing">content</span></td>
+              <td class="fp">openai-completions · MiniMax-M3.1-Flash</td>
+              <td><span class="key-state"><span class="dot ok"></span>已配置</span></td>
+              <td><span class="tag ok">默认</span></td><td><span class="tag ok">活跃</span></td>
+              <td><button class="btn sm ghost">测试连接</button></td>
+            </tr>
+            <tr>
+              <td>智谱 embedding-3</td><td><span class="tag doing">embedding</span></td>
+              <td class="fp">openai · embedding-3 (dim 1024)</td>
+              <td><span class="key-state"><span class="dot off"></span>未配置</span></td>
+              <td><span class="tag ok">默认</span></td><td><span class="tag warn">待密钥</span></td>
+              <td><button class="btn sm ghost">填密钥</button></td>
+            </tr>
+            <tr>
+              <td>MiniMax ASR</td><td><span class="tag doing">asr</span></td>
+              <td class="fp">minimax · asr-1.0</td>
+              <td><span class="key-state"><span class="dot off"></span>未配置</span></td>
+              <td><span class="tag ok">默认</span></td><td><span class="tag warn">待密钥</span></td>
+              <td><button class="btn sm ghost">填密钥</button></td>
+            </tr>
+          </table>
+          <p class="tiny" style="margin-top:8px">密钥 AES-256-GCM 加密存储，页面永不回显；llm_task_bindings 为空时按 purpose 取默认配置（与教员端解析一致）。</p>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <h4>账号管理 <button class="btn sm ghost" style="margin-left:auto">+ 邀请</button></h4>
+            <table>
+              <tr><th>账号</th><th>角色</th><th>状态</th></tr>
+              <tr><td>admin01</td><td><span class="tag bad">admin</span></td><td><span class="tag ok">活跃</span></td></tr>
+              <tr><td>teacher01</td><td><span class="tag doing">producer</span></td><td><span class="tag ok">活跃</span></td></tr>
+              <tr><td>周主编</td><td><span class="tag doing">operator</span></td><td><span class="tag ok">活跃</span></td></tr>
+              <tr><td>student-a1</td><td><span class="tag off">student</span></td><td><span class="tag off">停用</span></td></tr>
+            </table>
+            <p class="tiny" style="margin-top:8px">学员经客户端设备码登录自动建号；停用即回收会话。</p>
+          </div>
+          <div class="card">
+            <h4>AI 用量 · 近 30 天</h4>
+            <div class="bar-row"><span style="width:70px" class="muted">content</span><div class="bar"><i style="width:72%"></i></div><span class="fp">¥ 214.6</span></div>
+            <div class="bar-row"><span style="width:70px" class="muted">embedding</span><div class="bar"><i style="width:22%"></i></div><span class="fp">¥ 3.8</span></div>
+            <div class="bar-row"><span style="width:70px" class="muted">asr</span><div class="bar"><i style="width:48%"></i></div><span class="fp">¥ 61.2</span></div>
+            <p class="tiny" style="margin-top:8px">按 ai_usage_events 聚合；AI 运行页可下钻每次 run 的 token / 时延 / 步骤。</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="st ok">✅ 模型配置/测试连接/账号管理/AI 用量与运行页已实现（仅 admin / ops 可见）</span>
+    <span class="st ok">✅ 生产落密钥提醒：本屏对应「3 个模型密钥手填」待办（content/embedding/asr）</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+const switches = document.querySelectorAll('#switches button')
+const screens = document.querySelectorAll('.screen')
+switches.forEach(btn => {
+  btn.addEventListener('click', () => {
+    switches.forEach(b => b.classList.remove('on'))
+    btn.classList.add('on')
+    screens.forEach(s => s.classList.toggle('on', s.id === btn.dataset.s))
+  })
+})
+</script>
+</body>
+</html>
