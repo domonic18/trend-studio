@@ -33,7 +33,7 @@ usage() {
   --model-id <id>          模型 id，默认 MiniMax-M3.1-Flash
   -h, --help         显示本帮助
 
-管道执行时 stdin 是管道不是终端，脚本会把 stdin 接到 /dev/tty 以便交互提问。
+管道执行时 stdin 是管道不是终端，脚本会把装机向导的 stdin 接到 /dev/tty 以便交互提问。
 EOF
 }
 
@@ -66,11 +66,13 @@ done
 [ -n "$BASE_URL" ] || { echo "缺少站点地址：用 --base-url 指定，或设 TREND_CLOUD_URL" >&2; usage >&2; exit 2; }
 BASE_URL="${BASE_URL%/}"
 
-# 管道执行时 stdin 已被 curl 占用，接回终端，否则交互提问读不到东西。
-# 非交互模式不需要终端；没有终端又需要交互时，明确报错而不是干等。
-if [ "$NON_INTERACTIVE" -eq 0 ] && [ ! -t 0 ]; then
+# 管道执行时 stdin 是 curl 的管道、也是 bash 的脚本源，绝不能对主 shell
+# exec </dev/tty——换了 stdin 后剩余脚本再也读不到，整条命令会静默挂住。
+# 正确做法：只把 /dev/tty 作为装机向导（唯一的交互消费方）的 stdin。
+WIZARD_INPUT="/dev/null"
+if [ "$NON_INTERACTIVE" -eq 0 ]; then
   if (exec </dev/tty) 2>/dev/null; then
-    exec </dev/tty
+    WIZARD_INPUT="/dev/tty"
   else
     die "当前没有终端可用，交互提问无法进行。请下载脚本后用 bash install-producer.sh 运行，或加 --non-interactive。"
   fi
@@ -154,7 +156,7 @@ if [ -n "$EXTRA_ARGS" ]; then
   done < "$WORK_DIR/extra-args"
 fi
 
-node "$WORK_DIR/package/scripts/setup.mjs" "$@"
+node "$WORK_DIR/package/scripts/setup.mjs" "$@" < "$WIZARD_INPUT"
 
 echo ""
 echo "装好了。下一步："
