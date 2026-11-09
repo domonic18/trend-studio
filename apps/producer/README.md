@@ -10,15 +10,16 @@ monorepo（`~/Code/trend-studio`）的生产插件应用。趋势交易课程**�
 
 ## 装机（A9 装机向导）
 
-教员本机装生产端只需要三步，**全程不碰配置文件**——机密只落 dsh 托管凭据库
-（`~/.dsh/.credentials.yaml` 的 `refs`），profile 里只留引用名。
+教员本机装生产端只需要一条命令，**全程零提问、不碰配置文件**——登录与模型密钥
+装完后在 dsh 里做（`/trend login` 浏览器授权、设置 → 模型 粘贴密钥），机密只落
+dsh 托管凭据库。
 
 ```bash
 cd ~/Code/trend-studio/apps/producer
 
-pnpm setup              # 全流程：装 profile → 换发令牌 → 自检
-pnpm setup:install      # 只装：打包插件 → 写 profile + patch → 装依赖 → 写模型密钥
-pnpm setup:login        # 只换发云端会话令牌（交互式账号密码）
+pnpm setup              # 全流程：装 profile → 自检（零提问）
+pnpm setup:install      # 只装：打包插件 → 写 profile + patch → 装依赖
+pnpm setup:login        # 登录引导（真正的登录在 dsh 会话框里跑 /trend login）
 pnpm setup:doctor       # 只自检
 ```
 
@@ -29,18 +30,18 @@ pnpm setup:doctor       # 只自检
 - **`install` 做什么**：打包插件 tarball → 写 `~/.dsh/profiles/trend-producer/package.json`
   （bundle 并集 + 插件依赖）→ `dsh plugin --profile trend-producer install` 装依赖 →
   写 `cordis.patch.yml`（五个托管条目：模型位 / agent 默认模型 / 生产端配置 / skills 活挂载 / 凭据开关；
-  用户手加的条目原样保留，旧文件备份为 `.bak`）→ 交互式收模型 API key 写进凭据库。
-- **`login` 做什么**：交互式收账号密码 → `POST /v1/auth/session` 换发令牌 → 写进凭据库
-  （`TREND_PRODUCER_CONSOLE_TOKEN`）。
+  用户手加的条目原样保留，旧文件备份为 `.bak`）。参数走「命令行开关 > 既有 profile > 默认值」，
+  不问任何问题。
+- **登录在 dsh 里做**：打开 dsh 后会话框输入 `/trend login`——插件走设备码流程，浏览器
+  自动打开云端授权页，教员用教员账号（operator / admin / producer）登录批准，令牌自动落
+  凭据记录（`trend-producer/console`），热生效。`/trend status` 可随时自查登录态。
+- **模型密钥在 dsh 设置里粘**：dsh 设置 → 模型，粘贴到 `TREND_PRODUCER_MODEL_KEY`，热生效。
 - **`doctor` 做什么**：八项独立自检，逐项报告、任一不过当场报：
   **凭据库权限**（文件只有所有者可读写——权限不对 dsh 拒绝加载，等于没装）、
   插件版本（装进 profile 的 == **安装包**的）、技能包挂载、**技能链路启用**（读 `dsh --dump-config`
   的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）、模型位唯一、模型可达
-  （真发一次最小生成请求）、云端可达（`GET /health`）、会话令牌有效且**角色是 producer**
-  （角色不对会明确说「生产端需要 producer」）。
-
-非交互环境（CI / 脚本）用 `--non-interactive`，密钥与账号密码分别从环境变量
-`TREND_PRODUCER_MODEL_KEY` / `TREND_PRODUCER_USERNAME` / `TREND_PRODUCER_PASSWORD` 取。
+  （真发一次最小生成请求）、云端可达（`GET /health`）、登录态（console 凭据记录优先，
+  老装机的 `TREND_PRODUCER_CONSOLE_TOKEN` ref 兜底；角色须是 operator / admin / producer）。
 
 装完后的日常入口：
 
@@ -50,14 +51,14 @@ dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 
 ## 免仓库装机（教员）
 
-教员**不必克隆本 monorepo**——从官网下载插件安装包（门户 `/teacher` 或 `/downloads`），
-校验 sha256 → 解压 → 跑同一个装机脚本：
+教员**不必克隆本 monorepo**——官网一条管道命令装完（`curl -fsSL <站点>/install-producer.sh | bash`），
+或从门户 `/teacher` / `/downloads` 手动下载安装包，校验 sha256 → 解压 → 跑同一个装机脚本：
 
 ```bash
 npm i -g @deepseek-ai/dsh@0.2.1-rc.5   # harness；版本必须精确匹配（或全程用 npx 兜底）
-shasum -a 256 dsh-plugin-trend-producer-0.1.9.tgz   # 与页面给出的 sha256 比对
-tar -xzf dsh-plugin-trend-producer-0.1.9.tgz
-cd package && node scripts/setup.mjs     # 交互填云端地址/模型 id/base url/协议/模型 key → 换发令牌 → 八项自检
+shasum -a 256 dsh-plugin-trend-producer-0.2.0.tgz   # 与页面给出的 sha256 比对
+tar -xzf dsh-plugin-trend-producer-0.2.0.tgz
+cd package && node scripts/setup.mjs     # 零提问装完 → 自检；登录与模型密钥到 dsh 里做
 ```
 
 - **安装包自带九个工艺包**（`skills/`）、装机脚本与 bundle 依赖——`customSkillDirs` 指的是目录，
@@ -87,14 +88,14 @@ cd package && node scripts/setup.mjs     # 交互填云端地址/模型 id/base 
      -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
      -d '{"username":"producer-teacher","displayName":"教员","role":"producer","password":"<强密码>"}'
    ```
-2. 该账号换会话令牌：**走装机向导的 `pnpm setup:login`**（交互式收账号密码 → 换发 → 写进
-   dsh 托管凭据库的 `TREND_PRODUCER_CONSOLE_TOKEN`）。插件按 credential-ref 引用
-   （配置项 `consoleTokenRef`，默认 ref 名 `TREND_PRODUCER_CONSOLE_TOKEN`）。
-   令牌只在请求头出现，不进日志/配置/代码。
-3. 令牌过期就重新跑 `pnpm setup:login` 换发；换发不需要重建账号。
+2. 教员登录：打开 dsh 后在会话框输入 **`/trend login`**——浏览器自动打开云端授权页
+   （`/device?code=…`），用该账号登录并批准。令牌落 dsh 凭据记录
+   （`trend-producer/console`），插件解析时记录优先、老装机的
+   `TREND_PRODUCER_CONSOLE_TOKEN` ref 兜底。令牌只在请求头出现，不进日志/配置/代码。
+3. 会话过期（12h）就重新跑 `/trend login`；不需要重建账号。
 
-   令牌过期时所有 `cloud_*` 工具会回 `[forbidden] session invalid or expired`，并附带换发指引
-   （`POST /v1/auth/session` 换发 → 写入 dsh credentials 的 `TREND_PRODUCER_CONSOLE_TOKEN`）；
+   令牌过期时所有 `cloud_*` 工具会回 `[forbidden] session invalid or expired`，并附指引
+   「在 dsh 会话框输入 /trend login 重新授权」；
    角色不足（producer 调发布/签批）回的是另一种提示——两者不可混为一谈。
 
 发布链路由 operator/admin 走：`POST /v1/admin/content/courses/:courseId/approvals`

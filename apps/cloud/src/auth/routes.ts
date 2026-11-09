@@ -89,10 +89,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       ? (request.query as Record<string, unknown>).code
       : undefined
     const userCode = typeof code === 'string' ? code.slice(0, 16) : ''
+    const scope = USER_CODE.test(userCode) ? await auth.deviceCodeScope(userCode) : 'student'
     reply
       .header('content-type', 'text/html; charset=utf-8')
       .header('cache-control', 'no-store')
-      .send(devicePage(userCode))
+      .send(devicePage(userCode, scope))
   })
 }
 
@@ -100,22 +101,27 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, character => `&#${character.charCodeAt(0)};`)
 }
 
-function devicePage(userCode: string): string {
+function devicePage(userCode: string, scope: 'student' | 'console'): string {
+  const consoleMode = scope === 'console'
+  const title = consoleMode ? '趋势教员端授权' : '趋势伴学设备授权'
+  const hint = consoleMode
+    ? '使用教员（operator / producer / admin）账号登录；学员账号无法授权教员端。'
+    : '使用管理员创建的账号登录；首次登录请填写邀请码并设置密码。'
   return `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>趋势伴学设备授权</title>
-<h1>趋势伴学设备授权</h1>
+<title>${title}</title>
+<h1>${title}</h1>
 <p>设备码：<code>${escapeHtml(userCode)}</code></p>
-<p>使用管理员创建的账号登录；首次登录请填写邀请码并设置密码。</p>
+<p>${hint}</p>
 <form id="form">
   <label>用户名 <input id="username" autocomplete="username"></label>
   <p><label>密码 <input id="password" type="password" autocomplete="current-password"></label></p>
-  <details>
+  ${consoleMode ? '' : `<details>
     <summary>首次登录（使用邀请码）</summary>
     <p><label>邀请码 <input id="invite" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"></label></p>
     <p>填写邀请码时，密码栏用于设置新密码（至少 10 个字符）。</p>
-  </details>
+  </details>`}
   <p><button id="approve">批准授权</button></p>
 </form>
 <p id="msg"></p>
@@ -125,7 +131,8 @@ document.getElementById('approve').addEventListener('click', async event => {
   const message = document.getElementById('msg')
   const username = document.getElementById('username').value.trim()
   const password = document.getElementById('password').value
-  const inviteCode = document.getElementById('invite').value.trim()
+  const invite = document.getElementById('invite')
+  const inviteCode = invite === null ? '' : invite.value.trim()
   const payload = inviteCode === ''
     ? { userCode: ${JSON.stringify(userCode)}, username, password }
     : { userCode: ${JSON.stringify(userCode)}, inviteCode, password }
@@ -139,7 +146,9 @@ document.getElementById('approve').addEventListener('click', async event => {
     ? '已授权，请回到客户端等待生效。'
     : response.status === 404
       ? '设备码无效或已过期，请回到客户端重新发起授权。'
-      : '授权失败：账号、密码或邀请码不正确，或账号已被禁用。'
+      : response.status === 403
+        ? '授权失败：该账号无教员端权限。'
+        : '授权失败：账号、密码或邀请码不正确，或账号已被禁用。'
 })
 </script>`
 }

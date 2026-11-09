@@ -1,26 +1,24 @@
 #!/usr/bin/env node
 /**
- * 生产端装机向导（A9）：一个 profile、一个模型位、交互式换发令牌、装完自检。
+ * 生产端装机向导：零交互装机 + 装完自检；登录收敛到 dsh 内的 /trend login。
  *
- *   node scripts/setup.mjs            # 全流程：装 profile → 换发令牌 → 自检
- *   node scripts/setup.mjs install    # 只装（写 profile + 装依赖 + 写模型密钥）
- *   node scripts/setup.mjs login      # 只换发云端会话令牌
+ *   node scripts/setup.mjs            # 全流程：装 profile → 自检
+ *   node scripts/setup.mjs install    # 只装（写 profile + 装依赖）
+ *   node scripts/setup.mjs login      # 引导输出（登录在 dsh 会话框里做）
  *   node scripts/setup.mjs doctor     # 只自检
  *
- * 机密只落 dsh 托管凭据库（~/.dsh/.credentials.yaml 的 refs），profile 里只留引用名。
+ * 装机不问任何问题：参数走「命令行开关 > 既有 profile > 默认值」。
+ * 机密不经过终端：登录走 /trend login（凭据记录），模型密钥在 dsh 设置 → 模型里粘贴。
  */
 import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { ask, askSecret } from './setup/prompt.mjs'
 import { parseArgs } from './setup/args.mjs'
-import { writeRef } from './setup/credentials.mjs'
 import { buildManagedEntries, mergePatchEntries, readManagedConfig, readPatch, writePatch, writeProfilePackage } from './setup/profile.mjs'
 import { credentialsFile, dshHome, profileDir, producerDir } from './setup/paths.mjs'
 import { resolveInstallContext } from './setup/context.mjs'
 import { installSkills } from './setup/skills.mjs'
 import { runDsh } from './setup/dsh.mjs'
-import { login as cloudLogin } from './setup/cloud.mjs'
 import { runDoctor } from './setup/doctor.mjs'
 
 const DEFAULT_PROFILE = 'trend-producer'
@@ -68,8 +66,8 @@ function copyArtifact(tarball, dir) {
   return target
 }
 
-/** 装机参数：命令行 > 已有 profile > 交互提问。 */
-async function planSlots(options, patchFile) {
+/** 装机参数：命令行 > 已有 profile > 默认值；零交互，不提问。 */
+function planSlots(options, patchFile) {
   const current = existsSync(patchFile) ? readManagedConfig(patchFile) : null
   const fallback = {
     cloudBaseUrl: current?.cloud.baseUrl !== '' && current?.cloud.baseUrl !== undefined ? current.cloud.baseUrl : DEFAULT_CLOUD,
@@ -86,7 +84,7 @@ async function planSlots(options, patchFile) {
     const value = options[flag]
     return typeof value === 'string' && value !== '' ? value : fallback[key]
   }
-  const plan = {
+  return {
     cloudBaseUrl: pick('cloud', 'cloudBaseUrl'),
     environment: pick('environment', 'environment'),
     provider: pick('model-provider', 'provider'),
@@ -97,20 +95,13 @@ async function planSlots(options, patchFile) {
     modelKeyRef: pick('model-key-ref', 'modelKeyRef'),
     tokenRef: pick('token-ref', 'tokenRef'),
   }
-  if (options.nonInteractive) return plan
-
-  plan.cloudBaseUrl = await ask('云端地址', { defaultValue: plan.cloudBaseUrl })
-  plan.modelId = await ask('模型 id', { defaultValue: plan.modelId })
-  plan.modelBaseUrl = await ask('模型 base url', { defaultValue: plan.modelBaseUrl })
-  plan.modelApi = await ask('模型协议（openai-completions / anthropic-messages）', { defaultValue: plan.modelApi })
-  return plan
 }
 
-/** 装 profile：写 package.json + patch（合并托管条目）+ 装依赖 + 写模型密钥。 */
-async function install(options) {
+/** 装 profile：写 package.json + patch（合并托管条目）+ 装依赖；不碰任何机密。 */
+function install(options) {
   const dir = profileDir(options.profile)
   const patchFile = path.join(dir, 'cordis.patch.yml')
-  const plan = await planSlots(options, patchFile)
+  const plan = planSlots(options, patchFile)
 
   const context = resolveInstallContext({
     packageDir: producerDir,
@@ -154,37 +145,27 @@ async function install(options) {
   writePatch(patchFile, mergePatchEntries(readPatch(patchFile), managed))
   process.stdout.write(`▸ profile 已写入：${dir}\n`)
 
-  const keyFile = credentialsFile()
-  const key = options.nonInteractive
-    ? process.env[plan.modelKeyRef] ?? ''
-    : await askSecret(`模型 API key（写入凭据库 ${plan.modelKeyRef}）：`)
-  if (key === '' || key === undefined) {
-    process.stdout.write(`⚠ 未提供模型密钥：${plan.modelKeyRef} 未写入——模型位会不通。\n`)
-  } else {
-    writeRef(keyFile, plan.modelKeyRef, key)
-    process.stdout.write(`▸ 模型密钥已写入凭据库：${plan.modelKeyRef}\n`)
-  }
+  process.stdout.write([
+    '',
+    '装机完成，接下来两步（都在 dsh 里做）：',
+    '  1. 打开 dsh，在会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录',
+    `  2. dsh 设置 → 模型，粘贴视觉模型 API Key（凭据名 ${plan.modelKeyRef}，热生效）`,
+    '',
+  ].join('\n'))
 }
 
-/** 换发云端会话令牌：账号密码 → POST /v1/auth/session → 凭据库。 */
-async function login(options) {
+/** 登录引导：终端口子收敛到一处——真正的登录在 dsh 会话框里做。 */
+function login(options) {
   const dir = profileDir(options.profile)
-  const patchFile = path.join(dir, 'cordis.patch.yml')
-  const managed = existsSync(patchFile) ? readManagedConfig(patchFile) : null
-  const baseUrl = options.cloud ?? managed?.cloud.baseUrl ?? DEFAULT_CLOUD
-  const tokenRef = options['token-ref'] ?? managed?.cloud.tokenRef ?? DEFAULT_TOKEN_REF
-
-  const username = options.nonInteractive
-    ? process.env.TREND_PRODUCER_USERNAME ?? ''
-    : await ask('云端账号')
-  const password = options.nonInteractive
-    ? process.env.TREND_PRODUCER_PASSWORD ?? ''
-    : await askSecret('云端密码：')
-  if (username === '' || password === '') throw new Error('账号或密码为空，未换发令牌')
-
-  const session = await cloudLogin(baseUrl, username, password)
-  writeRef(credentialsFile(), tokenRef, session.token)
-  process.stdout.write(`▸ 会话令牌已写入凭据库：${tokenRef}（角色 ${session.user.role}）\n`)
+  process.stdout.write([
+    '登录在 dsh 里做，不在终端做：',
+    '',
+    `  1. 打开 dsh --profile ${options.profile ?? DEFAULT_PROFILE}`,
+    '  2. 会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录并批准',
+    '  3. 令牌自动保存（凭据记录，热生效），无需重启',
+    '',
+    `装到哪台机器都能用这条链路；本机 profile 目录：${dir}`,
+  ].join('\n'))
 }
 
 /** 自检。 */
@@ -214,16 +195,15 @@ async function main() {
   const options = parseArgs(argv, { profile: DEFAULT_PROFILE, nonInteractive: false })
   switch (command) {
     case 'install':
-      await install(options)
+      install(options)
       return
     case 'login':
-      await login(options)
+      login(options)
       return
     case 'doctor':
       process.exit(await doctor(options) ? 0 : 1)
     case 'all': {
-      await install(options)
-      await login(options)
+      install(options)
       process.exit(await doctor(options) ? 0 : 1)
     }
     default:

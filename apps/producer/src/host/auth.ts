@@ -1,7 +1,8 @@
-/** 云端后台会话凭据：credential-ref 解析 + Bearer 请求；令牌只在请求头中出现，不进日志。 */
+/** 云端后台会话凭据：授权流 commit 的 grant record 优先，老装机的 credential-ref 兜底；令牌只在请求头中出现，不进日志。 */
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { AuthError, readJsonResponse } from '../errors.js'
+import { isConsoleGrantFresh, readConsoleGrant } from './console-grant.js'
 
 export interface AuthConfig {
   baseUrl: string
@@ -57,14 +58,14 @@ export class CloudAuth implements AuthRequester {
   }
 
   private async consoleToken(): Promise<string> {
+    const grant = await readConsoleGrant(this.credentials)
+    if (grant !== null && isConsoleGrantFresh(grant)) return grant.token
+    // 老装机把令牌写在 refs 里；record 缺失或过期时仍可用，保持平滑迁移。
     const ref = this.config.consoleTokenRef.get()
-    if (typeof ref !== 'string' || ref === '') {
-      throw new AuthError()
+    if (typeof ref === 'string' && ref !== '') {
+      const hit = await this.credentials.resolve(credentialRef(ref))
+      if (hit !== undefined && hit.value !== '') return hit.value
     }
-    const hit = await this.credentials.resolve(credentialRef(ref))
-    if (hit === undefined || hit.value === '') {
-      throw new AuthError()
-    }
-    return hit.value
+    throw new AuthError()
   }
 }

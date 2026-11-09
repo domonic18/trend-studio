@@ -4,8 +4,8 @@
 #   curl -fsSL <站点>/install-producer.sh | bash
 #
 # 脚本做的事：查发布清单 → 下载安装包 → 校验 SHA-256 → 解包 → 跑装机向导
-# （写 profile、复制九个工艺包、装依赖、换发云端令牌、八项自检）。
-# 不碰仓库、不改配置文件；模型密钥与账号密码只写进本机 dsh 凭据库。
+# （写 profile、复制九个工艺包、装依赖、装完自检）。
+# 装机零提问、不碰机密：登录在 dsh 里跑 /trend login，模型密钥在 dsh 设置页粘贴。
 #
 # __BASE_URL__ 由云端在响应时替换成站点地址（PUBLIC_BASE_URL）；命令行
 # --base-url 优先于它——教员从别的域名访问站点时用得着。
@@ -13,7 +13,6 @@ set -euo pipefail
 
 BASE_URL="${TREND_CLOUD_URL:-__BASE_URL__}"
 PROFILE="trend-producer"
-NON_INTERACTIVE=0
 WORK_DIR=""
 EXTRA_ARGS=""
 
@@ -26,14 +25,12 @@ usage() {
 选项：
   --base-url <url>   云端站点地址（默认用站点自带的地址；也可用环境变量 TREND_CLOUD_URL）
   --profile <name>   dsh profile 名，默认 trend-producer
-  --non-interactive  非交互：密钥与账号密码从环境变量读
-                     （TREND_PRODUCER_MODEL_KEY / TREND_PRODUCER_USERNAME / TREND_PRODUCER_PASSWORD）
   --model-api <协议>       模型协议，默认 openai-completions（另一可选 anthropic-messages）
   --model-base-url <url>   模型 base url，默认 https://api.minimaxi.com/v1
   --model-id <id>          模型 id，默认 MiniMax-M3.1-Flash
   -h, --help         显示本帮助
 
-管道执行时 stdin 是管道不是终端，脚本会把装机向导的 stdin 接到 /dev/tty 以便交互提问。
+装机全程零提问；登录与模型密钥装完后在 dsh 里做（/trend login、设置 → 模型）。
 EOF
 }
 
@@ -52,7 +49,6 @@ while [ $# -gt 0 ]; do
     --base-url=*) BASE_URL="${1#*=}"; shift ;;
     --profile) PROFILE="${2:-}"; shift 2 ;;
     --profile=*) PROFILE="${1#*=}"; shift ;;
-    --non-interactive) NON_INTERACTIVE=1; shift ;;
     # 模型参数原样转给装机向导（--model-id / --model-name / --model-api /
     # --model-base-url / --model-provider / --model-key-ref / --token-ref）。
     --model-*|--token-ref) EXTRA_ARGS="${EXTRA_ARGS}$1
@@ -65,18 +61,6 @@ done
 
 [ -n "$BASE_URL" ] || { echo "缺少站点地址：用 --base-url 指定，或设 TREND_CLOUD_URL" >&2; usage >&2; exit 2; }
 BASE_URL="${BASE_URL%/}"
-
-# 管道执行时 stdin 是 curl 的管道、也是 bash 的脚本源，绝不能对主 shell
-# exec </dev/tty——换了 stdin 后剩余脚本再也读不到，整条命令会静默挂住。
-# 正确做法：只把 /dev/tty 作为装机向导（唯一的交互消费方）的 stdin。
-WIZARD_INPUT="/dev/null"
-if [ "$NON_INTERACTIVE" -eq 0 ]; then
-  if (exec </dev/tty) 2>/dev/null; then
-    WIZARD_INPUT="/dev/tty"
-  else
-    die "当前没有终端可用，交互提问无法进行。请下载脚本后用 bash install-producer.sh 运行，或加 --non-interactive。"
-  fi
-fi
 
 command -v node >/dev/null 2>&1 || die "没找到 node。请先装 Node.js 22 或更高版本。"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
@@ -143,12 +127,9 @@ fi
 tar -xzf "$WORK_DIR/$FILE_NAME" -C "$WORK_DIR" || die "解压安装包失败。"
 [ -f "$WORK_DIR/package/scripts/setup.mjs" ] || die "安装包里没有 scripts/setup.mjs，制品不对。"
 
-echo "▸ 跑装机向导（会问云端地址、模型参数与账号密码）…"
+echo "▸ 跑装机向导（零提问）…"
 
 set -- all --profile "$PROFILE" --tarball "$WORK_DIR/$FILE_NAME" --cloud "$BASE_URL"
-if [ "$NON_INTERACTIVE" -eq 1 ]; then
-  set -- "$@" --non-interactive
-fi
 if [ -n "$EXTRA_ARGS" ]; then
   printf '%s' "$EXTRA_ARGS" > "$WORK_DIR/extra-args"
   while IFS= read -r extra; do
@@ -156,9 +137,14 @@ if [ -n "$EXTRA_ARGS" ]; then
   done < "$WORK_DIR/extra-args"
 fi
 
-node "$WORK_DIR/package/scripts/setup.mjs" "$@" < "$WIZARD_INPUT"
+node "$WORK_DIR/package/scripts/setup.mjs" "$@" < /dev/null
 
 echo ""
-echo "装好了。下一步："
+echo "装好了。接下来三步（都在 dsh 里）："
+echo "  1. 打开 dsh --profile $PROFILE"
+echo "  2. 会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录"
+echo "  3. dsh 设置 → 模型，粘贴 MiniMax API Key"
+echo ""
+echo "然后直接开工："
 echo "  dsh --profile $PROFILE \"用 ~/Movies/课程1.mp4 做第一节\""
 echo "（没预装 dsh 的话：npx --yes @deepseek-ai/dsh@${DSH_VERSION:-0.2.1-rc.5} --profile $PROFILE \"用 ~/Movies/课程1.mp4 做第一节\"）"

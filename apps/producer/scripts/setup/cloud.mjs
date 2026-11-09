@@ -1,4 +1,4 @@
-/** 云端交互：健康检查、换发会话令牌、校验当前令牌。 */
+/** 云端交互：健康检查与当前会话校验（登录本身在 dsh 内走 /trend login 设备码流程）。 */
 
 function normalizeBaseUrl(baseUrl) {
   return baseUrl.trim().replace(/\/+$/, '')
@@ -23,23 +23,6 @@ async function readError(response) {
 export async function health(baseUrl, timeoutMs = 5_000) {
   const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health`, { signal: AbortSignal.timeout(timeoutMs) })
   if (!response.ok) throw new Error(`云端健康检查失败：${await readError(response)}`)
-}
-
-/** POST /v1/auth/session：账号密码换会话令牌。 */
-export async function login(baseUrl, username, password, timeoutMs = 15_000) {
-  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/v1/auth/session`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-    signal: AbortSignal.timeout(timeoutMs),
-  })
-  if (!response.ok) {
-    const detail = await readError(response)
-    throw new Error(`登录失败（${response.status}）：${detail}${response.status === 401 ? '——账号或密码不对' : ''}`)
-  }
-  const payload = await response.json()
-  if (typeof payload.token !== 'string' || payload.token === '') throw new Error('登录回执缺少令牌')
-  return payload
 }
 
 /** GET /v1/auth/session：校验令牌并取当前用户。 */

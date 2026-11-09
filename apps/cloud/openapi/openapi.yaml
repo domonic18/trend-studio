@@ -163,6 +163,37 @@ components:
               const: authorized
             grant:
               $ref: '#/components/schemas/Grant'
+        - type: object
+          additionalProperties: false
+          required: [status, session]
+          description: 教员端（clientId=dsh-plugin-trend-producer）批准后签发 console 会话，非设备令牌
+          properties:
+            status:
+              const: authorized
+            session:
+              type: object
+              additionalProperties: false
+              required: [token, expiresAt, user]
+              properties:
+                token:
+                  type: string
+                expiresAt:
+                  type: integer
+                  description: 毫秒时间戳
+                user:
+                  type: object
+                  additionalProperties: false
+                  required: [userId, username, displayName, role]
+                  properties:
+                    userId:
+                      type: string
+                    username:
+                      type: string
+                    displayName:
+                      type: string
+                      nullable: true
+                    role:
+                      type: string
 
     PlaybackSession:
       type: object
@@ -3501,7 +3532,7 @@ components:
 paths:
   /health:
     get:
-      summary: 健康检查（含数据库连通性）
+      summary: 健康检查（含数据库连通性与构建标识）
       responses:
         '200':
           description: OK
@@ -3513,6 +3544,12 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  commit:
+                    type: string
+                    description: 构建注入的 git commit（本地默认 dev）
+                  buildTime:
+                    type: string
+                    description: 构建注入的 UTC 时间（本地默认 unknown）
         '503':
           description: 数据库不可用
           content:
@@ -3523,6 +3560,10 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  commit:
+                    type: string
+                  buildTime:
+                    type: string
 
   /v1/auth/device/code:
     post:
@@ -3537,7 +3578,9 @@ paths:
               required: [clientId, deviceId]
               properties:
                 clientId:
-                  const: dsh-plugin-trend-coach
+                  type: string
+                  enum: [dsh-plugin-trend-coach, dsh-plugin-trend-producer]
+                  description: 学员插件签发设备令牌；教员插件（scope=console）批准后签发 console 会话
                 deviceId:
                   type: string
                   minLength: 8

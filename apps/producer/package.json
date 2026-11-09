@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-trend-producer",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "趋势交易课程生产插件：语料级视频→图文课程与交互课件的生产 Agent 编排",
   "type": "module",
   "main": "lib/index.js",
@@ -41,6 +41,8 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-authorization": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.5",
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
@@ -51,6 +53,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-authorization": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.5",
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",

@@ -115,6 +115,9 @@ export interface AppConfig {
   mediaStorage: MediaStorage
   cos?: CosConfig
   metricsToken: string
+  /** 构建标识：镜像构建时注入（CI --build-arg），未注入时为 dev/unknown。 */
+  gitSha: string
+  buildTime: string
   /** 启动时是否自动跑迁移。生产由独立 migrate 步骤执行，这里关掉。 */
   migrateOnStart: boolean
   sessionTtlSec: number
@@ -384,6 +387,8 @@ export function loadConfig(env: Env = process.env): AppConfig {
     mediaStorage,
     ...(cos === undefined ? {} : { cos }),
     metricsToken,
+    gitSha: text(env, 'APP_GIT_SHA') ?? 'dev',
+    buildTime: text(env, 'APP_BUILD_TIME') ?? 'unknown',
     migrateOnStart: bool(env, 'MIGRATE_ON_START', true),
     sessionTtlSec: int(env, 'SESSION_TTL_SECONDS', 12 * 60 * 60, { min: 300 }),
     inviteTtlSec: int(env, 'INVITE_TTL_SECONDS', 7 * 24 * 60 * 60, { min: 3600 }),

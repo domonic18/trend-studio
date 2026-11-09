@@ -35,3 +35,24 @@ export function writeRef(file, ref, value) {
 export function hasRef(file, ref) {
   return readRef(file, ref) !== null
 }
+
+/**
+ * 读教员端 console 凭据记录（records['trend-producer/console']）。
+ * 与 dsh-credentials-local 的落盘形状一致；损坏或缺失返回 null。
+ */
+export function readConsoleGrantRecord(file) {
+  if (!existsSync(file)) return null
+  const parsed = YAML.parse(readFileSync(file, 'utf8'))
+  const record = parsed?.records?.['trend-producer/console']
+  if (record?.kind !== 'grant') return null
+  const payload = record.payload
+  if (typeof payload?.token !== 'string' || payload.token === '') return null
+  if (typeof payload?.expiresAt !== 'number' || !Number.isFinite(payload.expiresAt)) return null
+  const user = payload?.user
+  if (typeof user?.userId !== 'string' || typeof user?.username !== 'string' || typeof user?.role !== 'string') return null
+  return {
+    token: payload.token,
+    expiresAt: payload.expiresAt,
+    user: { userId: user.userId, username: user.username, role: user.role },
+  }
+}
