@@ -11,6 +11,7 @@ import { readConsoleGrantRecord, readRef, writeRef } from '../scripts/setup/cred
 import { resolveInstallContext } from '../scripts/setup/context.mjs'
 import { parseArgs } from '../scripts/setup/args.mjs'
 import { installSkills, listSkills } from '../scripts/setup/skills.mjs'
+import { checkCredentialsMode } from '../scripts/setup/doctor.mjs'
 
 const producerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -306,4 +307,28 @@ test('命令行：取值参数吃下一个 argv，等号写法也认', () => {
   )
   assert.equal(options['model-base-url'], 'https://api.minimaxi.com/anthropic')
   assert.equal(options['model-id'], 'MiniMax-M3.1-Flash')
+})
+
+test('自检：凭据库还没建是待办，权限不对才报失败', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'producer-doctor-'))
+
+  // 库还没建：装机不写机密，等教员粘密钥或面板登录后由 dsh 创建——是待办不是失败
+  const missing = checkCredentialsMode(path.join(dir, 'nope.yaml'))
+  assert.equal(missing.id, 'credentials_mode')
+  assert.equal(missing.status, 'todo', '凭据库不存在不是装机失败')
+  assert.match(missing.detail, /还没建凭据库/)
+
+  // 权限只对所有者可读写：通过
+  const file = path.join(dir, '.credentials.yaml')
+  writeFileSync(file, 'version: 1\n', 'utf8')
+  chmodSync(file, 0o600)
+  const good = checkCredentialsMode(file)
+  assert.equal(good.status, 'pass')
+  assert.match(good.detail, /600/)
+
+  // 别人可读：dsh 拒绝加载，真失败
+  chmodSync(file, 0o644)
+  const bad = checkCredentialsMode(file)
+  assert.equal(bad.status, 'fail', '他人可读必须报失败')
+  assert.match(bad.detail, /chmod 600/)
 })

@@ -64,8 +64,8 @@ dsh --profile trend-producer
 
 ```bash
 npm i -g @deepseek-ai/dsh@0.2.1-rc.5   # harness；版本必须精确匹配（或全程用 npx 兜底）
-shasum -a 256 dsh-plugin-trend-producer-0.2.3.tgz   # 与页面给出的 sha256 比对
-tar -xzf dsh-plugin-trend-producer-0.2.3.tgz
+shasum -a 256 dsh-plugin-trend-producer-0.2.4.tgz   # 与页面给出的 sha256 比对
+tar -xzf dsh-plugin-trend-producer-0.2.4.tgz
 cd package && node scripts/setup.mjs     # 零提问装完 → 自检；登录与模型密钥到 dsh 里做
 ```
 
