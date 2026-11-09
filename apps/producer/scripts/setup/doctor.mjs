@@ -49,6 +49,31 @@ function dumpConfig(profile) {
   return dump.stdout
 }
 
+/**
+ * 凭据库权限自检。
+ *
+ * dsh 凭据服务拒绝加载「所有者之外可读」的库，权限不对就等于密钥与令牌都没装——
+ * 而且启动才报错，必须当场看见。
+ *
+ * 库还没建是**待办**不是失败：装机不写机密，凭据库要等教员粘密钥或面板登录后由
+ * dsh 创建；此时报红等于把正常状态说成装挂了。
+ */
+export function checkCredentialsMode(credentialsFile) {
+  if (!existsSync(credentialsFile)) {
+    return {
+      id: 'credentials_mode',
+      label: '凭据库权限',
+      status: 'todo',
+      detail: `还没建凭据库（${credentialsFile}）——粘模型密钥或面板登录后 dsh 会创建`,
+    }
+  }
+  const mode = statSync(credentialsFile).mode & 0o777
+  const othersReadable = mode & 0o077
+  return othersReadable === 0
+    ? { id: 'credentials_mode', label: '凭据库权限', status: 'pass', detail: `${mode.toString(8).padStart(3, '0')}（仅所有者可读写）` }
+    : { id: 'credentials_mode', label: '凭据库权限', status: 'fail', detail: `权限是 ${mode.toString(8).padStart(3, '0')}——dsh 拒绝加载，跑：chmod 600 ${credentialsFile}` }
+}
+
 /** 逐项自检；任何一项失败都返回 fail，其余项照常采集。 */
 export async function runDoctor(input) {
   const checks = []
@@ -56,17 +81,8 @@ export async function runDoctor(input) {
     ? readManagedConfig(input.patchFile)
     : { model: null, cloud: { baseUrl: '', environment: '', tokenRef: '' }, skillsDirs: [] }
 
-  // ⓪ 凭据库权限：dsh 凭据服务拒绝加载「所有者之外可读」的库，权限不对
-  // 就等于密钥与令牌都没装——而且启动才报错，必须当场看见。
-  if (!existsSync(input.credentialsFile)) {
-    checks.push({ id: 'credentials_mode', label: '凭据库权限', status: 'fail', detail: `凭据库不存在：${input.credentialsFile}——重跑 setup install` })
-  } else {
-    const mode = statSync(input.credentialsFile).mode & 0o777
-    const othersReadable = mode & 0o077
-    checks.push(othersReadable === 0
-      ? { id: 'credentials_mode', label: '凭据库权限', status: 'pass', detail: `${mode.toString(8).padStart(3, '0')}（仅所有者可读写）` }
-      : { id: 'credentials_mode', label: '凭据库权限', status: 'fail', detail: `权限是 ${mode.toString(8).padStart(3, '0')}——dsh 拒绝加载，跑：chmod 600 ${input.credentialsFile}` })
-  }
+  // ⓪ 凭据库权限
+  checks.push(checkCredentialsMode(input.credentialsFile))
 
   // ① 插件版本：装进 profile 的版本必须等于安装包版本，否则行为与源码不一致
   const installedManifest = path.join(input.profileDir, 'node_modules', input.pluginName, 'package.json')
