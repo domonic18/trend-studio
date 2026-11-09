@@ -158,6 +158,13 @@ $ dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 > **应用面校正**：装机产出的是 **headless 应用面**（`dsh --profile trend-producer "<任务>"`），
 > 与实际在用的生产 profile 一致。**不装 `dsh-web-app`**——它在宿主层把 `skill-filesystem` /
 > `tool-skill` 整行禁用，本 profile 的工艺包走的正是宿主层 `customSkillDirs`，装上会静默废掉九个技能包。
+>
+> **已过时（2026-11-09，批次 1.5）**：headless 换成 **web 应用面**（`base + web-app + 本插件`）。
+> headless 是一次性任务执行器——没有命令分发（教员触发不了登录），也没有任何操作界面，
+> 与「教员点按钮、不敲命令」的目标冲突。`dsh-web-app` 禁用技能链路的坑已解：
+> patch 显式把 `skill-filesystem` 置回 `disabled: false`。详见
+> [架构设计 §9](../architecture/architecture-design.md) 与
+> [dsh 原生集成](../architecture/dsh-native-integration.md)。
 
 ### 阶段 1 · 拖一个视频进来（入口场景）
 
@@ -479,6 +486,9 @@ profile 的 `cordis.patch.yml` 里**只有引用名**——装机全程不碰配
 `doctor` 八项独立自检（插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用**（读 `dsh --dump-config`
 的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）/ 模型位唯一 / **模型真发一次最小生成请求** /
 云端 `/health` / 令牌有效且**角色是 producer**），任一不过当场报红，角色不对会明说「生产端需要 producer」。
+> **已过时（2026-11-09，批次 1.5 + 2）**：`base + headless` 换成 `base + web-app`，
+> `doctor` 八项变九项（增「应用面」），登录与模型密钥改为装完后在 dsh 面板里做。
+> 详见 [架构设计 §9](../architecture/architecture-design.md)。
 顺带把视觉模型密钥接到凭据缝上：新增 `src/host/model-key.ts`（凭据服务优先 → 进程环境兜底），
 `understanding.ts` 不再只读 `process.env`——否则「密钥只在托管库里」时理解阶段必然取不到。
 **本机实跑验证**（`DSH_HOME=/tmp/dsh-smoke` 临时档，不动真实 profile）：install → login（真连本地

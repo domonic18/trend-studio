@@ -55,16 +55,15 @@ export function TeacherPage() {
         <h2 className="content-section-title">第一步：一行命令装好</h2>
         <p>
           把下面这行贴进终端就行。脚本自己会：查发布清单、下载安装包、核对校验值、解压、
-          写 dsh profile、把九个工艺包装进 profile、装依赖、跟你换发云端令牌，最后跑一遍八项自检。
+          写 dsh profile、把九个工艺包装进 profile、装依赖，最后跑一遍九项自检。
         </p>
         <CodeBlock label="终端（macOS / Linux）" code={installCommand} />
         <div className="guide-step-expect">
-          <strong>你会看到：</strong>逐行进度输出，末尾八项自检全绿（✓）。哪一项不过就按那一项的提示处理。
+          <strong>你会看到：</strong>逐行进度输出，末尾九项自检全绿（✓）。哪一项不过就按那一项的提示处理。
         </div>
         <p className="guide-step-tip">
-          <strong>过程中会问四个问题：</strong>
-          云端地址、模型 id、模型 base url、模型协议——每项都能直接回车取默认值；随后问模型 API key
-          与云端账号密码。密钥只写进你本机的 dsh 凭据库，不上传云端。
+          <strong>全程零提问：</strong>
+          模型参数走默认值（想换就加命令行开关），登录与模型密钥装完在 dsh 里做——密钥只写进你本机的 dsh 凭据库，不上传云端。
         </p>
         <p className="guide-step-tip">
           <strong>不想装 dsh？</strong>
@@ -176,11 +175,11 @@ export function TeacherPage() {
                 <h2>跑装机脚本</h2>
               </div>
               <p>
-                脚本会写 dsh profile、把九个工艺包复制进 profile、装依赖、换发云端会话令牌，最后跑完八项自检。
-                过程中它会问云端地址、模型 id、模型 base url、模型协议和模型 key——每项都能直接回车取默认值。
+                脚本会写 dsh profile、把九个工艺包复制进 profile、装依赖，最后跑完九项自检。
+                全程零提问：模型参数走默认值，登录与模型密钥装完在 dsh 里做。
               </p>
               <CodeBlock label="终端" code="node scripts/setup.mjs" />
-              <p className="guide-step-expect"><strong>你会看到：</strong>八项自检全绿（✓）。哪一项不过就按那一项的提示处理，别跳到下一步。</p>
+              <p className="guide-step-expect"><strong>你会看到：</strong>九项自检全绿（✓）。哪一项不过就按那一项的提示处理，别跳到下一步。</p>
               <p className="guide-step-tip"><strong>小提示：</strong>脚本可重复运行。重装时它会重写托管配置，不会吞掉你手改过的条目。</p>
             </li>
           </ol>
@@ -188,7 +187,39 @@ export function TeacherPage() {
       </section>
 
       <section className="content-section">
-        <h2 className="content-section-title">第二步：装之前先确认这三样</h2>
+        <h2 className="content-section-title">第二步：装完的两步（都在 dsh 里）</h2>
+        <p>
+          dsh 装的是<strong>网页应用面</strong>：启动后浏览器打开界面，教员在界面里点、选、看，不用记命令。
+        </p>
+        <ol className="guide-steps">
+          <li className="guide-step">
+            <div className="guide-step-head">
+              <span className="guide-step-index">01</span>
+              <h2>登录</h2>
+            </div>
+            <p>
+              打开 dsh → 右侧栏<strong>「趋势生产」</strong>面板 → 点「登录」。浏览器自动打开云端授权页，
+              用教员账号登录并点批准。令牌自动保存，立即生效。
+            </p>
+          </li>
+          <li className="guide-step">
+            <div className="guide-step-head">
+              <span className="guide-step-index">02</span>
+              <h2>贴模型密钥</h2>
+            </div>
+            <p>
+              dsh 设置 → 模型，把 API key 粘贴进去（凭据名 <code>TREND_PRODUCER_MODEL_KEY</code>），立即生效。
+            </p>
+          </li>
+        </ol>
+        <p className="guide-step-tip">
+          面板里还有<strong>模型密钥</strong>、<strong>云端</strong>、<strong>生产看板</strong>三张卡片——
+          模型配没配、云端通不通、这门课做到哪一步，都在那儿看。
+        </p>
+      </section>
+
+      <section className="content-section">
+        <h2 className="content-section-title">第三步：装之前先确认这三样</h2>
         <div className="capability-grid">
           {PREREQUISITES.map(item => (
             <article key={item.title} className="capability-card">
@@ -200,11 +231,11 @@ export function TeacherPage() {
       </section>
 
       <section className="content-section">
-        <h2 className="content-section-title">第三步：日常使用：丢一段视频进去</h2>
-        <p>生产端在终端里跑。把课程视频的路径交给它，它会按引擎强制的顺序走完九步：</p>
+        <h2 className="content-section-title">第四步：日常使用：丢一段视频进去</h2>
+        <p>启动 dsh，浏览器界面打开后，把课程视频的路径告诉它，它会按引擎强制的顺序走完九步：</p>
         <CodeBlock
-          label="终端"
-          code={'dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"'}
+          label="会话框（在 dsh 界面里）"
+          code={'用 ~/Movies/课程1.mp4 做第一节'}
         />
         <ol className="path-list">
           {PRODUCTION_STEPS.map(item => (
@@ -220,7 +251,7 @@ export function TeacherPage() {
         <div className="download-side-grid">
           <article className="info-card">
             <h3>看进度</h3>
-            <p>管理台的「生产看板」看整条生产线的实时状态；「课程预览」看这一节的成品效果。</p>
+            <p>dsh 右侧栏「趋势生产」面板的看板卡片看整条生产线的实时状态；云端管理台的「生产看板」看全部课程，「课程预览」看这一节的成品效果。</p>
           </article>
           <article className="info-card">
             <h3>被打回怎么办</h3>

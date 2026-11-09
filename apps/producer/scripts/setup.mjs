@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * 生产端装机向导：零交互装机 + 装完自检；登录收敛到 dsh 内的 /trend login。
+ * 生产端装机向导：零交互装机 + 装完自检；登录收敛到 dsh 的「趋势生产」面板。
  *
  *   node scripts/setup.mjs            # 全流程：装 profile → 自检
  *   node scripts/setup.mjs install    # 只装（写 profile + 装依赖）
- *   node scripts/setup.mjs login      # 引导输出（登录在 dsh 会话框里做）
+ *   node scripts/setup.mjs login      # 引导输出（登录在 dsh 面板里做）
  *   node scripts/setup.mjs doctor     # 只自检
  *
  * 装机不问任何问题：参数走「命令行开关 > 既有 profile > 默认值」。
- * 机密不经过终端：登录走 /trend login（凭据记录），模型密钥在 dsh 设置 → 模型里粘贴。
+ * 机密不经过终端：登录走面板的设备码流程（凭据记录），模型密钥在 dsh 设置 → 模型里粘贴。
  */
 import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -148,21 +148,23 @@ function install(options) {
   process.stdout.write([
     '',
     '装机完成，接下来两步（都在 dsh 里做）：',
-    '  1. 打开 dsh，在会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录',
+    '  1. 打开 dsh，点右侧栏「趋势生产」面板里的「登录」——浏览器自动打开云端授权页，用教员账号登录',
     `  2. dsh 设置 → 模型，粘贴视觉模型 API Key（凭据名 ${plan.modelKeyRef}，热生效）`,
     '',
   ].join('\n'))
 }
 
-/** 登录引导：终端口子收敛到一处——真正的登录在 dsh 会话框里做。 */
+/** 登录引导：终端口子收敛到一处——真正的登录在 dsh 的生产面板里做。 */
 function login(options) {
   const dir = profileDir(options.profile)
   process.stdout.write([
     '登录在 dsh 里做，不在终端做：',
     '',
     `  1. 打开 dsh --profile ${options.profile ?? DEFAULT_PROFILE}`,
-    '  2. 会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录并批准',
+    '  2. 右侧栏点「趋势生产」面板 → 点「登录」——浏览器自动打开云端授权页，用教员账号登录并批准',
     '  3. 令牌自动保存（凭据记录，热生效），无需重启',
+    '',
+    '备用：会话框运行 /trend login 也能登录（面板是首选路径）。',
     '',
     `装到哪台机器都能用这条链路；本机 profile 目录：${dir}`,
   ].join('\n'))
@@ -191,7 +193,7 @@ async function doctor(options) {
     return false
   }
   if (todo.length > 0) {
-    process.stdout.write('\n其余全通过；剩下的待办就是装机后两步（/trend login、粘贴模型密钥），在 dsh 里完成后重跑自检即全绿。\n')
+    process.stdout.write('\n其余全通过；剩下的待办就是装机后两步（面板登录、粘贴模型密钥），在 dsh 里完成后重跑自检即全绿。\n')
   } else {
     process.stdout.write('\n全部通过。\n')
   }

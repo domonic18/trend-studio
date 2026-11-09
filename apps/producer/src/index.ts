@@ -9,6 +9,7 @@ import { UnderstandingRunner } from './host/understanding.js'
 import { createHostLogger, type HostLogger } from './host/log.js'
 import { createModelKeyResolver } from './host/model-key.js'
 import { registerProductionTools } from './host/production-tools.js'
+import { registerPanelApi } from './host/panel.js'
 import { registerCloudTools } from './host/tools.js'
 
 export { Config }
@@ -31,6 +32,8 @@ export function apply(ctx: Context, config: Config): void {
   // 登录授权流与 /trend 命令：dsh-base 已激活 authorization/commands 服务，未加载时降级告警。
   registerConsoleLoginFlow(ctx, resolved.baseUrl, logger)
   registerTrendCommands(ctx, resolved, logger)
+  // 右侧栏生产面板的宿主 API：只在 web 应用面（有 connection 服务）挂上。
+  registerPanelApi(ctx, resolved, client, logger)
   logger.info(
     'trend-producer 已激活: environment=%s baseUrl=%s timeoutMs=%d logLevel=%s',
     resolved.environment,

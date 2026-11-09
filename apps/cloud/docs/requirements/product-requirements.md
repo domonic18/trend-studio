@@ -260,13 +260,13 @@
   npm i -g @deepseek-ai/dsh@<dshVersion>   # harness，版本必须精确匹配
   shasum -a 256 dsh-plugin-trend-producer-<v>.tgz   # 与页面给出的 sha256 比对
   tar -xzf dsh-plugin-trend-producer-<v>.tgz && cd package
-  node scripts/setup.mjs                   # 交互填云端地址 / 模型 id / base url / 协议 / 模型 key → 换发令牌 → 八项自检
-  dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
+  node scripts/setup.mjs                   # 零提问装机：模型参数走默认值 → 九项自检；登录与模型密钥装完在 dsh 里做
+  dsh --profile trend-producer             # 打开 dsh 界面，在会话框说「用 ~/Movies/课程1.mp4 做第一节」
   ```
 - **页面落点**（两个入口，同一份信息）：
   | 页面 | 面向 | 内容 |
   |---|---|---|
-  | 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完检查（八项）+ 九步生产顺序 + 更新与卸载 + 角色边界 |
+  | 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完检查（九项）+ 装完在 dsh 里的两步（面板登录、粘贴模型密钥）+ 九步生产顺序 + 更新与卸载 + 角色边界 |
   | 管理台 `/admin/producer/setup` | producer / operator / admin | 回填**本站云端地址**、**当前账号**、模型要求与 dsh 版本；下载入口 + 三条命令 + 外链 `/teacher` |
   - 门户 `/downloads` 在学员插件卡下方加「教员生产端插件」卡（下载 + sha256 + 前往 `/teacher`）。学员卡与学员契约**一字不变**。
   - 管理台入口对**学员不可见**（`RequireProduction` 拒 student）。
@@ -346,7 +346,7 @@
 | 门户 | 发布清单 / 统计 / 下载 | 清单缺失返回空版本；下载带 `attachment`；公开数据 `max-age=60` |
 | 教员分发 | 清单含 `producerPlugin` | 顶层多出 `producerPlugin`（可空）；**`plugin` / `dshVersion` / `webAppPackage` 与旧版逐字一致**；新字段不在 OpenAPI `required` |
 | 教员分发 | 清单格式非法 / 文件缺失 | 格式非法 `503 release manifest invalid`；文件缺失或 JSON 解析失败返回默认清单（`plugin:null` + `producerPlugin:null`） |
-| 教员分发 | 免仓库装机 | 新 `DSH_HOME` 下解包 tgz 跑 `setup.mjs`：九个工艺包落进 profile 内 `skills/`，`customSkillDirs` 指向该目录且数量为 9；`doctor` 八项全绿，插件版本「与安装包一致」 |
+| 教员分发 | 免仓库装机 | 新 `DSH_HOME` 下解包 tgz 跑 `setup.mjs`：九个工艺包落进 profile 内 `skills/`，`customSkillDirs` 指向该目录且数量为 9；`doctor` 九项全绿，插件版本「与安装包一致」 |
 | 教员分发 | 服务运行中发布后下载 | 发布脚本落盘后立即可下载：`/downloads/<fileName>` 返回 `200` + `attachment` 头，字节 sha256 与清单一致（**不需要重启服务**） |
 | AI | 生成任务产生用量 | `ai_usage_events` 记录 token/延迟/模型；`ai_runs` 与 steps 可查 |
 | AI | 主模型 429 → 备用 | 自动切换、`fallback_used=true`、健康进入冷却；冷却期直接走备用 |

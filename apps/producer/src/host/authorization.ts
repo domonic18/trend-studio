@@ -143,10 +143,10 @@ export async function runConsoleLogin(
       await postCloudJson(baseUrl, '/v1/auth/device/token', { deviceCode: start.deviceCode }, 15_000, session.signal),
     )
     if (poll.status === 'pending') {
-      if (Date.now() > deadline) throw new Error('设备码已过期，请重新执行 /trend login')
+      if (Date.now() > deadline) throw new Error('设备码已过期，请重新登录（右侧栏「趋势生产」面板点「登录」，或运行 /trend login）')
       continue
     }
-    if (poll.status === 'expired') throw new Error('设备码已过期或在别处完成授权，请重新执行 /trend login')
+    if (poll.status === 'expired') throw new Error('设备码已过期或在别处完成授权，请重新登录（右侧栏「趋势生产」面板点「登录」，或运行 /trend login）')
     session.notify({ message: `已授权：${poll.session.user.username}（${poll.session.user.role}），正在保存登录态。` })
     await session.commit(toConsoleGrantRecord(poll.session))
     return
@@ -157,7 +157,7 @@ export async function runConsoleLogin(
 export function registerConsoleLoginFlow(ctx: Context, baseUrl: string, logger: HostLoggerLike): void {
   const authorization = ctx.get('authorization') as AuthorizationService | undefined
   if (authorization === undefined) {
-    logger.warn('dsh 未加载 authorization 服务，/trend login 不可用')
+    logger.warn('dsh 未加载 authorization 服务，登录不可用（面板与 /trend login 都用不了）')
     return
   }
   ctx.effect(() => authorization.registerFlow({
@@ -168,7 +168,18 @@ export function registerConsoleLoginFlow(ctx: Context, baseUrl: string, logger: 
   }))
 }
 
-/** /trend login 的执行面：开一次授权尝试，交互面只记日志（浏览器已在宿主侧打开）。 */
+/**
+ * 进行中的授权轮数。命令面（/trend login）与面板面共用这一个标记——
+ * 同一把钥匙上再开一轮流程，问的是两个人同一件事。
+ */
+let attemptsInFlight = 0
+
+/** 是否已有一轮登录授权在进行中。 */
+export function isConsoleLoginInFlight(): boolean {
+  return attemptsInFlight > 0
+}
+
+/** 登录的执行面：开一次授权尝试，交互面只记日志（浏览器已在宿主侧打开）。面板与命令面共用它。 */
 export async function beginConsoleLogin(ctx: Context, signal: AbortSignal, logger: HostLoggerLike): Promise<AuthorizationOutcome> {
   const authorization = ctx.get('authorization') as AuthorizationService | undefined
   if (authorization === undefined) throw new Error('dsh 未加载 authorization 服务，无法登录')
@@ -180,5 +191,10 @@ export async function beginConsoleLogin(ctx: Context, signal: AbortSignal, logge
       throw new AuthorizationDeclinedError('命令面板无法回答授权问题')
     },
   }
-  return await authorization.begin({ key: CONSOLE_GRANT_KEY, interaction, signal })
+  attemptsInFlight += 1
+  try {
+    return await authorization.begin({ key: CONSOLE_GRANT_KEY, interaction, signal })
+  } finally {
+    attemptsInFlight -= 1
+  }
 }

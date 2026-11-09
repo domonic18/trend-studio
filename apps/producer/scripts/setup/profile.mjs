@@ -13,14 +13,23 @@ import YAML from 'yaml'
 export const MANAGED_ENTRY_IDS = ['llm-pi-ai', 'agent-default-model', 'trend-producer', 'skill-filesystem', 'credentials']
 
 /**
- * 平台 bundle：base 打底 + headless 提供生产应用面。
+ * 平台 bundle：base 打底 + web-app 提供生产应用面。
  *
- * **不装 dsh-web-app**：该 bundle 在宿主层把 `skill-filesystem` 与 `tool-skill`
- * 整行禁用（改由 agent preset 各自挂载），而本 profile 的工艺包正是走宿主层
- * `customSkillDirs` 挂载的——装上 web-app 会静默废掉九个技能包，且该 profile
- * 用的是 headless 应用面，装了也不用。
+ * **用 web 应用面而不是 headless**：headless 是一次性任务执行器，没有命令分发，
+ * 教员没法触发 `/trend login`，也没有任何操作界面——而教员要的正是装完就有的
+ * 图形界面。web 应用面提供浏览器界面、右侧栏与审批 UI，生产端的面板就挂在
+ * 右侧栏上（见 §11 面板）。
+ *
+ * bundle 从 dsh 安装本体解析（安装包已带 dsh-web-app），profile 里不再重复声明
+ * 依赖——装机因此不需要额外访问 npm registry。
  */
-export const PLATFORM_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless']
+export const PLATFORM_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
+
+/**
+ * 换应用面时必须撤下的旧 bundle：headless 与 web-app 各自提供应用行，
+ * 两个都留在 profile 里会同时挂出两个应用面，行为取决于加载顺序。
+ */
+export const RETIRED_BUNDLES = ['@deepseek-ai/dsh-headless']
 
 const PATCH_HEADER = '# 本文件由 `pnpm setup` 生成：托管条目每次装机重写，其余条目原样保留。\n'
 
@@ -106,7 +115,8 @@ export function writePatch(file, entries) {
 
 /**
  * 写 profile 的 package.json：插件依赖 + bundle 列表。
- * bundle 列表是并集——已有的平台 bundle 不丢，装机只补齐缺的。
+ * bundle 列表是并集——已有的平台 bundle 不丢，装机只补齐缺的；
+ * 但换应用面时留下的旧 bundle（RETIRED_BUNDLES）必须撤掉，否则两个应用面同时挂载。
  */
 export function writeProfilePackage(dir, pluginName, tarball) {
   mkdirSync(dir, { recursive: true })
@@ -116,7 +126,8 @@ export function writeProfilePackage(dir, pluginName, tarball) {
   const dependencies = { ...manifest.dependencies, [pluginName]: `file:${tarball}` }
   const dsh = { ...manifest.dsh }
   const profile = { ...dsh.profile }
-  const bundles = Array.isArray(profile.bundles) ? [...profile.bundles] : []
+  const existing = Array.isArray(profile.bundles) ? profile.bundles : []
+  const bundles = existing.filter(bundle => !RETIRED_BUNDLES.includes(bundle))
   for (const bundle of [...PLATFORM_BUNDLES, pluginName]) {
     if (!bundles.includes(bundle)) bundles.push(bundle)
   }

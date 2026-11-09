@@ -75,8 +75,8 @@ export function ProducerSetupPage() {
             </Descriptions.Item>
           </Descriptions>
           <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-            装完跑 <code>node scripts/setup.mjs</code>，脚本会问云端地址、模型 id、模型 base url、
-            模型协议和模型 key——把上面这些填进去即可。
+            装完跑 <code>node scripts/setup.mjs</code>，全程零提问：模型参数走默认值（想换加命令行开关），
+            云端地址按上面这站点自动带过去。登录与模型密钥装完在 dsh 里做。
           </Typography.Paragraph>
         </Card>
 
@@ -137,15 +137,18 @@ export function ProducerSetupPage() {
           </Typography.Paragraph>
           <Command>node scripts/setup.mjs</Command>
           <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-            脚本会写 dsh profile、复制九个工艺包进 profile、装依赖、换发云端会话令牌，最后跑完八项自检。
+            脚本会写 dsh profile、复制九个工艺包进 profile、装依赖，最后跑完九项自检。
+            登录与模型密钥装完在 dsh 里做——dsh 右侧栏「趋势生产」面板点「登录」，模型密钥在 dsh 设置页粘贴。
           </Typography.Paragraph>
         </Card>
 
         <Card title="第三步：做第一节课">
-          <Command>{'dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"'}</Command>
+          <Command>{'dsh --profile trend-producer'}</Command>
           <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 12 }}>
+            浏览器界面打开后，在会话框告诉它要做的事（如「用 ~/Movies/课程1.mp4 做第一节」）。
             生产端按引擎强制的九步顺序跑（案例股 → 行情同步 → 行情读回 → 图示 → 回放课件 → 正文 →
-            其余课件 → 评审 → 溯源）。评审打回会回灌重写，上限三轮；产出的一律是草稿，签批发布由运营完成。
+            其余课件 → 评审 → 溯源），进度在「趋势生产」面板的看板卡片里看。评审打回会回灌重写，
+            上限三轮；产出的一律是草稿，签批发布由运营完成。
           </Typography.Paragraph>
           <Space wrap>
             <Button type="primary" onClick={() => navigate('/courses')}>去生产看板</Button>

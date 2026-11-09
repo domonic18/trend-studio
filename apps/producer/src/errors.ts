@@ -11,7 +11,7 @@ export class InputError extends Error {
 }
 
 export class AuthError extends Error {
-  constructor(message = '云端后台会话未登录或已失效，请在 dsh 会话框输入 /trend login 重新登录') {
+  constructor(message = '云端后台会话未登录或已失效，请在 dsh 右侧栏「趋势生产」面板点「登录」重新登录（或运行 /trend login）') {
     super(message)
     this.name = 'AuthError'
   }
@@ -104,7 +104,7 @@ function statusMessage(status: number, businessCode: string | undefined): string
     return '存在断言证明不完整的课件，请先用 cloud_widget_write 重新提交对应 spec'
   }
   if (status === 400) return '云端拒绝请求：入参不合法，请修正后重试'
-  if (status === 401 || status === 403) return '云端后台会话未登录或已失效，请在 dsh 会话框输入 /trend login 重新登录'
+  if (status === 401 || status === 403) return '云端后台会话未登录或已失效，请在 dsh 右侧栏「趋势生产」面板点「登录」重新登录（或运行 /trend login）'
   if (status === 404) return '请求的云端资源不存在，请核对 ID'
   if (status === 409) return '云端状态冲突，请先拉取最新状态再重试'
   if (status === 429) return '请求过于频繁，请稍后重试'
@@ -152,7 +152,7 @@ export function userMessage(error: unknown, operation: string): string {
       return `${base}｜直传凭据短时效且绑定素材，请重新签发后重试（不必更换会话令牌）`
     }
     if (sessionExpired(error)) {
-      return `${base}｜云端后台会话已失效：在 dsh 会话框输入 /trend login 重新授权（教员账号，无需重建）`
+      return `${base}｜云端后台会话已失效：在 dsh 右侧栏「趋势生产」面板点「登录」重新授权（或运行 /trend login；教员账号，无需重建）`
     }
     if (error.status === 403) {
       return `${base}｜当前账号无权执行该操作（发布、签批、账号与模型配置限 operator/admin）`

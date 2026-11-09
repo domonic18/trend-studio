@@ -817,7 +817,7 @@ M10 新增 admin 接口（节级图示写入、案例股清单、行情同步、
 
 | 页面 | 面向 | 内容 |
 |---|---|---|
-| 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完八项自检 + 九步生产顺序 + 更新与卸载 + 角色边界（产出恒为草稿，签批发布由运营做） |
+| 门户 `/teacher`（公开） | 教员 | 前置条件 + 三步命令 + 装完九项自检 + 装完在 dsh 里的两步（面板登录、粘贴模型密钥）+ 九步生产顺序 + 更新与卸载 + 角色边界（产出恒为草稿，签批发布由运营做） |
 | 门户 `/downloads` | 学员 + 教员 | 学员插件卡**一字不变**；下方新增「教员生产端插件」卡（下载 + sha256 + 前往 `/teacher`） |
 | 管理台 `/admin/producer/setup` | producer / operator / admin | 回填本站云端地址（`window.location.origin`）、当前账号与角色、模型要求（`MiniMax-M3.1-Flash` / `openai-completions`，亦支持 `anthropic-messages`）、dsh 版本；下载入口 + 三条命令 + 外链 `/teacher`。学员不可见（`RequireProduction` 拒 student） |
 

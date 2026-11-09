@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-trend-producer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "趋势交易课程生产插件：语料级视频→图文课程与交互课件的生产 Agent 编排",
   "type": "module",
   "main": "lib/index.js",
@@ -9,6 +9,9 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
     },
     "./package.json": "./package.json"
   },
@@ -23,9 +26,9 @@
     "dsh": "0.2.1-rc.5"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:only": "node --test test/*.test.mjs",
     "pack": "node scripts/pack.mjs",
@@ -48,6 +51,8 @@
     "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
     "@deepseek-ai/schemastery": "~3.18.5",
     "@types/node": "^22.0.0",
+    "@types/react": "^18.2.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.9.0",
     "yaml": "^2.9.0"
   },
@@ -63,6 +68,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   }
 }

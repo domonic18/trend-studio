@@ -1,4 +1,4 @@
-/** 云端交互：健康检查与当前会话校验（登录本身在 dsh 内走 /trend login 设备码流程）。 */
+/** 云端交互：健康检查与当前会话校验（登录本身在 dsh 的「趋势生产」面板里走设备码流程）。 */
 
 function normalizeBaseUrl(baseUrl) {
   return baseUrl.trim().replace(/\/+$/, '')
