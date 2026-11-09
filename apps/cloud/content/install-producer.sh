@@ -5,7 +5,7 @@
 #
 # 脚本做的事：查发布清单 → 下载安装包 → 校验 SHA-256 → 解包 → 跑装机向导
 # （写 profile、复制九个工艺包、装依赖、装完自检）。
-# 装机零提问、不碰机密：登录在 dsh 里跑 /trend login，模型密钥在 dsh 设置页粘贴。
+# 装机零提问、不碰机密：登录在 dsh 的「趋势生产」面板里做，模型密钥在 dsh 设置页粘贴。
 #
 # __BASE_URL__ 由云端在响应时替换成站点地址（PUBLIC_BASE_URL）；命令行
 # --base-url 优先于它——教员从别的域名访问站点时用得着。
@@ -30,7 +30,7 @@ usage() {
   --model-id <id>          模型 id，默认 MiniMax-M3.1-Flash
   -h, --help         显示本帮助
 
-装机全程零提问；登录与模型密钥装完后在 dsh 里做（/trend login、设置 → 模型）。
+装机全程零提问；登录与模型密钥装完后在 dsh 里做（「趋势生产」面板登录、设置 → 模型）。
 EOF
 }
 
@@ -141,10 +141,10 @@ node "$WORK_DIR/package/scripts/setup.mjs" "$@" < /dev/null
 
 echo ""
 echo "装好了。接下来三步（都在 dsh 里）："
-echo "  1. 打开 dsh --profile $PROFILE"
-echo "  2. 会话框输入 /trend login —— 浏览器自动打开云端授权页，用教员账号登录"
+echo "  1. 启动 dsh：dsh --profile $PROFILE（没预装就用 npx --yes @deepseek-ai/dsh@${DSH_VERSION:-0.2.1-rc.5} --profile $PROFILE）"
+echo "  2. 浏览器界面的右侧栏「趋势生产」面板 → 点「登录」——浏览器自动打开云端授权页，用教员账号登录"
 echo "  3. dsh 设置 → 模型，粘贴 MiniMax API Key"
 echo ""
-echo "然后直接开工："
-echo "  dsh --profile $PROFILE \"用 ~/Movies/课程1.mp4 做第一节\""
-echo "（没预装 dsh 的话：npx --yes @deepseek-ai/dsh@${DSH_VERSION:-0.2.1-rc.5} --profile $PROFILE \"用 ~/Movies/课程1.mp4 做第一节\"）"
+echo "然后直接在界面里开工：在会话框告诉它要做的事，例如「用 ~/Movies/课程1.mp4 做第一节」。"
+echo "生产进度在「趋势生产」面板的看板卡片里看。"
+echo "（面板不可用时，会话框里运行 /trend login 也能登录。）"
