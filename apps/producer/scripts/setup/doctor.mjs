@@ -1,6 +1,8 @@
 /**
  * 装机自检：装完当场验，不等到跑到一半才 403。
  * 每项独立采集、独立报告——一项不过不掩盖其他项。
+ * 状态四档：pass（✓）/ todo（○，装完后置两步还没做，不算失败）/
+ * fail（✗，真问题）/ skip（－，前置缺失无法采集）。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
@@ -119,7 +121,8 @@ export async function runDoctor(input) {
   } else {
     const key = readRef(input.credentialsFile, model.keyRef)
     if (key === null) {
-      checks.push({ id: 'model_reachable', label: '模型可达', status: 'fail', detail: `凭据库里没有 ${model.keyRef}——打开 dsh 设置 → 模型，粘贴密钥` })
+      // 密钥后置到 dsh 设置页粘贴——装机时刻缺它是预期状态，不是失败。
+      checks.push({ id: 'model_reachable', label: '模型可达', status: 'todo', detail: `还没粘模型密钥——dsh 设置 → 模型，粘贴到 ${model.keyRef}` })
     } else {
       try {
         const result = await probeModel({ api: model.api, baseUrl: model.baseUrl, model: model.id, key })
@@ -147,9 +150,10 @@ export async function runDoctor(input) {
   const tokenRef = managed.cloud.tokenRef
   const legacyToken = tokenRef === '' ? null : readRef(input.credentialsFile, tokenRef)
   if (grant === null && legacyToken === null) {
-    checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: tokenRef === ''
-      ? 'profile 里没有配 consoleTokenRef——重跑 setup install'
-      : '未登录——打开 dsh 后在会话框输入 /trend login' })
+    // 登录后置到 dsh 内 /trend login——装机时刻未登录是预期状态，不是失败。
+    checks.push(tokenRef === ''
+      ? { id: 'token_valid', label: '登录态', status: 'fail', detail: 'profile 里没有配 consoleTokenRef——重跑 setup install' }
+      : { id: 'token_valid', label: '登录态', status: 'todo', detail: '未登录——打开 dsh 后在会话框输入 /trend login' })
   } else if (grant !== null && grant.expiresAt <= Date.now()) {
     checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `会话已过期（${grant.user.username}）——在 dsh 里重跑 /trend login` })
   } else {

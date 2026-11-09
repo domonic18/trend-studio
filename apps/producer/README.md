@@ -36,12 +36,14 @@ pnpm setup:doctor       # 只自检
   自动打开云端授权页，教员用教员账号（operator / admin / producer）登录批准，令牌自动落
   凭据记录（`trend-producer/console`），热生效。`/trend status` 可随时自查登录态。
 - **模型密钥在 dsh 设置里粘**：dsh 设置 → 模型，粘贴到 `TREND_PRODUCER_MODEL_KEY`，热生效。
-- **`doctor` 做什么**：八项独立自检，逐项报告、任一不过当场报：
+- **`doctor` 做什么**：八项独立自检，逐项报告、真问题当场报：
   **凭据库权限**（文件只有所有者可读写——权限不对 dsh 拒绝加载，等于没装）、
   插件版本（装进 profile 的 == **安装包**的）、技能包挂载、**技能链路启用**（读 `dsh --dump-config`
   的组合配置，确认 `skill-filesystem` / `tool-skill` 没被禁）、模型位唯一、模型可达
   （真发一次最小生成请求）、云端可达（`GET /health`）、登录态（console 凭据记录优先，
   老装机的 `TREND_PRODUCER_CONSOLE_TOKEN` ref 兜底；角色须是 operator / admin / producer）。
+  结果四档：✓ 通过 / **○ 待办**（未登录、未粘模型密钥——正是装完后置两步，不算失败，
+  完成后重跑即全绿）/ ✗ 失败（真问题，照提示修）/ － 跳过（前置缺失无法采集）。
 
 装完后的日常入口：
 
@@ -56,8 +58,8 @@ dsh --profile trend-producer "用 ~/Movies/课程1.mp4 做第一节"
 
 ```bash
 npm i -g @deepseek-ai/dsh@0.2.1-rc.5   # harness；版本必须精确匹配（或全程用 npx 兜底）
-shasum -a 256 dsh-plugin-trend-producer-0.2.0.tgz   # 与页面给出的 sha256 比对
-tar -xzf dsh-plugin-trend-producer-0.2.0.tgz
+shasum -a 256 dsh-plugin-trend-producer-0.2.1.tgz   # 与页面给出的 sha256 比对
+tar -xzf dsh-plugin-trend-producer-0.2.1.tgz
 cd package && node scripts/setup.mjs     # 零提问装完 → 自检；登录与模型密钥到 dsh 里做
 ```
 
