@@ -133,7 +133,7 @@ M10 扩充（随 R1–R3 迭代）：
 | 步 | 人做什么 | 系统做什么 |
 |---|---|---|
 | ① install | 无（参数走命令行开关 > 既有 profile > 默认值） | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 |
-| ② doctor | 看结果 | 九项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / **应用面**（web 应用面，不是 headless）/ 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / **登录态**（console 凭据记录优先、legacy ref 兜底；角色须是 operator / admin / producer）。未登录与未粘密钥报 **待办**（○）而非失败——后置两步没做完是装机时刻的预期状态 |
+| ② doctor | 看结果 | 九项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / **应用面**（web 应用面，不是 headless）/ 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / **登录态**（console 凭据记录优先、legacy ref 兜底；角色须是 operator / admin / producer）。未登录、未粘密钥与**凭据库还没建**报 **待办**（○）而非失败——后置两步没做完是装机时刻的预期状态（凭据库要等教员粘密钥或面板登录后由 dsh 创建） |
 | ③ 登录 | 打开 dsh → 右侧栏「趋势生产」面板 → 点「登录」，浏览器授权页用教员账号登录并批准 | 设备码流（`scope=console`）→ 令牌落凭据**记录**（`trend-producer/console`），热生效 |
 | ④ 模型密钥 | dsh 设置 → 模型，粘贴 API Key | 写 ref `TREND_PRODUCER_MODEL_KEY`，热生效 |
 
