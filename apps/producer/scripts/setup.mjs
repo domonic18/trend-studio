@@ -181,12 +181,21 @@ async function doctor(options) {
   })
   process.stdout.write(`\n装机自检（profile ${options.profile}，dsh home ${dshHome()}）\n`)
   for (const check of checks) {
-    const mark = check.status === 'pass' ? '✓' : check.status === 'skip' ? '－' : '✗'
+    const mark = check.status === 'pass' ? '✓' : check.status === 'skip' ? '－' : check.status === 'todo' ? '○' : '✗'
     process.stdout.write(`${mark} ${check.label}：${check.detail}\n`)
   }
   const failed = checks.filter(check => check.status === 'fail')
-  process.stdout.write(failed.length === 0 ? '\n全部通过。\n' : `\n${failed.length} 项未通过。\n`)
-  return failed.length === 0
+  const todo = checks.filter(check => check.status === 'todo')
+  if (failed.length > 0) {
+    process.stdout.write(`\n${failed.length} 项未通过。\n`)
+    return false
+  }
+  if (todo.length > 0) {
+    process.stdout.write('\n其余全通过；剩下的待办就是装机后两步（/trend login、粘贴模型密钥），在 dsh 里完成后重跑自检即全绿。\n')
+  } else {
+    process.stdout.write('\n全部通过。\n')
+  }
+  return true
 }
 
 async function main() {
