@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
-import { buildManagedEntries, mergePatchEntries, PLATFORM_BUNDLES, readManagedConfig, readPatch, renderPatch, writeProfilePackage } from '../scripts/setup/profile.mjs'
+import { buildManagedEntries, environmentFor, mergePatchEntries, PLATFORM_BUNDLES, readManagedConfig, readPatch, renderPatch, writeProfilePackage } from '../scripts/setup/profile.mjs'
 import { readConsoleGrantRecord, readRef, writeRef } from '../scripts/setup/credentials.mjs'
 import { resolveInstallContext } from '../scripts/setup/context.mjs'
 import { parseArgs } from '../scripts/setup/args.mjs'
@@ -64,6 +64,14 @@ test('装机：skills 活挂载与凭据开关写进 patch', () => {
 test('装机：平台 bundle 用 web 应用面（教员要有界面，不是命令）', () => {
   assert.deepEqual(PLATFORM_BUNDLES, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
   assert.ok(!PLATFORM_BUNDLES.includes('@deepseek-ai/dsh-headless'), 'headless 没有命令分发与界面，教员用不了')
+})
+
+test('环境：按云端地址推导，面板不显示假信息', () => {
+  assert.equal(environmentFor('https://trend.17aitech.com'), 'production', '指着生产云端就要显示 production')
+  assert.equal(environmentFor('http://127.0.0.1:3939'), 'local')
+  assert.equal(environmentFor('http://localhost:3939'), 'local')
+  assert.equal(environmentFor('http://192.168.1.10:3939'), 'local', '局域网自建云端没有环境名可归')
+  assert.equal(environmentFor('not-a-url'), 'local')
 })
 
 test('装机：profile 的 bundle 列表是并集——已有的平台 bundle 不丢', () => {

@@ -15,12 +15,13 @@
   },
   "producerPlugin": {
     "name": "dsh-plugin-trend-producer",
-    "version": "0.2.2",
-    "fileName": "dsh-plugin-trend-producer-0.2.2.tgz",
+    "version": "0.2.3",
+    "fileName": "dsh-plugin-trend-producer-0.2.3.tgz",
     "sha256": null,
     "sizeBytes": null,
     "publishedAt": "2026-11-09",
     "notes": [
+      "0.2.3 装机按云端地址推导环境：指着生产云端时装成 production，面板「云端」卡片不再显示 local。",
       "0.2.2 教员端生产面板：dsh 右侧栏新增「趋势生产」tab，四张卡片（登录 / 模型密钥 / 云端 / 生产看板）——打开 dsh 即是界面，教员点按钮不敲命令。",
       "应用面从 headless 换成 web 应用面（headless 是一次性任务执行器，没有命令分发也没有界面）；doctor 增「应用面」一项，自检由八项变九项。",
       "命令面 /trend login、/trend status 保留为备用路径，功能相同。",

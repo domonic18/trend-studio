@@ -31,6 +31,24 @@ export const PLATFORM_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-
  */
 export const RETIRED_BUNDLES = ['@deepseek-ai/dsh-headless']
 
+/**
+ * 环境按云端地址推导，不让教员手填。
+ *
+ * 面板的「云端」卡片直接显示这个值——写死 local 会让指着生产云端的教员看到
+ * 「local」，是假信息。回环即本机；非回环且是 https 即生产；非回环但非 https
+ * 仍是 local（局域网自建云端没有环境名可归）。
+ */
+export function environmentFor(baseUrl) {
+  try {
+    const { hostname, protocol } = new URL(baseUrl)
+    const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+    if (loopback) return 'local'
+    return protocol === 'https:' ? 'production' : 'local'
+  } catch {
+    return 'local'
+  }
+}
+
 const PATCH_HEADER = '# 本文件由 `pnpm setup` 生成：托管条目每次装机重写，其余条目原样保留。\n'
 
 /**
