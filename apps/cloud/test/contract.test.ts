@@ -224,10 +224,14 @@ after(async () => {
   await rm(storageDir, { recursive: true, force: true })
 })
 
-test('GET /health 报告数据库可用', async () => {
+test('GET /health 报告数据库可用与构建标识', async () => {
   const response = await app.inject({ method: 'GET', url: '/health' })
   assert.equal(response.statusCode, 200)
-  assert.deepEqual(response.json(), { ok: true })
+  const body = response.json()
+  assert.equal(body.ok, true)
+  // 测试进程未注入 APP_GIT_SHA / APP_BUILD_TIME，应回落默认值。
+  assert.equal(body.commit, 'dev')
+  assert.equal(body.buildTime, 'unknown')
 })
 
 test('GET /metrics 需要指标令牌', async () => {
@@ -382,6 +386,72 @@ test('设备码：运营账号会话可直接批准并绑定自身', async () =>
     [grant.deviceId],
   )
   assert.equal(rows[0]?.role, 'operator')
+})
+
+test('教员设备码：console 会话签发、角色门与学员拒绝', async () => {
+  const producer = await adminCreateUser({
+    username: 'producer-login-01',
+    displayName: '教员登录',
+    role: 'producer',
+    password: 'producer-password-123',
+  })
+  assert.ok(producer.statusCode === 201 || producer.statusCode === 409, JSON.stringify(producer.body))
+  await ensureStudent('producer-console-dev', '教员端学员')
+
+  const start = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/device/code',
+    payload: { clientId: 'dsh-plugin-trend-producer', deviceId: 'producer-console-dev1' },
+  })
+  assert.equal(start.statusCode, 200, start.body)
+  const { deviceCode, userCode } = start.json() as { deviceCode: string; userCode: string }
+
+  // /device 页按 scope 渲染教员端文案，且不出现邀请码输入框。
+  const page = await app.inject({ method: 'GET', url: `/device?code=${userCode}` })
+  assert.ok(page.body.includes('趋势教员端授权'))
+  assert.ok(!page.body.includes('id="invite"'))
+
+  // 学员账号不可批准教员端。
+  const studentApprove = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/device/approve',
+    payload: { userCode, username: usernameFor('producer-console-dev'), password: STUDENT_PASSWORD },
+  })
+  assert.equal(studentApprove.statusCode, 403)
+
+  const pending = await app.inject({ method: 'POST', url: '/v1/auth/device/token', payload: { deviceCode } })
+  assert.deepEqual(pending.json(), { status: 'pending' })
+
+  const approved = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/device/approve',
+    payload: { userCode, username: 'producer-login-01', password: 'producer-password-123' },
+  })
+  assert.equal(approved.statusCode, 200, approved.body)
+
+  const poll = await app.inject({ method: 'POST', url: '/v1/auth/device/token', payload: { deviceCode } })
+  const body = poll.json() as { status: string; session?: SessionBody }
+  assert.equal(body.status, 'authorized')
+  const session = body.session
+  assert.ok(session !== undefined)
+  assert.equal(session.user.username, 'producer-login-01')
+  assert.equal(session.user.role, 'producer')
+  assert.ok(session.expiresAt > Date.now())
+
+  // console 会话不绑设备：devices 表不出现该 device_id。
+  const devices = await pool.query('SELECT 1 FROM devices WHERE device_id = $1', ['producer-console-dev1'])
+  assert.equal(devices.rowCount, 0)
+
+  // 签发的会话能直接访问教员端接口。
+  const courses = await app.inject({
+    method: 'GET',
+    url: '/v1/admin/content/courses',
+    headers: { authorization: `Bearer ${session.token}` },
+  })
+  assert.equal(courses.statusCode, 200, courses.body)
+
+  const replay = await app.inject({ method: 'POST', url: '/v1/auth/device/token', payload: { deviceCode } })
+  assert.deepEqual(replay.json(), { status: 'expired' })
 })
 
 test('账号：管理员登录、会话查询与注销', async () => {

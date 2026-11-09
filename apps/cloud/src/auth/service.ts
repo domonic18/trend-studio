@@ -5,6 +5,10 @@ import { badRequest, forbidden, notFound, unauthorized } from '../errors.js'
 import { hashToken, randomToken } from './tokens.js'
 
 export const CLIENT_ID = 'dsh-plugin-trend-coach'
+export const PRODUCER_CLIENT_ID = 'dsh-plugin-trend-producer'
+
+/** 教员端登录走 console 会话（sessions 表），不发设备令牌；角色守卫同 console 登录。 */
+const CONSOLE_ROLES = ['operator', 'admin', 'producer']
 
 const USER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
@@ -32,6 +36,13 @@ export type DevicePoll =
   | { status: 'pending' }
   | { status: 'expired' }
   | { status: 'authorized'; grant: Grant }
+  | { status: 'authorized'; session: ConsoleSession }
+
+export interface ConsoleSession {
+  token: string
+  expiresAt: number
+  user: { userId: string; username: string; displayName: string | null; role: string }
+}
 
 function makeUserCode(): string {
   const pick = (): string => USER_CODE_ALPHABET[Math.floor(Math.random() * USER_CODE_ALPHABET.length)] ?? 'X'
@@ -50,6 +61,7 @@ interface DeviceCodeRow {
   expires_at: Date
   approved_at: Date | null
   consumed_at: Date | null
+  scope: 'student' | 'console'
 }
 
 export class AuthService {
@@ -59,15 +71,16 @@ export class AuthService {
   ) {}
 
   async startDeviceCode(deviceId: string, clientId: string): Promise<DeviceCodeStart> {
-    if (clientId !== CLIENT_ID) throw badRequest('clientId invalid')
+    const scope = clientId === PRODUCER_CLIENT_ID ? 'console' : 'student'
+    if (scope === 'student' && clientId !== CLIENT_ID) throw badRequest('clientId invalid')
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const deviceCode = randomToken()
       const userCode = makeUserCode()
       try {
         await this.pool.query(
-          `INSERT INTO device_codes (device_code_hash, user_code, device_id, expires_at)
-           VALUES ($1, $2, $3, $4)`,
-          [hashToken(deviceCode), userCode, deviceId, new Date(Date.now() + this.config.deviceCodeTtlSec * 1000)],
+          `INSERT INTO device_codes (device_code_hash, user_code, device_id, expires_at, scope)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [hashToken(deviceCode), userCode, deviceId, new Date(Date.now() + this.config.deviceCodeTtlSec * 1000), scope],
         )
         return {
           deviceCode,
@@ -94,12 +107,21 @@ export class AuthService {
     }
   }
 
-  /** 只允许绑定已存在且启用的账号；账号由管理员创建，设备批准不再自动建号。 */
+  /** /device 页按 user_code 渲染差异化文案用；查不到按学员页处理（不泄露存在性）。 */
+  async deviceCodeScope(userCode: string): Promise<'student' | 'console'> {
+    const { rows } = await this.pool.query<{ scope: 'student' | 'console' }>(
+      'SELECT scope FROM device_codes WHERE user_code = $1',
+      [userCode.trim().toUpperCase()],
+    )
+    return rows[0]?.scope ?? 'student'
+  }
+
+  /** 只允许绑定已存在且启用的账号；账号由管理员创建，设备批准不再自动建号。console 码另加角色门。 */
   async approveDeviceCode(input: { userCode: string; userId: string }): Promise<void> {
     const userCode = input.userCode.trim().toUpperCase()
     await withTransaction(this.pool, async client => {
       const { rows } = await client.query<DeviceCodeRow>(
-        `SELECT device_code_hash, user_code, device_id, user_id, expires_at, approved_at, consumed_at
+        `SELECT device_code_hash, user_code, device_id, user_id, expires_at, approved_at, consumed_at, scope
          FROM device_codes WHERE user_code = $1 FOR UPDATE`,
         [userCode],
       )
@@ -107,16 +129,22 @@ export class AuthService {
       if (code === undefined || code.consumed_at !== null || code.expires_at.getTime() <= Date.now()) {
         throw notFound('device code invalid or expired')
       }
-      const account = await client.query(
-        "SELECT 1 FROM users WHERE user_id = $1 AND status = 'active'",
-        [input.userId],
+      const account = await client.query<{ role: string }>(
+        'SELECT role FROM users WHERE user_id = $1 AND status = $2',
+        [input.userId, 'active'],
       )
-      if ((account.rowCount ?? 0) === 0) throw badRequest('userId unknown or disabled')
-      await client.query(
-        `INSERT INTO devices (device_id, user_id) VALUES ($1, $2)
-         ON CONFLICT (device_id) DO UPDATE SET user_id = EXCLUDED.user_id, status = 'active'`,
-        [code.device_id, input.userId],
-      )
+      const row = account.rows[0]
+      if (row === undefined) throw badRequest('userId unknown or disabled')
+      if (code.scope === 'console' && !CONSOLE_ROLES.includes(row.role)) {
+        throw forbidden('console access requires operator role')
+      }
+      if (code.scope === 'student') {
+        await client.query(
+          `INSERT INTO devices (device_id, user_id) VALUES ($1, $2)
+           ON CONFLICT (device_id) DO UPDATE SET user_id = EXCLUDED.user_id, status = 'active'`,
+          [code.device_id, input.userId],
+        )
+      }
       await client.query(
         'UPDATE device_codes SET user_id = $2, approved_at = now() WHERE device_code_hash = $1',
         [code.device_code_hash, input.userId],
@@ -127,7 +155,7 @@ export class AuthService {
   async pollDeviceToken(deviceCode: string): Promise<DevicePoll> {
     return withTransaction(this.pool, async client => {
       const { rows } = await client.query<DeviceCodeRow>(
-        `SELECT device_code_hash, user_code, device_id, user_id, expires_at, approved_at, consumed_at
+        `SELECT device_code_hash, user_code, device_id, user_id, expires_at, approved_at, consumed_at, scope
          FROM device_codes WHERE device_code_hash = $1 FOR UPDATE`,
         [hashToken(deviceCode)],
       )
@@ -136,9 +164,37 @@ export class AuthService {
       if (code.expires_at.getTime() <= Date.now()) return { status: 'expired' } as const
       if (code.approved_at === null || code.user_id === null) return { status: 'pending' } as const
       await client.query('UPDATE device_codes SET consumed_at = now() WHERE device_code_hash = $1', [code.device_code_hash])
+      if (code.scope === 'console') {
+        const session = await this.issueConsoleSession(client, code.user_id)
+        return { status: 'authorized', session } as const
+      }
       const grant = await this.issueGrant(client, code.device_id, code.user_id)
       return { status: 'authorized', grant } as const
     })
+  }
+
+  private async issueConsoleSession(client: PoolClient, userId: string): Promise<ConsoleSession> {
+    const { rows } = await client.query<{
+      username: string
+      display_name: string | null
+      role: string
+    }>(
+      'SELECT username, display_name, role FROM users WHERE user_id = $1',
+      [userId],
+    )
+    const user = rows[0]
+    if (user === undefined) throw badRequest('userId unknown')
+    const token = randomToken()
+    const expiresAt = Date.now() + this.config.sessionTtlSec * 1000
+    await client.query(
+      "INSERT INTO sessions (token_hash, user_id, expires_at, scope) VALUES ($1, $2, $3, 'console')",
+      [hashToken(token), userId, new Date(expiresAt)],
+    )
+    return {
+      token,
+      expiresAt,
+      user: { userId, username: user.username, displayName: user.display_name, role: user.role },
+    }
   }
 
   private async issueGrant(
