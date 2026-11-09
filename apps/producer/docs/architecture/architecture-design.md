@@ -128,13 +128,14 @@ M10 扩充（随 R1–R3 迭代）：
 ## 9. 装机（教员本机，A9）
 
 装机是**脚本**（`apps/producer/scripts/setup.mjs`，`pnpm setup`），不是 `dsh plugin` 子命令——
-`dsh plugin` 是 pnpm 的转发口，装不了交互式 login。
+`dsh plugin` 是 pnpm 的转发口。脚本**零提问**：登录与模型密钥装完后在 dsh 里做（见 dsh-native-integration.md）。
 
 | 步 | 人做什么 | 系统做什么 |
 |---|---|---|
-| ① install | 填模型 provider / 模型 id / base url / 协议 + 模型 API key | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 → 密钥写托管凭据库 |
-| ② login | 填云端账号密码 | `POST /v1/auth/session` 换发令牌 → 写托管凭据库 |
-| ③ doctor | 看结果 | 八项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / 令牌有效且角色是 producer |
+| ① install | 无（参数走命令行开关 > 既有 profile > 默认值） | 打包插件 → 写 profile（bundle 并集 + 插件依赖）→ `dsh plugin --profile … install` → 写 `cordis.patch.yml` 五个托管条目 |
+| ② doctor | 看结果 | 八项独立自检：**凭据库权限**（600，否则 dsh 拒载）/ 插件版本 == **安装包版本** / 技能包挂载 / **技能链路启用** / 模型位唯一 / 模型真发一次最小生成请求 / 云端 `/health` / **登录态**（console 凭据记录优先、legacy ref 兜底；角色须是 operator / admin / producer） |
+| ③ 登录 | 在 dsh 会话框输入 `/trend login`，浏览器授权页用教员账号登录并批准 | 设备码流（`scope=console`）→ 令牌落凭据**记录**（`trend-producer/console`），热生效 |
+| ④ 模型密钥 | dsh 设置 → 模型，粘贴 API Key | 写 ref `TREND_PRODUCER_MODEL_KEY`，热生效 |
 
 落点与不变量：
 
@@ -143,7 +144,8 @@ M10 扩充（随 R1–R3 迭代）：
   **不装 `dsh-web-app`**：它在宿主层把 `skill-filesystem` / `tool-skill` 整行禁用（改由 agent preset
   各自挂载），而本 profile 的工艺包走的是宿主层 `customSkillDirs`——装上等于静默废掉九个技能包。
 - **配置层**：`cordis.patch.yml` 五个托管条目每次重写，**用户手加的条目原样保留**，旧文件备份 `.bak`。
-- **机密层**：`~/.dsh/.credentials.yaml` 的 `refs`（模型密钥 + 控制台令牌），profile 里只有引用名。
+- **机密层**：`~/.dsh/.credentials.yaml`——`records`（console 登录记录 `trend-producer/console`，设备码流签发）
+  + `refs`（模型密钥 `TREND_PRODUCER_MODEL_KEY`；老装机向导写的控制台令牌 ref 仍作兜底），profile 里只有引用名。
 - **自检读现状不读意图**：doctor 解析的是**装进 profile 的那份** patch、插件版本，以及
   `dsh --dump-config` 的**组合配置**——技能链路是否真被加载，看的是 dsh 合出来的结果，不是我们写了什么。
 

@@ -5,11 +5,14 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { CREDENTIALS_MODE, readRef } from './credentials.mjs'
+import { CREDENTIALS_MODE, readConsoleGrantRecord, readRef } from './credentials.mjs'
 import { health, session } from './cloud.mjs'
 import { probeModel } from './model.mjs'
 import { readManagedConfig } from './profile.mjs'
 import { runDsh } from './dsh.mjs'
+
+/** console 设备码可批准的角色（与云端 approveDeviceCode 的门一致）。 */
+const CONSOLE_ROLES = ['operator', 'admin', 'producer']
 
 function skillCount(dir) {
   if (!existsSync(dir)) return 0
@@ -116,7 +119,7 @@ export async function runDoctor(input) {
   } else {
     const key = readRef(input.credentialsFile, model.keyRef)
     if (key === null) {
-      checks.push({ id: 'model_reachable', label: '模型可达', status: 'fail', detail: `凭据库里没有 ${model.keyRef}——重跑 setup 写入模型密钥` })
+      checks.push({ id: 'model_reachable', label: '模型可达', status: 'fail', detail: `凭据库里没有 ${model.keyRef}——打开 dsh 设置 → 模型，粘贴密钥` })
     } else {
       try {
         const result = await probeModel({ api: model.api, baseUrl: model.baseUrl, model: model.id, key })
@@ -139,27 +142,32 @@ export async function runDoctor(input) {
     }
   }
 
-  // ⑥ 令牌有效且角色是 producer
+  // ⑥ 登录态：console 凭据记录（/trend login 写入）优先，老装机的 ref 兜底
+  const grant = readConsoleGrantRecord(input.credentialsFile)
   const tokenRef = managed.cloud.tokenRef
-  const token = tokenRef === '' ? null : readRef(input.credentialsFile, tokenRef)
-  if (token === null) {
-    checks.push({ id: 'token_valid', label: '会话令牌', status: 'fail', detail: tokenRef === ''
+  const legacyToken = tokenRef === '' ? null : readRef(input.credentialsFile, tokenRef)
+  if (grant === null && legacyToken === null) {
+    checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: tokenRef === ''
       ? 'profile 里没有配 consoleTokenRef——重跑 setup install'
-      : `凭据库里没有 ${tokenRef}——跑 setup login 换发令牌` })
+      : '未登录——打开 dsh 后在会话框输入 /trend login' })
+  } else if (grant !== null && grant.expiresAt <= Date.now()) {
+    checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `会话已过期（${grant.user.username}）——在 dsh 里重跑 /trend login` })
   } else {
+    const token = grant?.token ?? legacyToken
+    const source = grant !== null ? '凭据记录' : `ref ${tokenRef}（旧装机）`
     try {
       const user = await session(managed.cloud.baseUrl, token)
-      const roleOk = user.role === 'producer'
+      const roleOk = CONSOLE_ROLES.includes(user.role)
       checks.push({
         id: 'token_valid',
-        label: '会话令牌',
+        label: '登录态',
         status: roleOk ? 'pass' : 'fail',
         detail: roleOk
-          ? `${user.username}（${user.role}）`
-          : `角色是 ${user.role}，生产端需要 producer——换一个 producer 账号登录`,
+          ? `${user.username}（${user.role}，来自${source}）`
+          : `角色是 ${user.role}，教员端需要 operator / admin / producer——换一个教员账号登录`,
       })
     } catch (error) {
-      checks.push({ id: 'token_valid', label: '会话令牌', status: 'fail', detail: error instanceof Error ? error.message : String(error) })
+      checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `${error instanceof Error ? error.message : String(error)}——在 dsh 里重跑 /trend login` })
     }
   }
 

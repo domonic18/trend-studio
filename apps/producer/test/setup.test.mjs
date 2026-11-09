@@ -7,7 +7,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 import { buildManagedEntries, mergePatchEntries, PLATFORM_BUNDLES, readManagedConfig, readPatch, renderPatch, writeProfilePackage } from '../scripts/setup/profile.mjs'
-import { readRef, writeRef } from '../scripts/setup/credentials.mjs'
+import { readConsoleGrantRecord, readRef, writeRef } from '../scripts/setup/credentials.mjs'
 import { resolveInstallContext } from '../scripts/setup/context.mjs'
 import { parseArgs } from '../scripts/setup/args.mjs'
 import { installSkills, listSkills } from '../scripts/setup/skills.mjs'
@@ -244,6 +244,41 @@ test('工艺包：复制进 profile，并清掉上次留下的旧包', () => {
 test('工艺包：源目录没有工艺包时报错', () => {
   const empty = mkdtempSync(path.join(tmpdir(), 'trend-empty-'))
   assert.throws(() => installSkills(empty, path.join(empty, 'target')), /没有工艺包/)
+})
+
+test('凭据库：读教员端 console 记录——合法、损坏、缺失各有出路', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'trend-cred-'))
+  const file = path.join(dir, '.credentials.yaml')
+  writeFileSync(file, [
+    'version: 1',
+    'records:',
+    '  trend-producer/console:',
+    '    kind: grant',
+    '    payload:',
+    '      token: sess-token',
+    `      expiresAt: ${Date.now() + 3_600_000}`,
+    '      user:',
+    '        userId: u1',
+    '        username: teacher01',
+    '        role: producer',
+    '  other/plugin:',
+    '    kind: api-key',
+    '    key: k',
+    '',
+  ].join('\n'), 'utf8')
+
+  const grant = readConsoleGrantRecord(file)
+  assert.equal(grant.token, 'sess-token')
+  assert.equal(grant.user.username, 'teacher01')
+  assert.equal(grant.user.role, 'producer')
+
+  // 损坏的记录按未登录处理
+  writeFileSync(file, 'version: 1\nrecords:\n  trend-producer/console:\n    kind: grant\n    payload:\n      token: ""\n', 'utf8')
+  assert.equal(readConsoleGrantRecord(file), null)
+  // 缺失与文件不存在
+  writeFileSync(file, 'version: 1\n', 'utf8')
+  assert.equal(readConsoleGrantRecord(file), null)
+  assert.equal(readConsoleGrantRecord(path.join(dir, 'nope.yaml')), null)
 })
 
 test('命令行：开关不吃掉后面的参数', () => {

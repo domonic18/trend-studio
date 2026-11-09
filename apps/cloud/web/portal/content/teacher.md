@@ -3,16 +3,31 @@
 ## 你需要什么
 
 - **一台 Mac 或 Windows 电脑**：Node.js 22 或更高版本（`node -v` 能打印版本号即可）。
-- **一个生产端账号**：角色必须是 `producer`。学员账号装不了生产端插件——它会写出课程草稿并推到云端。
+- **一个教员账号**：角色是 `producer` / `operator` / `admin` 之一。学员账号装不了生产端插件——它会写出课程草稿并推到云端。
 - **一个模型 API key**：生产端要跑模型理解视频、生成图示与课件。这把 key 只写进你自己机器上的凭据库，不上传云端。
 
-## 三步装完
+## 一条命令装完
+
+最省事的装法是在门户下载页复制管道命令：
+
+```
+curl -fsSL <站点>/install-producer.sh | bash
+```
+
+脚本会查发布清单、下载并校验安装包、写 profile、装依赖，**全程零提问**，装完自动跑一遍自检。
+
+也可以手动三步：
 
 1. **装 harness**：`npm i -g @deepseek-ai/dsh@<版本号>`。harness 是本地客户端本体，插件装在它里面。版本号必须和页面给出的一致。
 2. **下载并校验安装包**：下载页提供生产插件的 `.tgz`。下载后用 `shasum -a 256`（macOS / Linux）或 `certutil -hashfile`（Windows）核对校验值。
-3. **解包并运行装机脚本**：解压后进入 `package` 目录，运行 `node scripts/setup.mjs`。脚本会写 profile、换发云端会话令牌、跑完八项自检。
+3. **解包并运行装机脚本**：解压后进入 `package` 目录，运行 `node scripts/setup.mjs`。脚本零提问装完并跑八项自检。云端地址、模型参数可用命令行开关覆盖（`--model-id` 等），不传就用默认值。
 
-装机脚本是交互式的：它会问云端地址、模型 id、模型 base url、模型协议和模型 key。所有回答都可以直接回车取默认值。
+## 装完后的两步（都在 dsh 里）
+
+1. **登录**：打开 dsh，在会话框输入 `/trend login`——浏览器自动打开云端授权页，用教员账号登录并点批准。令牌自动保存，立即生效。
+2. **贴模型密钥**：dsh 设置 → 模型，把 API key 粘贴进去（凭据名 `TREND_PRODUCER_MODEL_KEY`），立即生效。
+
+`/trend status` 随时自查：云端通不通、登录态还剩多久、模型密钥配没配。
 
 ## 装完检查
 
@@ -27,7 +42,7 @@
 | 模型位 | agent 与理解阶段共用一个模型 |
 | 模型可达 | 这把 key 真能调通模型 |
 | 云端可达 | 云端服务在跑 |
-| 会话令牌 | 令牌有效，且角色是 producer |
+| 登录态 | 凭据有效，且角色是教员（未登录就先在 dsh 里跑 /trend login） |
 
 哪一项不过就照该项的提示做，不要跳到下一步。
 
@@ -35,7 +50,7 @@
 
 更新：重新下载新版本安装包，再跑一次 `node scripts/setup.mjs install`。旧版本装在 `~/.dsh/profiles/trend-producer/artifacts/` 下，脚本会自动归档。
 
-卸载：删掉 `~/.dsh/profiles/trend-producer` 目录即可。凭据（模型 key、会话令牌）留在 `~/.dsh/.credentials.yaml`，要一起清就手动删对应条目。
+卸载：删掉 `~/.dsh/profiles/trend-producer` 目录即可。凭据（模型 key、登录记录）留在 `~/.dsh/.credentials.yaml`，要一起清就手动删对应条目。
 
 ## 角色边界
 
