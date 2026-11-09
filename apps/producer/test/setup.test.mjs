@@ -61,9 +61,9 @@ test('装机：skills 活挂载与凭据开关写进 patch', () => {
   assert.equal(credentials.disabled, false)
 })
 
-test('装机：平台 bundle 不含 dsh-web-app（它会禁掉技能链路）', () => {
-  assert.deepEqual(PLATFORM_BUNDLES, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'])
-  assert.ok(!PLATFORM_BUNDLES.includes('@deepseek-ai/dsh-web-app'))
+test('装机：平台 bundle 用 web 应用面（教员要有界面，不是命令）', () => {
+  assert.deepEqual(PLATFORM_BUNDLES, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
+  assert.ok(!PLATFORM_BUNDLES.includes('@deepseek-ai/dsh-headless'), 'headless 没有命令分发与界面，教员用不了')
 })
 
 test('装机：profile 的 bundle 列表是并集——已有的平台 bundle 不丢', () => {
@@ -72,7 +72,7 @@ test('装机：profile 的 bundle 列表是并集——已有的平台 bundle �
   writeFileSync(file, JSON.stringify({
     name: 'dsh-profile-existing',
     dependencies: { other: '1.0.0' },
-    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@custom/keep-me'] } },
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@custom/keep-me', '@deepseek-ai/dsh-headless'] } },
   }), 'utf8')
 
   writeProfilePackage(dir, 'dsh-plugin-trend-producer', '/tmp/plugin.tgz')
@@ -80,7 +80,7 @@ test('装机：profile 的 bundle 列表是并集——已有的平台 bundle �
   assert.deepEqual(manifest.dsh.profile.bundles, [
     '@deepseek-ai/dsh-base',
     '@custom/keep-me',
-    '@deepseek-ai/dsh-headless',
+    '@deepseek-ai/dsh-web-app',
     'dsh-plugin-trend-producer',
   ])
   assert.equal(manifest.dependencies.other, '1.0.0', '别的依赖不能丢')

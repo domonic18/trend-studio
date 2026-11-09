@@ -87,20 +87,48 @@ export async function runDoctor(input) {
       ? 'profile 里没有 customSkillDirs——重跑 setup install'
       : `挂载目录里没有技能包：${managed.skillsDirs.join('、')}` })
 
-  // ②' 组合配置里技能链路没被禁：patch 里写了目录不等于 dsh 真加载了它
-  // （dsh-web-app 就会在宿主层把 skill-filesystem / tool-skill 整行禁用）
+  // ②' 组合配置里技能链路没被禁：patch 里写了目录不等于 dsh 真加载了它。
+  // web 应用面在宿主层禁掉 skill-filesystem 与 tool-skill（改由 agent preset
+  // 逐会话挂载），本 profile 的补丁层在最后，会把 skill-filesystem 重新打开并
+  // 挂上工艺包目录——所以宿主层这一行必须是启用的。
+  // tool-skill 在宿主层禁用是 web 应用面的正常形态（preset 各自挂载），不计失败。
   const dump = dumpConfig(input.profile)
   if (dump === null) {
     checks.push({ id: 'skills_enabled', label: '技能链路启用', status: 'skip', detail: 'dsh 组合配置读不出来（dsh 不在 PATH？），跳过' })
   } else {
-    const rows = ['skill-filesystem', 'tool-skill']
-    const disabled = rows.filter(id => hostRowDisabled(dump, id) === true)
-    checks.push(disabled.length === 0
-      ? { id: 'skills_enabled', label: '技能链路启用', status: 'pass', detail: `${rows.join(' / ')} 均已启用` }
-      : { id: 'skills_enabled', label: '技能链路启用', status: 'fail', detail: `组合配置里 ${disabled.join(' / ')} 被禁用——工艺包不会加载，别装 dsh-web-app` })
+    const skillFilesystem = hostRowDisabled(dump, 'skill-filesystem')
+    const toolSkill = hostRowDisabled(dump, 'tool-skill')
+    checks.push(skillFilesystem === false
+      ? {
+          id: 'skills_enabled',
+          label: '技能链路启用',
+          status: 'pass',
+          detail: `skill-filesystem 已启用（工艺包目录已挂上）；tool-skill ${toolSkill === true ? '由 agent preset 逐会话挂载' : '在宿主层启用'}`,
+        }
+      : {
+          id: 'skills_enabled',
+          label: '技能链路启用',
+          status: 'fail',
+          detail: skillFilesystem === true
+            ? '组合配置里 skill-filesystem 被禁用——工艺包不会加载，重跑 setup install'
+            : '组合配置里没有 skill-filesystem 这一行——重跑 setup install',
+        })
   }
 
-  // ③ 模型位唯一：agent 与理解阶段共用一个 provider + 一个 model
+  // ③ 应用面：必须是 web 应用面。headless 是一次性任务执行器，没有命令分发，
+  // 教员既触发不了登录也看不到任何界面——组合配置里没有 web-runtime 行即装错了。
+  if (dump === null) {
+    checks.push({ id: 'app_surface', label: '应用面', status: 'skip', detail: 'dsh 组合配置读不出来（dsh 不在 PATH？），跳过' })
+  } else {
+    const webRuntime = hostRowDisabled(dump, 'web-runtime')
+    checks.push(webRuntime === false
+      ? { id: 'app_surface', label: '应用面', status: 'pass', detail: 'web 应用面（浏览器界面 + 右侧栏生产面板）' }
+      : { id: 'app_surface', label: '应用面', status: 'fail', detail: webRuntime === true
+        ? '组合配置里 web-runtime 被禁用——重跑 setup install'
+        : '组合配置里没有 web-runtime 行——profile 还在用 headless 应用面，重跑 setup install' })
+  }
+
+  // ④ 模型位唯一：agent 与理解阶段共用一个 provider + 一个 model
   const model = managed.model
   const single = model !== null && model.id !== ''
   const understandingApi = managed.understanding?.api ?? ''
@@ -115,7 +143,7 @@ export async function runDoctor(input) {
       ? { id: 'model_slot', label: '模型位', status: 'fail', detail: `理解阶段协议是 ${understandingApi === '' ? 'openai-completions（未写）' : understandingApi}，生产模型是 ${providerApi}——必须同一个协议，重跑 setup install` }
       : { id: 'model_slot', label: '模型位', status: 'pass', detail: `${model.provider}/${model.id}（agent 与理解阶段共用，协议 ${providerApi}）` })
 
-  // ④ 模型可达
+  // ⑤ 模型可达
   if (model === null || model.id === '') {
     checks.push({ id: 'model_reachable', label: '模型可达', status: 'skip', detail: '模型位缺失，跳过' })
   } else {
@@ -133,7 +161,7 @@ export async function runDoctor(input) {
     }
   }
 
-  // ⑤ 云端可达
+  // ⑥ 云端可达
   if (managed.cloud.baseUrl === '') {
     checks.push({ id: 'cloud_reachable', label: '云端可达', status: 'skip', detail: 'profile 里没有配云端地址——重跑 setup install' })
   } else {
@@ -145,17 +173,17 @@ export async function runDoctor(input) {
     }
   }
 
-  // ⑥ 登录态：console 凭据记录（/trend login 写入）优先，老装机的 ref 兜底
+  // ⑦ 登录态：console 凭据记录（面板登录写入）优先，老装机的 ref 兜底
   const grant = readConsoleGrantRecord(input.credentialsFile)
   const tokenRef = managed.cloud.tokenRef
   const legacyToken = tokenRef === '' ? null : readRef(input.credentialsFile, tokenRef)
   if (grant === null && legacyToken === null) {
-    // 登录后置到 dsh 内 /trend login——装机时刻未登录是预期状态，不是失败。
+    // 登录后置到 dsh 的生产面板——装机时刻未登录是预期状态，不是失败。
     checks.push(tokenRef === ''
       ? { id: 'token_valid', label: '登录态', status: 'fail', detail: 'profile 里没有配 consoleTokenRef——重跑 setup install' }
-      : { id: 'token_valid', label: '登录态', status: 'todo', detail: '未登录——打开 dsh 后在会话框输入 /trend login' })
+      : { id: 'token_valid', label: '登录态', status: 'todo', detail: '未登录——打开 dsh，右侧栏「趋势生产」面板点「登录」' })
   } else if (grant !== null && grant.expiresAt <= Date.now()) {
-    checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `会话已过期（${grant.user.username}）——在 dsh 里重跑 /trend login` })
+    checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `会话已过期（${grant.user.username}）——在 dsh 面板点「登录」重新授权` })
   } else {
     const token = grant?.token ?? legacyToken
     const source = grant !== null ? '凭据记录' : `ref ${tokenRef}（旧装机）`
@@ -171,7 +199,7 @@ export async function runDoctor(input) {
           : `角色是 ${user.role}，教员端需要 operator / admin / producer——换一个教员账号登录`,
       })
     } catch (error) {
-      checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `${error instanceof Error ? error.message : String(error)}——在 dsh 里重跑 /trend login` })
+      checks.push({ id: 'token_valid', label: '登录态', status: 'fail', detail: `${error instanceof Error ? error.message : String(error)}——在 dsh 面板点「登录」重新授权` })
     }
   }
 

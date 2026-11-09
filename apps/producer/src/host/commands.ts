@@ -42,7 +42,7 @@ async function loginAction(ctx: Context, signal: AbortSignal, logger: HostLogger
   } catch (error) {
     if (error instanceof AuthorizationError) {
       if (error.code === 'ALREADY_IN_FLIGHT') return { kind: 'error', text: '已有一轮登录在进行中，请到浏览器完成授权或稍后再试。' }
-      if (error.code === 'NOT_COMMITTED') return { kind: 'error', text: '授权流程未能保存登录态，请重试 /trend login。' }
+      if (error.code === 'NOT_COMMITTED') return { kind: 'error', text: '授权流程未能保存登录态，请重试 /trend login（或在右侧栏「趋势生产」面板点「登录」）。' }
     }
     const message = error instanceof Error ? error.message : '未知错误'
     return { kind: 'error', text: `登录失败：${message}` }
@@ -55,11 +55,11 @@ async function statusAction(ctx: Context, config: Config): Promise<CommandResult
 
   const grant = credentials === undefined ? null : await readConsoleGrant(credentials)
   if (grant === null) {
-    lines.push('登录态：未登录——运行 /trend login 打开浏览器授权。')
+    lines.push('登录态：未登录——运行 /trend login，或在右侧栏「趋势生产」面板点「登录」打开浏览器授权。')
   } else if (isConsoleGrantFresh(grant)) {
     lines.push(`登录态：${grant.user.username}（${grant.user.role}），会话约剩 ${formatRemaining(grant.expiresAt)}。`)
   } else {
-    lines.push(`登录态：已过期（${grant.user.username}）——运行 /trend login 重新授权。`)
+    lines.push(`登录态：已过期（${grant.user.username}）——运行 /trend login，或在右侧栏「趋势生产」面板点「登录」重新授权。`)
   }
 
   const keyRef = config.understanding.apiKeyEnv
@@ -75,7 +75,7 @@ async function statusAction(ctx: Context, config: Config): Promise<CommandResult
 export function trendCommandDefinition(ctx: Context, config: Config, logger: HostLoggerLike): CommandDefinition {
   return {
     name: 'trend',
-    description: '趋势教员端登录与就绪度自查（/trend login、/trend status）',
+    description: '趋势教员端登录与就绪度自查（面板同功能，命令面为备用：/trend login、/trend status）',
     input: { hint: 'login 或 status，留空等于 status' },
     handler: async invocation => {
       const sub = invocation.rawInput.trim().toLowerCase()
